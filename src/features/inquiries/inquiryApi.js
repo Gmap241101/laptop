@@ -75,17 +75,22 @@ const queryString = (params = {}) => {
 };
 
 export const inquiryApi = Object.freeze({
-  async getPublicConfig() {
-    const payload = await requestJson({ path: '/api/inquiries/config' });
+  async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
+    const payload = await requestJson({
+      path: `/api/inquiries/config${queryString({
+        includeGuestTerms: includeGuestTerms ? '1' : '',
+        includeCategories: includeCategories ? '' : '0',
+      })}`,
+    });
     return payload.inquiryConfig || {};
   },
 
-  async listMember({ page = 1, pageSize = 10 } = {}) {
+  async listMember({ page = 1, pageSize } = {}) {
     const payload = await requestJson({
       path: `/api/inquiries/member${queryString({ page, pageSize })}`,
       auth: 'clerk',
     });
-    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize };
+    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize: Number(pageSize || 10) };
   },
 
   async getMember(publicId) {
@@ -118,13 +123,13 @@ export const inquiryApi = Object.freeze({
     return payload.guestInquiryAccess || null;
   },
 
-  async listGuest({ token, page = 1, pageSize = 10 } = {}) {
+  async listGuest({ token, page = 1, pageSize } = {}) {
     const payload = await requestJson({
       path: `/api/inquiries/guest${queryString({ page, pageSize })}`,
       auth: 'guest',
       guestToken: token,
     });
-    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize };
+    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize: Number(pageSize || 10) };
   },
 
   async getGuest(publicId, token) {

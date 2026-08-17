@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Eye, LockKeyhole, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, LockKeyhole, Pencil, Plus, Trash2 } from 'lucide-react';
 
 import { Button, Input, Select } from '../components/CommonUI.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
+import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 
 const GUEST_ACCESS_SESSION_KEY = 'mk_laptop_guest_inquiry_access';
@@ -20,6 +21,18 @@ const STATUS_CLASSES = Object.freeze({
   additional: 'border-violet-200 bg-violet-50 text-violet-700',
 });
 
+const trim = (value) => String(value ?? '').trim();
+
+const htmlToText = (html) => {
+  const source = String(html || '');
+  if (typeof document !== 'undefined') {
+    const node = document.createElement('div');
+    node.innerHTML = source;
+    return trim(node.textContent || node.innerText || '');
+  }
+  return trim(source.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '));
+};
+
 const formatDateTime = (value) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -30,10 +43,10 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
-const emptyForm = () => ({ categoryId: '', title: '', bodyText: '' });
+const emptyForm = () => ({ categoryId: '', title: '', bodyHtml: '' });
 const emptyGuestForm = () => ({
   name: '', team: '', email: '', phone: '', password: '', passwordConfirm: '',
-  categoryId: '', title: '', bodyText: '', termDecisions: {},
+  categoryId: '', title: '', bodyHtml: '', termDecisions: {},
 });
 
 const readGuestAccess = () => {
@@ -73,44 +86,38 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-const ModalShell = ({ title, description = '', children, onClose }) => (
-  <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-3 sm:p-5">
-    <div className="mk-modal-scroll-shell max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-      <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
-        <div>
-          <h3 className="text-base font-bold text-slate-950">{title}</h3>
-          {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
-        </div>
-        <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="닫기">
-          <X size={17} />
-        </button>
-      </div>
-      {children}
-    </div>
-  </div>
-);
-
 export default function UserInquiryPanel({ ctx }) {
   const { hasFirebaseAuthSession, goToUserLogin, triggerToast } = ctx;
+  const redirectingToLoginRef = useRef(false);
+
   const [config, setConfig] = useState(null);
   const [configError, setConfigError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [guestTermsReady, setGuestTermsReady] = useState(false);
+  const [guestTermsLoading, setGuestTermsLoading] = useState(false);
+
+  const [listLoading, setListLoading] = useState(false);
+  const [listLoaded, setListLoaded] = useState(false);
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(PAGE_SIZE_FALLBACK);
+
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
+  const [memberView, setMemberView] = useState('compose');
   const [editingPublicId, setEditingPublicId] = useState('');
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [guestMode, setGuestMode] = useState('verify');
+
+  const [guestEntry, setGuestEntry] = useState('intro');
+  const [guestMode, setGuestMode] = useState('create');
   const [guestForm, setGuestForm] = useState(emptyGuestForm);
   const [guestVerify, setGuestVerify] = useState({ name: '', method: 'email', identifier: '', password: '' });
   const [guestAccess, setGuestAccess] = useState(readGuestAccess);
   const [guestVerifyLoading, setGuestVerifyLoading] = useState(false);
 
-  const pageSize = Number(config?.postsPerPage || PAGE_SIZE_FALLBACK);
+  const pageSize = Number(listPageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const categories = Array.isArray(config?.categories) ? config.categories : [];
   const guestTerms = Array.isArray(config?.guestTerms) ? config.guestTerms : [];
@@ -119,19 +126,45 @@ export default function UserInquiryPanel({ ctx }) {
     if (typeof triggerToast === 'function') triggerToast(message, type);
   }, [triggerToast]);
 
-  const loadConfig = useCallback(async () => {
+  const applyConfig = useCallback((next, { includeGuestTerms = false } = {}) => {
+    setConfig((current) => includeGuestTerms ? { ...(current || {}), ...next } : next);
+    setConfigError('');
+    setForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
+    setGuestForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
+    if (includeGuestTerms) setGuestTermsReady(true);
+  }, []);
+
+  const loadSummaryConfig = useCallback(async () => {
+    setConfigLoading(true);
     try {
-      const next = await inquiryApi.getPublicConfig();
-      setConfig(next);
-      setConfigError('');
-      setForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
-      setGuestForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
+      const next = await inquiryApi.getPublicConfig({
+        includeGuestTerms: false,
+        includeCategories: hasFirebaseAuthSession || Boolean(guestAccess?.token),
+      });
+      applyConfig(next);
       return next;
     } catch (error) {
       setConfigError('문의하기 설정을 불러오지 못했습니다.');
       return null;
+    } finally {
+      setConfigLoading(false);
     }
-  }, []);
+  }, [applyConfig, guestAccess?.token, hasFirebaseAuthSession]);
+
+  const ensureGuestTerms = useCallback(async () => {
+    if (guestTermsReady) return config;
+    setGuestTermsLoading(true);
+    try {
+      const next = await inquiryApi.getPublicConfig({ includeGuestTerms: true, includeCategories: true });
+      applyConfig(next, { includeGuestTerms: true });
+      return next;
+    } catch (error) {
+      notify('비회원 문의 설정을 불러오지 못했습니다.', 'error');
+      return null;
+    } finally {
+      setGuestTermsLoading(false);
+    }
+  }, [applyConfig, config, guestTermsReady, notify]);
 
   const clearGuestSession = useCallback(() => {
     writeGuestAccess(null);
@@ -140,45 +173,84 @@ export default function UserInquiryPanel({ ctx }) {
     setTotalCount(0);
     setDetail(null);
     setPage(1);
+    setListLoaded(false);
+    setGuestEntry('intro');
+    setGuestMode('create');
+    setEditingPublicId('');
   }, []);
 
-  const loadList = useCallback(async ({ targetPage = page, access = guestAccess, currentConfig = config } = {}) => {
-    if (!currentConfig) return;
-    setLoading(true);
+  const loadList = useCallback(async ({ targetPage = page, access = guestAccess } = {}) => {
+    setListLoading(true);
     try {
       const result = hasFirebaseAuthSession
-        ? await inquiryApi.listMember({ page: targetPage, pageSize: currentConfig.postsPerPage })
+        ? await inquiryApi.listMember({ page: targetPage })
         : access?.token
-          ? await inquiryApi.listGuest({ token: access.token, page: targetPage, pageSize: currentConfig.postsPerPage })
-          : { items: [], totalCount: 0, page: 1 };
+          ? await inquiryApi.listGuest({ token: access.token, page: targetPage })
+          : { items: [], totalCount: 0, page: 1, pageSize: config?.postsPerPage || PAGE_SIZE_FALLBACK };
       setItems(Array.isArray(result.items) ? result.items : []);
       setTotalCount(Number(result.totalCount || 0));
       setPage(Number(result.page || targetPage || 1));
+      setListPageSize(Number(result.pageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK));
+      setListLoaded(true);
+      return result;
     } catch (error) {
       if (!hasFirebaseAuthSession && ['guest_inquiry_session_required', 'guest_inquiry_session_invalid'].includes(error?.code)) {
         clearGuestSession();
       } else {
         notify('문의 내역을 불러오지 못했습니다.', 'error');
       }
+      return null;
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
-  }, [clearGuestSession, config, guestAccess, hasFirebaseAuthSession, notify, page]);
+  }, [clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, notify, page]);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const next = await loadConfig();
-      if (!active) return;
-      if (next && (hasFirebaseAuthSession || guestAccess?.token)) {
-        await loadList({ targetPage: 1, access: guestAccess, currentConfig: next });
-      } else {
-        setLoading(false);
+      const next = await loadSummaryConfig();
+      if (!active || !next) return;
+      if (!hasFirebaseAuthSession && guestAccess?.token) {
+        await loadList({ targetPage: 1, access: guestAccess });
       }
     })();
     return () => { active = false; };
+  // The summary/config request is intentionally decoupled from list loading for first-paint performance.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFirebaseAuthSession]);
+
+  useEffect(() => {
+    if (configLoading || !config || hasFirebaseAuthSession || config.allowGuest || redirectingToLoginRef.current) return;
+    redirectingToLoginRef.current = true;
+    goToUserLogin();
+  }, [config, configLoading, goToUserLogin, hasFirebaseAuthSession]);
+
+  useEffect(() => {
+    if (!hasFirebaseAuthSession) return;
+    redirectingToLoginRef.current = false;
+    setMemberView('compose');
+    setEditingPublicId('');
+    setDetail(null);
+    setListLoaded(false);
+  }, [hasFirebaseAuthSession]);
+
+  const resetOwnedForm = useCallback(() => {
+    setEditingPublicId('');
+    setForm({ ...emptyForm(), categoryId: categories[0]?.id || '' });
+  }, [categories]);
+
+  const showMemberCompose = () => {
+    resetOwnedForm();
+    setDetail(null);
+    setMemberView('compose');
+  };
+
+  const showMemberList = async () => {
+    setEditingPublicId('');
+    setDetail(null);
+    setMemberView('list');
+    if (!listLoaded) await loadList({ targetPage: 1 });
+  };
 
   const openDetail = async (publicId) => {
     setDetailLoading(true);
@@ -187,6 +259,7 @@ export default function UserInquiryPanel({ ctx }) {
         ? await inquiryApi.getMember(publicId)
         : await inquiryApi.getGuest(publicId, guestAccess?.token);
       setDetail(next);
+      if (hasFirebaseAuthSession) setMemberView('detail');
     } catch (error) {
       notify('문의 상세를 불러오지 못했습니다.', 'error');
       if (!hasFirebaseAuthSession && error?.status === 401) clearGuestSession();
@@ -195,38 +268,52 @@ export default function UserInquiryPanel({ ctx }) {
     }
   };
 
-  const openCreate = () => {
-    setEditingPublicId('');
-    setForm({ ...emptyForm(), categoryId: categories[0]?.id || '' });
-    setFormOpen(true);
-  };
-
   const openEdit = () => {
     if (!detail || Number(detail.answerCount || 0) > 0) return;
     setEditingPublicId(detail.publicId);
-    setForm({ categoryId: detail.categoryId || '', title: detail.title || '', bodyText: detail.bodyText || '' });
-    setFormOpen(true);
+    setForm({
+      categoryId: detail.categoryId || '',
+      title: detail.title || '',
+      bodyHtml: detail.bodyHtml || detail.bodyText || '',
+    });
+    if (hasFirebaseAuthSession) setMemberView('compose');
+  };
+
+  const cancelOwnedEdit = () => {
+    if (editingPublicId && detail) {
+      setEditingPublicId('');
+      if (hasFirebaseAuthSession) setMemberView('detail');
+      return;
+    }
+    if (hasFirebaseAuthSession) void showMemberList();
   };
 
   const saveMemberOrGuestInquiry = async () => {
-    if (!form.categoryId || !form.title.trim() || !form.bodyText.trim()) {
+    const bodyText = htmlToText(form.bodyHtml);
+    if (!form.categoryId || !form.title.trim() || !bodyText) {
       notify('문의 카테고리, 제목, 본문을 모두 입력해 주세요.', 'error');
       return;
     }
     setSaving(true);
     try {
+      const payload = { ...form, bodyText };
       let next;
       if (editingPublicId) {
         next = hasFirebaseAuthSession
-          ? await inquiryApi.updateMember(editingPublicId, form)
-          : await inquiryApi.updateGuest(editingPublicId, form, guestAccess?.token);
+          ? await inquiryApi.updateMember(editingPublicId, payload)
+          : await inquiryApi.updateGuest(editingPublicId, payload, guestAccess?.token);
       } else {
-        next = await inquiryApi.createMember(form);
+        next = await inquiryApi.createMember(payload);
       }
       notify(editingPublicId ? '문의가 수정되었습니다.' : '문의가 등록되었습니다.');
-      setFormOpen(false);
-      await loadList({ targetPage: editingPublicId ? page : 1 });
-      if (next?.publicId) await openDetail(next.publicId);
+      setEditingPublicId('');
+      setListLoaded(false);
+      if (next) {
+        setDetail(next);
+        if (hasFirebaseAuthSession) setMemberView('detail');
+      } else if (hasFirebaseAuthSession) {
+        await showMemberList();
+      }
     } catch (error) {
       const answered = error?.code === 'inquiry_answered_mutation_forbidden';
       notify(answered ? '관리자 답변이 등록된 문의는 수정할 수 없습니다.' : `문의 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
@@ -243,7 +330,13 @@ export default function UserInquiryPanel({ ctx }) {
       else await inquiryApi.deleteGuest(detail.publicId, guestAccess?.token);
       notify('문의가 삭제되었습니다.');
       setDetail(null);
-      await loadList({ targetPage: 1 });
+      setListLoaded(false);
+      if (hasFirebaseAuthSession) {
+        setMemberView('list');
+        await loadList({ targetPage: 1 });
+      } else {
+        await loadList({ targetPage: 1, access: guestAccess });
+      }
     } catch (error) {
       const answered = ['inquiry_answered_mutation_forbidden', 'inquiry_answered_delete_forbidden'].includes(error?.code);
       notify(answered ? '관리자 답변이 등록된 문의는 삭제할 수 없습니다.' : `문의 삭제에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
@@ -251,6 +344,16 @@ export default function UserInquiryPanel({ ctx }) {
   };
 
   const createGuest = async () => {
+    const bodyText = htmlToText(guestForm.bodyHtml);
+    if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !guestForm.phone.trim()
+      || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || !bodyText) {
+      notify('비회원 문의 필수 입력 항목을 모두 입력해 주세요.', 'error');
+      return;
+    }
+    if (guestForm.password !== guestForm.passwordConfirm) {
+      notify('문의 확인 비밀번호가 일치하지 않습니다.', 'error');
+      return;
+    }
     const requiredMissing = guestTerms.some((term) => term.required && !guestForm.termDecisions?.[`${term.source}:${term.id}`]);
     if (requiredMissing) {
       notify('필수 약관에 모두 동의해 주세요.', 'error');
@@ -261,7 +364,7 @@ export default function UserInquiryPanel({ ctx }) {
       const termDecisions = guestTerms.map((term) => ({
         source: term.source, id: term.id, accepted: Boolean(guestForm.termDecisions?.[`${term.source}:${term.id}`]),
       }));
-      await inquiryApi.createGuest({ ...guestForm, author: guestForm, termDecisions });
+      await inquiryApi.createGuest({ ...guestForm, bodyText, author: guestForm, termDecisions });
       const access = await inquiryApi.verifyGuest({
         name: guestForm.name,
         method: 'email',
@@ -272,6 +375,8 @@ export default function UserInquiryPanel({ ctx }) {
       setGuestAccess(access);
       setGuestForm({ ...emptyGuestForm(), categoryId: categories[0]?.id || '' });
       setGuestMode('verify');
+      setGuestEntry('guest');
+      setListLoaded(false);
       notify('비회원 문의가 등록되었습니다. 현재 브라우저에서 바로 확인할 수 있습니다.');
       await loadList({ targetPage: 1, access });
     } catch (error) {
@@ -293,6 +398,7 @@ export default function UserInquiryPanel({ ctx }) {
       writeGuestAccess(access);
       setGuestAccess(access);
       setDetail(null);
+      setListLoaded(false);
       await loadList({ targetPage: 1, access });
       notify('비회원 문의 확인 인증이 완료되었습니다.');
     } catch (error) {
@@ -302,14 +408,144 @@ export default function UserInquiryPanel({ ctx }) {
     }
   };
 
+  const enterGuestFlow = async () => {
+    setGuestEntry('guest');
+    setGuestMode('create');
+    await ensureGuestTerms();
+  };
+
   const listNumber = useMemo(() => {
     const map = new Map();
     items.forEach((item, index) => map.set(item.publicId, Math.max(1, totalCount - ((page - 1) * pageSize) - index)));
     return map;
   }, [items, page, pageSize, totalCount]);
 
+  const renderOwnedEditor = () => (
+    <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div>
+        <h3 className="text-base font-bold text-slate-900">{editingPublicId ? '문의 수정' : '문의 작성'}</h3>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          {editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '문의 카테고리, 제목, 본문을 입력해 주세요.'}
+        </p>
+      </div>
+      <Field label="문의 카테고리">
+        <Select value={form.categoryId} onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}>
+          <option value="">선택</option>
+          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="제목">
+        <Input value={form.title} maxLength={200} onChange={(title) => setForm((current) => ({ ...current, title }))} />
+      </Field>
+      <RichTextEditor
+        label="문의 본문"
+        value={form.bodyHtml}
+        onChange={(bodyHtml) => setForm((current) => ({ ...current, bodyHtml }))}
+        minHeight={320}
+        disabled={saving}
+      />
+      <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+        {editingPublicId ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : null}
+        <Button type="button" variant="primary" disabled={saving} onClick={saveMemberOrGuestInquiry}>{saving ? '저장 중' : editingPublicId ? '문의 수정' : '문의 등록'}</Button>
+      </div>
+    </section>
+  );
+
+  const renderDetail = () => {
+    if (!detail) return null;
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDetail(null);
+              setEditingPublicId('');
+              if (hasFirebaseAuthSession) {
+                setMemberView('list');
+                if (!listLoaded) void loadList({ targetPage: 1 });
+              }
+            }}
+          >
+            <ArrowLeft size={14} /> 목록으로
+          </Button>
+          {Number(detail.answerCount || 0) === 0 ? (
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={openEdit}><Pencil size={14} /> 수정</Button>
+              <Button type="button" variant="dangerOutline" onClick={deleteCurrent}><Trash2 size={14} /> 삭제</Button>
+            </div>
+          ) : null}
+        </div>
+
+        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+            <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '카테고리'}</span></div>
+            <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
+            <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
+              <div><span className="text-slate-400">회원 구분</span><div className="mt-1 font-semibold text-slate-800">{detail.authorType === 'member' ? '회원' : '비회원'}</div></div>
+              <div><span className="text-slate-400">성명</span><div className="mt-1 font-semibold text-slate-800">{detail.authorName || '-'}</div></div>
+              <div><span className="text-slate-400">부서/팀</span><div className="mt-1 font-semibold text-slate-800">{detail.authorTeam || '-'}</div></div>
+              <div><span className="text-slate-400">이메일</span><div className="mt-1 font-semibold text-slate-800">{detail.authorEmail || '-'}</div></div>
+              <div><span className="text-slate-400">연락처</span><div className="mt-1 font-semibold text-slate-800">{detail.authorPhone || '-'}</div></div>
+              <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
+            </div>
+          </div>
+          <div className="min-h-[220px] px-5 py-6"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+        </article>
+
+        <div className="space-y-3">
+          <h4 className="text-sm font-bold text-slate-900">관리자 답변 {Number(detail.answerCount || 0)}건</h4>
+          {Array.isArray(detail.answers) && detail.answers.length > 0 ? detail.answers.map((answer, index) => (
+            <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                <div className="text-sm font-bold text-slate-900">관리자 답변 {index + 1}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName || '관리자'} · {formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
+              </div>
+              <div className="px-5 py-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+            </article>
+          )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 관리자 답변이 없습니다.</div>}
+        </div>
+      </div>
+    );
+  };
+
+  const renderList = ({ guest = false } = {}) => (
+    <div className="space-y-4">
+      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">등록된 문의가 없습니다.</div> : (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">카테고리</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
+            <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button type="button" className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline" onClick={() => openDetail(item.publicId)}>{item.title}</button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+        <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
+        <div className="flex items-center justify-center gap-2 sm:justify-self-center"><Button type="button" variant="outline" disabled={page <= 1 || listLoading} onClick={() => loadList({ targetPage: page - 1 })}>이전</Button><div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{page} / {totalPages}</div><Button type="button" variant="outline" disabled={page >= totalPages || listLoading} onClick={() => loadList({ targetPage: page + 1 })}>다음</Button></div>
+        <div className="flex flex-wrap gap-2 sm:justify-self-end">
+          {guest ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : <Button type="button" variant="primary" onClick={showMemberCompose}><Plus size={14} /> 문의 작성</Button>}
+        </div>
+      </div>
+    </div>
+  );
+
   if (configError) {
     return <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-800">{configError}</div>;
+  }
+
+  if (configLoading || !config) {
+    return <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center text-xs text-slate-500">문의하기 화면을 준비하는 중입니다.</div>;
+  }
+
+  if (!hasFirebaseAuthSession && !config.allowGuest) {
+    return (
+      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center">
+        <LockKeyhole className="mx-auto text-slate-400" size={28} />
+        <div className="mt-3 text-sm font-bold text-slate-900">로그인 화면으로 이동하고 있습니다.</div>
+      </div>
+    );
   }
 
   return (
@@ -319,168 +555,111 @@ export default function UserInquiryPanel({ ctx }) {
         <p className="mt-1 text-sm leading-6 text-slate-500">기기 대여 시스템 이용 중 궁금한 사항을 1:1로 문의할 수 있습니다.</p>
       </div>
 
-      {!hasFirebaseAuthSession ? (
+      {hasFirebaseAuthSession ? (
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
-          {config?.allowGuest ? (
-            <>
-              <Button type="button" variant={guestMode === 'verify' ? 'primary' : 'outline'} onClick={() => setGuestMode('verify')}>비회원 문의 확인</Button>
-              <Button type="button" variant={guestMode === 'create' ? 'primary' : 'outline'} onClick={() => setGuestMode('create')}>비회원 문의 작성</Button>
-            </>
-          ) : null}
-          <Button type="button" variant="outline" onClick={goToUserLogin}>회원 로그인</Button>
+          <Button type="button" variant={memberView === 'compose' ? 'primary' : 'outline'} onClick={showMemberCompose}>문의 작성</Button>
+          <Button type="button" variant={memberView === 'list' || memberView === 'detail' ? 'primary' : 'outline'} onClick={() => void showMemberList()}>내 문의 내역</Button>
         </div>
       ) : null}
 
-      {!hasFirebaseAuthSession && !config?.allowGuest ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center">
-          <LockKeyhole className="mx-auto text-slate-400" size={28} />
-          <div className="mt-3 text-sm font-bold text-slate-900">현재 문의는 회원만 등록할 수 있습니다.</div>
-          <p className="mt-2 text-xs text-slate-500">로그인한 회원은 본인 문의만 확인할 수 있습니다.</p>
-          <Button type="button" variant="primary" className="mt-5" onClick={goToUserLogin}>로그인</Button>
+      {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'intro' ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-base font-bold text-slate-900">회원 로그인</div>
+            <p className="mt-2 text-xs leading-6 text-slate-500">회원 문의는 로그인 후 개인정보를 다시 입력하지 않고 바로 작성할 수 있으며, 본인의 문의 내역을 확인할 수 있습니다.</p>
+            <Button type="button" variant="primary" className="mt-5" onClick={goToUserLogin}>회원 로그인</Button>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-base font-bold text-slate-900">비회원 문의 및 조회</div>
+            <p className="mt-2 text-xs leading-6 text-slate-500">비회원 문의를 새로 작성하거나, 기존 비회원 문의를 성명·이메일 또는 연락처·문의 확인 비밀번호로 확인할 수 있습니다.</p>
+            <Button type="button" variant="outline" className="mt-5" onClick={() => void enterGuestFlow()}>비회원 문의 및 조회</Button>
+          </div>
         </div>
       ) : null}
 
-      {!hasFirebaseAuthSession && config?.allowGuest && guestMode === 'create' ? (
-        <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">비회원 문의 작성</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">이메일과 연락처는 모두 필수입니다. 문의 확인 비밀번호는 재설정할 수 없으므로 분실하지 않도록 보관해 주세요.</p>
+      {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'guest' ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
+            <Button type="button" variant={guestMode === 'create' ? 'primary' : 'outline'} onClick={() => setGuestMode('create')}>비회원 문의 작성</Button>
+            <Button type="button" variant={guestMode === 'verify' ? 'primary' : 'outline'} onClick={() => setGuestMode('verify')}>비회원 문의 확인</Button>
+            <Button type="button" variant="ghost" onClick={() => setGuestEntry('intro')}>처음으로</Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="성명"><Input value={guestForm.name} onChange={(e) => setGuestForm((c) => ({ ...c, name: e.target.value }))} /></Field>
-            <Field label="부서/팀"><Input value={guestForm.team} onChange={(e) => setGuestForm((c) => ({ ...c, team: e.target.value }))} /></Field>
-            <Field label="이메일"><Input type="email" value={guestForm.email} onChange={(e) => setGuestForm((c) => ({ ...c, email: e.target.value }))} /></Field>
-            <Field label="연락처"><Input value={guestForm.phone} onChange={(e) => setGuestForm((c) => ({ ...c, phone: e.target.value }))} placeholder="010-0000-0000" /></Field>
-            <Field label="문의 확인 비밀번호"><Input type="password" value={guestForm.password} onChange={(e) => setGuestForm((c) => ({ ...c, password: e.target.value }))} autoComplete="new-password" /></Field>
-            <Field label="문의 확인 비밀번호 확인"><Input type="password" value={guestForm.passwordConfirm} onChange={(e) => setGuestForm((c) => ({ ...c, passwordConfirm: e.target.value }))} autoComplete="new-password" /></Field>
-          </div>
-          <Field label="문의 카테고리">
-            <Select value={guestForm.categoryId} onChange={(e) => setGuestForm((c) => ({ ...c, categoryId: e.target.value }))}>
-              <option value="">선택</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="제목"><Input value={guestForm.title} onChange={(e) => setGuestForm((c) => ({ ...c, title: e.target.value }))} maxLength={200} /></Field>
-          <Field label="문의 본문"><textarea value={guestForm.bodyText} onChange={(e) => setGuestForm((c) => ({ ...c, bodyText: e.target.value }))} rows={9} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none mk-form-focus" /></Field>
 
-          {guestTerms.length > 0 ? (
-            <div className="space-y-3">
-              <div className="text-sm font-bold text-slate-900">비회원 문의 약관 동의</div>
-              {guestTerms.map((term) => {
-                const key = `${term.source}:${term.id}`;
-                return (
-                  <label key={key} className="block rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-start gap-2">
-                      <input type="checkbox" className="mt-1" checked={Boolean(guestForm.termDecisions?.[key])} onChange={(e) => setGuestForm((c) => ({ ...c, termDecisions: { ...c.termDecisions, [key]: e.target.checked } }))} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-slate-800">{term.required ? '[필수]' : '[선택]'} {term.title}</div>
-                        <RichTextContent html={term.contentHtml} text={term.contentText} className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-white p-3 text-xs leading-5 text-slate-600" />
-                      </div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          ) : null}
-          <div className="flex justify-end"><Button type="button" variant="primary" disabled={saving} onClick={createGuest}>{saving ? '등록 중' : '문의 등록'}</Button></div>
-        </div>
-      ) : null}
-
-      {!hasFirebaseAuthSession && config?.allowGuest && guestMode === 'verify' && !guestAccess?.token ? (
-        <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">비회원 문의 확인</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">작성 시 입력한 성명, 이메일 또는 연락처, 문의 확인 비밀번호가 모두 일치해야 합니다.</p>
-          </div>
-          <Field label="성명"><Input value={guestVerify.name} onChange={(e) => setGuestVerify((c) => ({ ...c, name: e.target.value }))} /></Field>
-          <div>
-            <div className="mb-2 text-[11px] font-semibold text-slate-600">조회 방법</div>
-            <div className="flex gap-5 text-sm">
-              <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="email" checked={guestVerify.method === 'email'} onChange={() => setGuestVerify((c) => ({ ...c, method: 'email', identifier: '' }))} /> 이메일</label>
-              <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="phone" checked={guestVerify.method === 'phone'} onChange={() => setGuestVerify((c) => ({ ...c, method: 'phone', identifier: '' }))} /> 연락처</label>
-            </div>
-          </div>
-          <Field label={guestVerify.method === 'phone' ? '연락처' : '이메일'}><Input value={guestVerify.identifier} onChange={(e) => setGuestVerify((c) => ({ ...c, identifier: e.target.value }))} /></Field>
-          <Field label="문의 확인 비밀번호"><Input type="password" value={guestVerify.password} onChange={(e) => setGuestVerify((c) => ({ ...c, password: e.target.value }))} /></Field>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">비회원 문의 확인 비밀번호는 재설정할 수 없습니다. 비밀번호를 분실한 경우 기존 문의를 조회할 수 없습니다.</div>
-          <div className="flex justify-end"><Button type="button" variant="primary" disabled={guestVerifyLoading} onClick={verifyGuest}>{guestVerifyLoading ? '확인 중' : '문의 확인'}</Button></div>
-        </div>
-      ) : null}
-
-      {(hasFirebaseAuthSession || guestAccess?.token) && detail ? (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between gap-3">
-            <Button type="button" variant="outline" onClick={() => setDetail(null)}><ArrowLeft size={14} /> 목록으로</Button>
-            {Number(detail.answerCount || 0) === 0 ? (
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={openEdit}><Pencil size={14} /> 수정</Button>
-                <Button type="button" variant="dangerOutline" onClick={deleteCurrent}><Trash2 size={14} /> 삭제</Button>
+          {guestMode === 'create' && guestTermsLoading ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">비회원 문의 설정을 불러오는 중입니다.</div>
+          ) : guestMode === 'create' ? (
+            <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">비회원 문의 작성</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">이메일과 연락처는 모두 필수입니다. 문의 확인 비밀번호는 재설정할 수 없으므로 분실하지 않도록 보관해 주세요.</p>
               </div>
-            ) : null}
-          </div>
-
-          <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
-              <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '카테고리'}</span></div>
-              <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
-              <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
-                <div><span className="text-slate-400">회원 구분</span><div className="mt-1 font-semibold text-slate-800">{detail.authorType === 'member' ? '회원' : '비회원'}</div></div>
-                <div><span className="text-slate-400">성명</span><div className="mt-1 font-semibold text-slate-800">{detail.authorName || '-'}</div></div>
-                <div><span className="text-slate-400">부서/팀</span><div className="mt-1 font-semibold text-slate-800">{detail.authorTeam || '-'}</div></div>
-                <div><span className="text-slate-400">이메일</span><div className="mt-1 font-semibold text-slate-800">{detail.authorEmail || '-'}</div></div>
-                <div><span className="text-slate-400">연락처</span><div className="mt-1 font-semibold text-slate-800">{detail.authorPhone || '-'}</div></div>
-                <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="성명"><Input value={guestForm.name} onChange={(name) => setGuestForm((current) => ({ ...current, name }))} /></Field>
+                <Field label="부서/팀"><Input value={guestForm.team} onChange={(team) => setGuestForm((current) => ({ ...current, team }))} /></Field>
+                <Field label="이메일"><Input type="email" value={guestForm.email} onChange={(email) => setGuestForm((current) => ({ ...current, email }))} /></Field>
+                <Field label="연락처"><Input value={guestForm.phone} onChange={(phone) => setGuestForm((current) => ({ ...current, phone }))} placeholder="010-0000-0000" /></Field>
+                <Field label="문의 확인 비밀번호"><Input type="password" value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" /></Field>
+                <Field label="문의 확인 비밀번호 확인"><Input type="password" value={guestForm.passwordConfirm} onChange={(passwordConfirm) => setGuestForm((current) => ({ ...current, passwordConfirm }))} autoComplete="new-password" /></Field>
               </div>
-            </div>
-            <div className="min-h-[220px] px-5 py-6"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
-          </article>
+              <Field label="문의 카테고리">
+                <Select value={guestForm.categoryId} onChange={(categoryId) => setGuestForm((current) => ({ ...current, categoryId }))}>
+                  <option value="">선택</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="제목"><Input value={guestForm.title} onChange={(title) => setGuestForm((current) => ({ ...current, title }))} maxLength={200} /></Field>
+              <RichTextEditor label="문의 본문" value={guestForm.bodyHtml} onChange={(bodyHtml) => setGuestForm((current) => ({ ...current, bodyHtml }))} minHeight={320} disabled={saving} />
 
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold text-slate-900">관리자 답변 {Number(detail.answerCount || 0)}건</h4>
-            {Array.isArray(detail.answers) && detail.answers.length > 0 ? detail.answers.map((answer, index) => (
-              <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                  <div className="text-sm font-bold text-slate-900">관리자 답변 {index + 1}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName || '관리자'} · {formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
+              {guestTerms.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="text-sm font-bold text-slate-900">비회원 문의 약관 동의</div>
+                  {guestTerms.map((term) => {
+                    const key = `${term.source}:${term.id}`;
+                    return (
+                      <label key={key} className="block rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-start gap-2">
+                          <input type="checkbox" className="mt-1" checked={Boolean(guestForm.termDecisions?.[key])} onChange={(event) => setGuestForm((current) => ({ ...current, termDecisions: { ...current.termDecisions, [key]: event.target.checked } }))} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-800">{term.required ? '[필수]' : '[선택]'} {term.title}</div>
+                            <RichTextContent html={term.contentHtml} text={term.contentText} className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-white p-3 text-xs leading-5 text-slate-600" />
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
-                <div className="px-5 py-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div>
-              </article>
-            )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 관리자 답변이 없습니다.</div>}
-          </div>
-        </div>
-      ) : null}
-
-      {(hasFirebaseAuthSession || guestAccess?.token) && !detail ? (
-        <div className="space-y-4">
-          {loading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">등록된 문의가 없습니다.</div> : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-              <table className="w-full min-w-[760px] border-collapse text-left">
-                <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">카테고리</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
-                <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button type="button" className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline" onClick={() => openDetail(item.publicId)}>{item.title}</button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
-              </table>
+              ) : null}
+              <div className="flex justify-end"><Button type="button" variant="primary" disabled={saving} onClick={createGuest}>{saving ? '등록 중' : '문의 등록'}</Button></div>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">비회원 문의 확인</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">작성 시 입력한 성명, 이메일 또는 연락처, 문의 확인 비밀번호가 모두 일치해야 합니다.</p>
+              </div>
+              <Field label="성명"><Input value={guestVerify.name} onChange={(name) => setGuestVerify((current) => ({ ...current, name }))} /></Field>
+              <div>
+                <div className="mb-2 text-[11px] font-semibold text-slate-600">조회 방법</div>
+                <div className="flex gap-5 text-sm">
+                  <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="email" checked={guestVerify.method === 'email'} onChange={() => setGuestVerify((current) => ({ ...current, method: 'email', identifier: '' }))} /> 이메일</label>
+                  <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="phone" checked={guestVerify.method === 'phone'} onChange={() => setGuestVerify((current) => ({ ...current, method: 'phone', identifier: '' }))} /> 연락처</label>
+                </div>
+              </div>
+              <Field label={guestVerify.method === 'phone' ? '연락처' : '이메일'}><Input value={guestVerify.identifier} onChange={(identifier) => setGuestVerify((current) => ({ ...current, identifier }))} /></Field>
+              <Field label="문의 확인 비밀번호"><Input type="password" value={guestVerify.password} onChange={(password) => setGuestVerify((current) => ({ ...current, password }))} /></Field>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">비회원 문의 확인 비밀번호는 재설정할 수 없습니다. 비밀번호를 분실한 경우 기존 문의를 조회할 수 없습니다.</div>
+              <div className="flex justify-end"><Button type="button" variant="primary" disabled={guestVerifyLoading} onClick={verifyGuest}>{guestVerifyLoading ? '확인 중' : '문의 확인'}</Button></div>
             </div>
           )}
-
-          <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-            <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
-            <div className="flex items-center justify-center gap-2 sm:justify-self-center"><Button type="button" variant="outline" disabled={page <= 1} onClick={() => loadList({ targetPage: page - 1 })}>이전</Button><div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{page} / {totalPages}</div><Button type="button" variant="outline" disabled={page >= totalPages} onClick={() => loadList({ targetPage: page + 1 })}>다음</Button></div>
-            <div className="flex flex-wrap gap-2 sm:justify-self-end">
-              {!hasFirebaseAuthSession ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : null}
-              {hasFirebaseAuthSession ? <Button type="button" variant="primary" onClick={openCreate}><Plus size={14} /> 문의 등록</Button> : null}
-            </div>
-          </div>
-        </div>
+        </>
       ) : null}
 
-      {formOpen ? (
-        <ModalShell title={editingPublicId ? '문의 수정' : '문의 등록'} description={editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '문의 카테고리, 제목, 본문을 입력해 주세요.'} onClose={() => !saving && setFormOpen(false)}>
-          <div className="space-y-4 p-5">
-            <Field label="문의 카테고리"><Select value={form.categoryId} onChange={(e) => setForm((c) => ({ ...c, categoryId: e.target.value }))}><option value="">선택</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</Select></Field>
-            <Field label="제목"><Input value={form.title} maxLength={200} onChange={(e) => setForm((c) => ({ ...c, title: e.target.value }))} /></Field>
-            <Field label="문의 본문"><textarea rows={11} value={form.bodyText} onChange={(e) => setForm((c) => ({ ...c, bodyText: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none mk-form-focus" /></Field>
-          </div>
-          <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={saving} onClick={() => setFormOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={saving} onClick={saveMemberOrGuestInquiry}>{saving ? '저장 중' : '저장'}</Button></div>
-        </ModalShell>
-      ) : null}
+      {hasFirebaseAuthSession && memberView === 'compose' ? renderOwnedEditor() : null}
+      {hasFirebaseAuthSession && memberView === 'detail' && detail && !editingPublicId ? renderDetail() : null}
+      {hasFirebaseAuthSession && memberView === 'list' ? renderList() : null}
+
+      {!hasFirebaseAuthSession && guestAccess?.token && editingPublicId ? renderOwnedEditor() : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && !editingPublicId && detail ? renderDetail() : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && !editingPublicId && !detail ? renderList({ guest: true }) : null}
     </div>
   );
 }

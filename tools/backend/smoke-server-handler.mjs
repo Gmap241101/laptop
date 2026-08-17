@@ -337,13 +337,22 @@ const boardService = {
 let inquiryMemberCreateInput = null;
 let inquiryGuestTokenSeen = '';
 let inquiryAdminQuerySeen = null;
+let inquiryPublicConfigOptions = [];
 const inquirySmokeDetail = {
   publicId: 'inq-smoke-1', authorType: 'member', memberUid: 'member:smoke', categoryId: 'rental', categoryName: '대여 문의',
   title: 'Smoke inquiry', bodyText: 'Smoke inquiry body', authorName: 'Smoke User', authorEmail: 'smoke@example.com', authorTeam: 'QA', authorPhone: '010-0000-0000',
   status: 'waiting', answerCount: 0, answers: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
 };
 const inquiryService = {
-  async getPublicConfig() { return { source: 'postgresql', settings: { allowGuest: true, postsPerPage: 10 }, categories: [{ id: 'rental', name: '대여 문의' }], guestTerms: [] }; },
+  async getPublicConfig(options = {}) {
+    inquiryPublicConfigOptions.push({ includeGuestTerms: Boolean(options?.includeGuestTerms), includeCategories: options?.includeCategories !== false });
+    return {
+      source: 'postgresql', authoritative: true, allowGuest: true, postsPerPage: 10,
+      categories: options?.includeCategories === false ? [] : [{ id: 'rental', name: '대여 문의' }],
+      guestTerms: options?.includeGuestTerms ? [{ source: 'inquiry', id: 'privacy', title: '개인정보 수집 동의', required: true }] : [],
+      guestTermsLoaded: Boolean(options?.includeGuestTerms),
+    };
+  },
   async createMember({ clerkUserId, input }) { inquiryMemberCreateInput = { clerkUserId, input }; return { ...inquirySmokeDetail, title: input?.title || inquirySmokeDetail.title }; },
   async listMember({ clerkUserId }) { return { source: 'postgresql', page: 1, pageSize: 10, totalCount: clerkUserId === 'user_smoke' ? 1 : 0, totalPages: 1, items: clerkUserId === 'user_smoke' ? [inquirySmokeDetail] : [] }; },
   async getMember({ clerkUserId, publicId }) { if (clerkUserId !== 'user_smoke' || publicId !== inquirySmokeDetail.publicId) { const error = new Error('not found'); error.code='inquiry_not_found'; error.status=404; throw error; } return inquirySmokeDetail; },
@@ -739,9 +748,20 @@ try {
   });
   if (replaceContent.status !== 200 || (await replaceContent.json()).siteContent?.source !== 'postgresql') throw new Error('PostgreSQL administrator content write failed.');
 
+  const inquiryAccessConfigResponse = await fetch(`${baseUrl}/api/inquiries/config?includeCategories=0`, { headers: { Origin: allowedOrigin } });
+  const inquiryAccessConfigBody = await inquiryAccessConfigResponse.json();
+  if (inquiryAccessConfigResponse.status !== 200 || inquiryAccessConfigBody.inquiryConfig?.allowGuest !== true || inquiryAccessConfigBody.inquiryConfig?.categories?.length !== 0 || inquiryAccessConfigBody.inquiryConfig?.guestTermsLoaded !== false) throw new Error('Private inquiry access-only config endpoint failed.');
+  if (inquiryPublicConfigOptions.at(-1)?.includeCategories !== false || inquiryPublicConfigOptions.at(-1)?.includeGuestTerms !== false) throw new Error('Private inquiry access-only config requested unnecessary data.');
+
   const inquiryConfigResponse = await fetch(`${baseUrl}/api/inquiries/config`, { headers: { Origin: allowedOrigin } });
   const inquiryConfigBody = await inquiryConfigResponse.json();
-  if (inquiryConfigResponse.status !== 200 || inquiryConfigBody.inquiryConfig?.settings?.allowGuest !== true) throw new Error('Private inquiry public config endpoint failed.');
+  if (inquiryConfigResponse.status !== 200 || inquiryConfigBody.inquiryConfig?.allowGuest !== true || inquiryConfigBody.inquiryConfig?.categories?.length !== 1 || inquiryConfigBody.inquiryConfig?.guestTermsLoaded !== false || inquiryConfigBody.inquiryConfig?.guestTerms?.length !== 0) throw new Error('Private inquiry lightweight public config endpoint failed.');
+  if (inquiryPublicConfigOptions.at(-1)?.includeGuestTerms !== false || inquiryPublicConfigOptions.at(-1)?.includeCategories !== true) throw new Error('Private inquiry lightweight config unexpectedly requested guest terms or omitted categories.');
+
+  const inquiryGuestConfigResponse = await fetch(`${baseUrl}/api/inquiries/config?includeGuestTerms=1`, { headers: { Origin: allowedOrigin } });
+  const inquiryGuestConfigBody = await inquiryGuestConfigResponse.json();
+  if (inquiryGuestConfigResponse.status !== 200 || inquiryGuestConfigBody.inquiryConfig?.guestTermsLoaded !== true || inquiryGuestConfigBody.inquiryConfig?.guestTerms?.length !== 1) throw new Error('Private inquiry guest-term config endpoint failed.');
+  if (inquiryPublicConfigOptions.at(-1)?.includeGuestTerms !== true || inquiryPublicConfigOptions.at(-1)?.includeCategories !== true) throw new Error('Private inquiry guest config did not request the required categories and guest terms.');
 
   const inquiryMemberListResponse = await fetch(`${baseUrl}/api/inquiries/member?page=1`, { headers: authHeaders });
   const inquiryMemberListBody = await inquiryMemberListResponse.json();

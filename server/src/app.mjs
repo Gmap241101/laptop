@@ -1460,7 +1460,10 @@ export const createRequestHandler = ({
 
     if (request.method === 'GET' && url.pathname === '/api/inquiries/config') {
       try {
-        const configPayload = await inquiryService.getPublicConfig();
+        const configPayload = await inquiryService.getPublicConfig({
+          includeGuestTerms: url.searchParams.get('includeGuestTerms') === '1',
+          includeCategories: url.searchParams.get('includeCategories') !== '0',
+        });
         writeJson(response, 200, { ...basePayload, inquiryConfig: configPayload }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'inquiry_config_unavailable' }, headers);

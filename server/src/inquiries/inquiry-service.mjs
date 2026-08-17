@@ -186,11 +186,10 @@ export const createInquiryService = ({ repository }) => {
     });
   };
 
-  const getSelectedGuestTerms = async () => {
-    const [settings, catalog] = await Promise.all([
-      repository.getSettings(),
-      getTermCatalog(),
-    ]);
+  const getSelectedGuestTerms = async (knownSettings = null) => {
+    const [settings, catalog] = knownSettings
+      ? [knownSettings, await getTermCatalog()]
+      : await Promise.all([repository.getSettings(), getTermCatalog()]);
     const byKey = new Map([
       ...catalog.signupTerms.map((term) => [`signup:${term.id}`, term]),
       ...catalog.inquiryTerms.map((term) => [`inquiry:${term.id}`, term]),
@@ -221,18 +220,30 @@ export const createInquiryService = ({ repository }) => {
   };
 
   return Object.freeze({
-    async getPublicConfig() {
-      const [{ settings, terms }, categories] = await Promise.all([
-        getSelectedGuestTerms(),
-        repository.listCategories(),
+    async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
+      const [settings, categories, catalog] = await Promise.all([
+        repository.getSettings(),
+        includeCategories ? repository.listCategories() : Promise.resolve([]),
+        includeGuestTerms ? getTermCatalog() : Promise.resolve(null),
       ]);
+      let terms = [];
+      if (includeGuestTerms && settings.allowGuest && catalog) {
+        const byKey = new Map([
+          ...catalog.signupTerms.map((term) => [`signup:${term.id}`, term]),
+          ...catalog.inquiryTerms.map((term) => [`inquiry:${term.id}`, term]),
+        ]);
+        terms = settings.guestTermBindings
+          .map((binding) => byKey.get(`${trim(binding?.source)}:${trim(binding?.id)}`))
+          .filter(Boolean);
+      }
       return Object.freeze({
         source: 'postgresql',
         authoritative: true,
         allowGuest: settings.allowGuest,
         postsPerPage: settings.postsPerPage,
         categories,
-        guestTerms: terms,
+        guestTerms: Object.freeze(terms),
+        guestTermsLoaded: Boolean(includeGuestTerms),
         guestPasswordResetSupported: false,
       });
     },
@@ -292,7 +303,7 @@ export const createInquiryService = ({ repository }) => {
       if (password !== String(input?.passwordConfirm || '')) {
         throw serviceError('guest_inquiry_password_confirmation_mismatch', 'Guest inquiry password confirmation does not match.', 400);
       }
-      const { terms } = await getSelectedGuestTerms();
+      const { terms } = await getSelectedGuestTerms(settings);
       const decisions = new Map((Array.isArray(input?.termDecisions) ? input.termDecisions : []).map((decision) => [
         `${trim(decision?.source)}:${trim(decision?.id)}`,
         Boolean(decision?.accepted),

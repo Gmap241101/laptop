@@ -20,6 +20,8 @@ const state = {
   terms: [{ id: 'privacy', title: '개인정보 수집 동의', contentHtml: '<p>필수</p>', contentText: '필수', required: true, revision: 1, contentHash: 'privacy-hash', enabled: true }],
 };
 
+const configReadStats = { signupTerms: 0, inquiryTerms: 0, categories: 0 };
+
 const memberByClerk = {
   clerkA: { memberUid: 'member-A', status: 'active', name: '회원A', email: 'a@example.com', team: 'A팀', phone: '010-1111-1111' },
   clerkB: { memberUid: 'member-B', status: 'active', name: '회원B', email: 'b@example.com', team: 'B팀', phone: '010-2222-2222' },
@@ -43,9 +45,9 @@ const toDetail = (row) => ({ ...toSummary(row), bodyHtml: row.bodyHtml, bodyText
 
 const repository = {
   async getSettings() { return { allowGuest: state.allowGuest, postsPerPage: state.postsPerPage, guestTermBindings: clone(state.guestTermBindings) }; },
-  async listCategories() { return [{ id: 'rental', name: '대여 문의', inquiryCount: state.inquiries.filter((i) => !i.deleted).length }]; },
-  async getSignupTermsContext() { return { policy: { activeTerms: [] }, terms: [] }; },
-  async listInquiryTerms() { return clone(state.terms); },
+  async listCategories() { configReadStats.categories += 1; return [{ id: 'rental', name: '대여 문의', inquiryCount: state.inquiries.filter((i) => !i.deleted).length }]; },
+  async getSignupTermsContext() { configReadStats.signupTerms += 1; return { policy: { activeTerms: [] }, terms: [] }; },
+  async listInquiryTerms() { configReadStats.inquiryTerms += 1; return clone(state.terms); },
   async resolveMemberByClerkUserId(id) { return memberByClerk[id] || null; },
   async createMemberInquiry(input) {
     const row = { publicId: input.publicId, authorType: 'member', memberUid: input.member.memberUid, categoryId: input.categoryId, title: input.title, bodyHtml: input.bodyHtml, bodyText: input.bodyText, authorName: input.member.name, authorEmail: input.member.email, authorTeam: input.member.team, authorPhone: input.member.phone, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false };
@@ -88,6 +90,30 @@ const repository = {
 
 const service = createInquiryService({ repository });
 const admin = { status: 'active', firebaseUid: 'admin-1', userName: '관리자' };
+
+const accessOnlyConfig = await service.getPublicConfig({ includeCategories: false });
+assert.equal(accessOnlyConfig.allowGuest, true);
+assert.equal(accessOnlyConfig.categories.length, 0);
+assert.equal(accessOnlyConfig.guestTermsLoaded, false);
+assert.equal(accessOnlyConfig.guestTerms.length, 0);
+assert.equal(configReadStats.categories, 0);
+assert.equal(configReadStats.signupTerms, 0);
+assert.equal(configReadStats.inquiryTerms, 0);
+
+const summaryConfig = await service.getPublicConfig();
+assert.equal(summaryConfig.allowGuest, true);
+assert.equal(summaryConfig.categories.length, 1);
+assert.equal(summaryConfig.guestTermsLoaded, false);
+assert.equal(summaryConfig.guestTerms.length, 0);
+assert.equal(configReadStats.categories, 1);
+assert.equal(configReadStats.signupTerms, 0);
+assert.equal(configReadStats.inquiryTerms, 0);
+
+const fullGuestConfig = await service.getPublicConfig({ includeGuestTerms: true, includeCategories: true });
+assert.equal(fullGuestConfig.guestTermsLoaded, true);
+assert.equal(fullGuestConfig.guestTerms.length, 1);
+assert.equal(configReadStats.signupTerms, 1);
+assert.equal(configReadStats.inquiryTerms, 1);
 
 const passwordHash = await hashGuestInquiryPassword('StrongPass!23');
 assert.notEqual(passwordHash, 'StrongPass!23');
