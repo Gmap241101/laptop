@@ -11,6 +11,7 @@ export const USER_ROUTE_PATHS = {
   history: '/history',
   notice: '/board/notice',
   faq: '/board/faq',
+  inquiry: '/board/inquiry',
   login: '/login',
   signup: '/signup',
   findEmail: '/find-email',
@@ -79,6 +80,7 @@ export const LOGIN_RETURN_USER_TABS = new Set([
   'history',
   'notice',
   'faq',
+  'inquiry',
   'footerPage',
   'mypage',
 ]);
@@ -241,6 +243,10 @@ export const getRouteStateFromPath = () => {
 
   if (pathname === '/board/faq') {
     return { view: 'user', userTab: 'faq' };
+  }
+
+  if (pathname === '/board/inquiry') {
+    return { view: 'user', userTab: 'inquiry' };
   }
 
   if (pathname.startsWith('/info/')) {

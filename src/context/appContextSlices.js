@@ -16,6 +16,7 @@ export const APP_CONTEXT_GROUP_KEYS = Object.freeze({
     accountStatus: contextKeys('AlertCircle Button Card CardContent CheckCircle2 Clock UserCircle goToProtectedUserTab goToUserHome goToUserLogin siteSettings userAccountStatusView'),
     history: contextKeys('ADMIN_REQUEST_PAGE_SIZE_OPTIONS ADMIN_REQUEST_TAB Badge Button Card CardContent ClipboardList RENTAL_EXTENSION_APPROVAL_MODE STATUS Search USER_REQUEST_ACTION USER_REQUEST_REVIEW_STATUS currentAuthAdminAccount currentAuthRoleReady currentUserRentalRestrictionStatus currentUserRequests data firebaseAuthReady firebaseAuthUser formatDateWithKoreanWeekday formatFirestoreTimestamp getExtensionRequestAvailableDate getRentalExtensionPeriod getRequestDisplayStatus getRequestExtensionCount getSafeRentalExtensionDays getSafeRentalExtensionMaxCount getUserRequestActionLabel getUserRequestReviewStatusLabel goToProtectedUserTab isAdminAuthenticated openUserActionDialog rentalRequestsLoadErrorMessage rentalRequestsReady userActionSaving userProfile'),
     footerPage: contextKeys('AlertCircle Button Card CardContent footerPagesLoadErrorMessage footerPagesReady goToUserHome selectedFooterPage'),
+    inquiry: contextKeys('goToUserLogin hasFirebaseAuthSession triggerToast'),
     board: contextKeys('AnimatePresence Button Card CardContent Clock Pin Search activeFaqCategoryId activeFaqCategoryName categoryFilteredFaqPosts closeNoticePost displayedFaqPosts expandedFaqPostId faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryNameById faqPostsLoadErrorMessage faqPostsReady faqQuery faqSearchWithinCategory faqTotalPages formatFirestoreDate goToUserHome motion noticePosts noticePostsLoadErrorMessage noticePostsReady noticeRegularPostNumberById noticeTotalPages openNoticePost paginatedNoticePosts pinnedNoticePosts regularFaqPosts regularNoticePosts safeFaqPage safeNoticePage selectedNoticePost setActiveFaqCategoryId setExpandedFaqPostId setFaqPage setFaqQuery setFaqSearchWithinCategory setNoticePage setUserNoticeQuery toggleFaqPost userNoticeQuery userTab'),
   }),
   admin: Object.freeze({
@@ -31,6 +32,7 @@ export const APP_CONTEXT_GROUP_KEYS = Object.freeze({
     siteSettings: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount finalizeSplitStorageMigration isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
     homeManagement: contextKeys('AdminPageHeader Button Input Select authenticatedAdminAccount authenticatedAdminId finalizeSplitStorageMigration isAdminAuthenticated isSplitStorageReady siteSettings siteSettingsLoadErrorMessage siteSettingsReady splitStorageFinalizeLoading systemAdminSettings systemAdminSettingsLoadErrorMessage systemAdminSettingsReady triggerConfirm triggerToast'),
     popupPosts: contextKeys('AdminPageHeader Button confirmDeletePopupPost formatPopupDateTime getPopupDisplayStatus movePopupPost openPopupPostDialog popupPostDeletingId popupPostToggleSavingId popupPosts popupPostsLoadErrorMessage popupPostsReady togglePopupPostEnabled'),
+    inquiryPosts: contextKeys('triggerConfirm triggerToast'),
     faqPosts: contextKeys('AdminPageHeader AnimatePresence Button Edit3 FAQ_POSTS_PER_PAGE_OPTIONS Search activeFaqCategoryId activeFaqCategoryName addFaqCategory adminExpandedFaqPostId adminFaqTotalPages adminPinnedFaqPosts adminRegularFaqPosts confirmDeleteFaqCategory confirmDeleteFaqPost discardFaqBoardConfigChanges editingFaqCategoryId editingFaqCategoryName faqBoardConfigLoadErrorMessage faqBoardConfigReady faqBoardConfigSaving faqCategories faqCategoriesLoadErrorMessage faqCategoriesReady faqCategoryDeletingId faqCategoryNameById faqCategorySavingId faqPostDeletingId faqPosts faqPostsLoadErrorMessage faqPostsPerPageInput faqPostsReady faqQuery faqRegularTotalCount faqSearchWithinCategory motion newFaqCategoryName openFaqPostDialog paginatedAdminFaqPosts safeAdminFaqPage saveFaqBoardConfig saveFaqCategoryName setActiveFaqCategoryId setAdminExpandedFaqPostId setAdminFaqPage setEditingFaqCategoryId setEditingFaqCategoryName setFaqPostsPerPageInput setFaqQuery setFaqSearchWithinCategory setNewFaqCategoryName startEditFaqCategory toggleAdminFaqPost'),
     footerManagement: contextKeys('AdminPageHeader Button closeFooterPageDialog confirmDeleteFooterPage footerConfigDraft footerConfigLoadErrorMessage footerConfigReady footerConfigSaving footerPageDeletingId footerPageDialog footerPageForm footerPageSaving footerPageToggleSavingId footerPages footerPagesLoadErrorMessage footerPagesReady formatFirestoreDate moveFooterPage openFooterPageDialog saveFooterConfig saveFooterPage setFooterConfigDraft setFooterPageForm toggleFooterPageEnabled triggerConfirm'),
     memberAccounts: contextKeys('AdminPageHeader Button CheckCircle2 LogOut Search USER_PROFILE_STATUS XCircle adminMemberAccountsNavigationRequest isAdminAuthenticated memberAccountsPrerequisitesReady memberDirectoryBorrowers memberDirectoryPolicyEnabled memberDirectoryTeams registeredAdminAccounts triggerConfirm triggerToast'),
@@ -61,6 +63,7 @@ const USER_TAB_CONTEXT_KEY = Object.freeze({
   footerPage: 'footerPage',
   notice: 'board',
   faq: 'board',
+  inquiry: 'inquiry',
 });
 
 export const getUserPanelContextKey = ({
@@ -89,6 +92,7 @@ const ADMIN_TAB_CONTEXT_KEY = Object.freeze({
   homeManagement: 'homeManagement',
   popupPosts: 'popupPosts',
   faqPosts: 'faqPosts',
+  inquiryPosts: 'inquiryPosts',
   footerManagement: 'footerManagement',
   memberAccounts: 'memberAccounts',
   adminAccounts: 'adminAccounts',

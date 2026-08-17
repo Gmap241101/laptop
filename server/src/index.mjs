@@ -36,6 +36,8 @@ import { createSiteContentRepository } from './content/site-content-repository.m
 import { createSiteContentService } from './content/site-content-service.mjs';
 import { createBoardRepository } from './boards/board-repository.mjs';
 import { createBoardService } from './boards/board-service.mjs';
+import { createInquiryRepository } from './inquiries/inquiry-repository.mjs';
+import { createInquiryService } from './inquiries/inquiry-service.mjs';
 import { createSystemConfigRepository } from './settings/system-config-repository.mjs';
 import { createSystemConfigService } from './settings/system-config-service.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
@@ -86,6 +88,8 @@ const siteContentService = createSiteContentService({ repository: siteContentRep
 const assetRepository = createAssetRepository(pool);
 const boardRepository = createBoardRepository(pool);
 const boardService = createBoardService({ repository: boardRepository });
+const inquiryRepository = createInquiryRepository(pool);
+const inquiryService = createInquiryService({ repository: inquiryRepository });
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
   siteContentRepository,
@@ -178,6 +182,7 @@ const server = createServer(
     assetService,
     siteContentService,
     boardService,
+    inquiryService,
     memberAuthorityRepository,
     systemConfigService,
     clerkDeviceTrustService,
@@ -211,6 +216,7 @@ server.listen(config.port, '0.0.0.0', () => {
     assetDomain: 'postgresql-authoritative',
     siteContent: 'postgresql-authoritative',
     noticeFaqBoards: 'postgresql-authoritative',
+    privateInquiry: 'postgresql-authoritative',
     phase28WriteMirrorRetirement: config.assetBoardWriteMirrorDisabled ? 'assets-and-boards' : 'disabled',
     phase29RentalTransactionAuthority: config.rentalRequestWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',
     phase30MemberStatusRestrictionAuthority: config.memberStatusRestrictionWriteMirrorDisabled ? 'postgresql-source-and-write-mirror-retired' : 'disabled',

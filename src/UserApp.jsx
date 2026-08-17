@@ -955,6 +955,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     goToProtectedUserTab,
     goToUserFaq,
     goToUserHome,
+    goToUserInquiry,
     goToUserMypage,
     goToUserNotice,
     navigateToAdminHome,
@@ -1987,7 +1988,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     adminAccountsLoadErrorMessage, adminAuthForm, adminAuthLoading, adminMyProfileForm,
     adminMyProfileSaving, adminTab, authenticateAdmin, cancelEditAdminAccount, cancelWithdrawal,
     cancelUserSignup, deleteAdminAccount, toggleAdminAccountLock, editingAdminAccountId,
-    goToUserEmailRecovery, goToUserFaq, goToUserNotice, goToUserPasswordReset, goToUserSignup,
+    goToUserEmailRecovery, goToUserFaq, goToUserInquiry, goToUserNotice, goToUserPasswordReset, goToUserSignup,
     hasEstablishedUserSession, hasFirebaseAuthSession, isUserDirectoryAccessRestricted,
     logoutAdmin, logoutUser, memberDirectoryAudit, adminMemberAccountsNavigationRequest,
     memberDirectoryPolicyEnabled, memberIdentityClaimsReady, openWithdrawalDialog,
@@ -2117,6 +2118,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       goToAppHome={goToAppHome}
       goToProtectedUserTab={goToProtectedUserTab}
       goToUserFaq={goToUserFaq}
+      goToUserInquiry={goToUserInquiry}
       goToUserLogin={goToUserLogin}
       goToUserMypage={goToUserMypage}
       goToUserNotice={goToUserNotice}

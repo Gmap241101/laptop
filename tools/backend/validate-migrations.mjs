@@ -32,6 +32,7 @@ const phase34TransientGlobalBannerAuditCompaction = readFileSync('server/migrati
 const phase34MemberLifecycleFinalization = readFileSync('server/migrations/031_phase34_member_lifecycle_finalization.sql', 'utf8');
 const phase34RejoinApprovalConsolidation = readFileSync('server/migrations/032_phase34_rejoin_approval_consolidation.sql', 'utf8');
 const phase34AdminMemberDirectoryOverride = readFileSync('server/migrations/033_phase34_admin_member_directory_override.sql', 'utf8');
+const phase34PrivateInquiryBoard = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -534,4 +535,42 @@ if (/\b(DELETE\s+FROM|TRUNCATE|DROP\s+TABLE)\b/i.test(phase34AdminMemberDirector
   throw new Error('Migration 033 must not delete member/business data.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030 global-banner compaction, 031 member lifecycle finalization, 032 rejoin approval consolidation, and 033 admin member directory override, are type-safe)');
+
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_inquiry_settings',
+  'CREATE TABLE IF NOT EXISTS app_inquiry_categories',
+  'CREATE TABLE IF NOT EXISTS app_inquiry_terms',
+  'CREATE TABLE IF NOT EXISTS app_inquiries',
+  'CREATE TABLE IF NOT EXISTS app_inquiry_answers',
+  'CREATE TABLE IF NOT EXISTS app_inquiry_guest_consents',
+  'CREATE TABLE IF NOT EXISTS app_inquiry_guest_sessions',
+  'guest_password_hash TEXT',
+  'deleted_at TIMESTAMPTZ',
+  'delete_actor_type TEXT',
+  'token_hash TEXT PRIMARY KEY',
+  'scope_public_ids JSONB',
+  'expires_at TIMESTAMPTZ NOT NULL',
+  'term_revision BIGINT',
+  'content_hash TEXT',
+  "'phase34_private_inquiry_board'",
+  "'guest_password_storage', 'scrypt-hash-only'",
+  "'guest_access', 'short-lived-opaque-session'",
+  "'deletion', 'logical-delete'",
+  "'retention_scheduler', 'not-implemented'",
+]) {
+  if (!phase34PrivateInquiryBoard.includes(marker)) {
+    throw new Error(`Migration 034 private inquiry board marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34PrivateInquiryBoard)) {
+  throw new Error('Migration 034 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+if (/\bguest_password\s+TEXT\b/i.test(phase34PrivateInquiryBoard) && !/guest_password_hash\s+TEXT/i.test(phase34PrivateInquiryBoard)) {
+  throw new Error('Migration 034 must never create a plaintext guest_password column.');
+}
+if (/retention_until|retentionUntil|auto(?:matic)?[_ -]?purge|CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION[^;]*inquiry[^;]*(?:delete|purge)/is.test(phase34PrivateInquiryBoard)) {
+  throw new Error('Migration 034 must not implement inquiry retention timers or automatic purge scheduling.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations and 034 PostgreSQL private inquiry board, are type-safe)');

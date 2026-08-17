@@ -325,6 +325,15 @@ export default function useAppNavigationController({
     });
   }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget]);
 
+  const goToUserInquiry = useCallback(() => {
+    clearPendingAndAuthReturnTarget();
+    navigateToUserReturnTarget({
+      userTab: 'inquiry',
+      routeId: '',
+      noticePostId: '',
+    });
+  }, [clearPendingAndAuthReturnTarget, navigateToUserReturnTarget]);
+
   const goToUserMypage = useCallback(() => {
     if (readAdminRouteIntent()) {
       clearAdminRouteIntent();
@@ -550,6 +559,7 @@ export default function useAppNavigationController({
     goToProtectedUserTab,
     goToUserFaq,
     goToUserHome,
+    goToUserInquiry,
     goToUserMypage,
     goToUserNotice,
     navigateToAdminHome,

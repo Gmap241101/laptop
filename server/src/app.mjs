@@ -63,6 +63,12 @@ const writeUnauthorized = (response, basePayload, headers) => {
   );
 };
 
+const readGuestInquiryToken = (request) => {
+  const authorization = String(request?.headers?.authorization || '').trim();
+  const match = authorization.match(/^Guest\s+(.+)$/i);
+  return match ? String(match[1] || '').trim() : '';
+};
+
 const sanitizeUserIdentity = (user) => ({
   id: user.id,
   clerkUserId: user.clerkUserId,
@@ -338,6 +344,33 @@ export const createRequestHandler = ({
     async saveFaqCategory() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
     async deleteFaqCategory() { const error = new Error('Board service is not configured.'); error.code = 'board_service_not_configured'; throw error; },
   },
+
+  inquiryService = {
+    async getPublicConfig() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async createMember() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async listMember() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async getMember() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async updateMember() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteMember() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async createGuest() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async verifyGuestAccess() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async listGuest() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async getGuest() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async updateGuest() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteGuest() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async listAdmin() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async getAdmin() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async addAnswer() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async updateAnswer() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteAnswer() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteAdmin() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async getAdminSettings() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async saveAdminSettings() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async saveCategory() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteCategory() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async saveInquiryTerm() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+    async deleteInquiryTerm() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
+  },
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -475,6 +508,15 @@ export const createRequestHandler = ({
     || typeof boardService.deleteFaqCategory !== 'function') {
     throw new TypeError('boardService Phase 26 methods are required.');
   }
+  if (!inquiryService
+    || typeof inquiryService.getPublicConfig !== 'function'
+    || typeof inquiryService.createMember !== 'function'
+    || typeof inquiryService.createGuest !== 'function'
+    || typeof inquiryService.listAdmin !== 'function'
+    || typeof inquiryService.addAnswer !== 'function'
+    || typeof inquiryService.saveAdminSettings !== 'function') {
+    throw new TypeError('inquiryService Phase 34 private inquiry methods are required.');
+  }
 
 
   const basePayload = {
@@ -503,6 +545,7 @@ export const createRequestHandler = ({
       siteContent: 'postgresql',
       policyContent: 'postgresql',
       boardContent: 'postgresql',
+      privateInquiry: 'postgresql',
       assets: 'postgresql',
       systemConfiguration: 'postgresql',
     },
@@ -688,6 +731,10 @@ export const createRequestHandler = ({
           adminPendingMemberReject: '/api/admin/members/:uid/reject',
           adminMemberRetire: '/api/admin/members/:uid/retire',
           adminRetiredMemberPurge: '/api/admin/members/:uid',
+          inquiryConfig: '/api/inquiries/config',
+          memberInquiries: '/api/inquiries/member',
+          guestInquiries: '/api/inquiries/guest',
+          adminInquiries: '/api/admin/inquiries',
           adminAccountPasswordAuthority: '/api/admin/accounts/:id/password',
           adminIdentityRegistryBootstrap: '/api/admin/identity-registry/bootstrap',
           accountRecoveryEmail: '/api/account-recovery/email',
@@ -1410,6 +1457,276 @@ export const createRequestHandler = ({
       return;
     }
 
+
+    if (request.method === 'GET' && url.pathname === '/api/inquiries/config') {
+      try {
+        const configPayload = await inquiryService.getPublicConfig();
+        writeJson(response, 200, { ...basePayload, inquiryConfig: configPayload }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'inquiry_config_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (url.pathname === '/api/inquiries/member' && ['GET', 'POST'].includes(request.method)) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      try {
+        if (request.method === 'GET') {
+          const result = await inquiryService.listMember({
+            clerkUserId: auth.userId,
+            page: url.searchParams.get('page') || '1',
+            pageSize: url.searchParams.get('pageSize') || undefined,
+          });
+          writeJson(response, 200, { ...basePayload, authenticated: true, inquiryList: result }, headers);
+        } else {
+          const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+          const inquiry = await inquiryService.createMember({ clerkUserId: auth.userId, input: body || {} });
+          writeJson(response, 201, { ...basePayload, authenticated: true, inquiry }, headers);
+        }
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_inquiry_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const memberInquiryMatch = url.pathname.match(/^\/api\/inquiries\/member\/([^/]+)$/);
+    if (memberInquiryMatch && ['GET', 'PATCH', 'DELETE'].includes(request.method)) {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const publicId = decodeURIComponent(memberInquiryMatch[1]);
+      try {
+        if (request.method === 'GET') {
+          const inquiry = await inquiryService.getMember({ clerkUserId: auth.userId, publicId });
+          writeJson(response, 200, { ...basePayload, authenticated: true, inquiry }, headers);
+        } else if (request.method === 'PATCH') {
+          const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+          const inquiry = await inquiryService.updateMember({ clerkUserId: auth.userId, publicId, input: body || {} });
+          writeJson(response, 200, { ...basePayload, authenticated: true, inquiry }, headers);
+        } else {
+          const result = await inquiryService.deleteMember({ clerkUserId: auth.userId, publicId });
+          writeJson(response, 200, { ...basePayload, authenticated: true, inquiryDelete: result }, headers);
+        }
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'member_inquiry_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/inquiries/guest') {
+      try {
+        const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+        const inquiry = await inquiryService.createGuest({ input: body || {} });
+        writeJson(response, 201, { ...basePayload, inquiry }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'guest_inquiry_create_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/inquiries/guest/verify') {
+      try {
+        const body = await readJsonBody(request, { maxBytes: 32 * 1024 });
+        const access = await inquiryService.verifyGuestAccess({ input: body || {} });
+        writeJson(response, 200, { ...basePayload, guestInquiryAccess: access }, headers);
+      } catch (error) {
+        const exposedCode = error?.code === 'guest_inquiry_verification_failed'
+          ? 'guest_inquiry_verification_failed'
+          : (error?.code || 'guest_inquiry_verification_unavailable');
+        writeJson(response, error?.status || 503, { ...basePayload, error: exposedCode }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/inquiries/guest') {
+      try {
+        const result = await inquiryService.listGuest({
+          token: readGuestInquiryToken(request),
+          page: url.searchParams.get('page') || '1',
+          pageSize: url.searchParams.get('pageSize') || undefined,
+        });
+        writeJson(response, 200, { ...basePayload, inquiryList: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'guest_inquiry_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const guestInquiryMatch = url.pathname.match(/^\/api\/inquiries\/guest\/([^/]+)$/);
+    if (guestInquiryMatch && ['GET', 'PATCH', 'DELETE'].includes(request.method)) {
+      const publicId = decodeURIComponent(guestInquiryMatch[1]);
+      const token = readGuestInquiryToken(request);
+      try {
+        if (request.method === 'GET') {
+          const inquiry = await inquiryService.getGuest({ token, publicId });
+          writeJson(response, 200, { ...basePayload, inquiry }, headers);
+        } else if (request.method === 'PATCH') {
+          const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+          const inquiry = await inquiryService.updateGuest({ token, publicId, input: body || {} });
+          writeJson(response, 200, { ...basePayload, inquiry }, headers);
+        } else {
+          const result = await inquiryService.deleteGuest({ token, publicId });
+          writeJson(response, 200, { ...basePayload, inquiryDelete: result }, headers);
+        }
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'guest_inquiry_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/inquiries/settings') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const settings = await inquiryService.getAdminSettings({ admin: authority.adminAuth?.admin });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryAdminSettings: settings }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_settings_unavailable' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'PUT' && url.pathname === '/api/admin/inquiries/settings') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const body = await readJsonBody(request, { maxBytes: 128 * 1024 });
+        const settings = await inquiryService.saveAdminSettings({ admin: authority.adminAuth?.admin, input: body || {} });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquirySettings: settings }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_settings_save_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/inquiries/categories') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const body = await readJsonBody(request);
+        const category = await inquiryService.saveCategory({ admin: authority.adminAuth?.admin, input: body || {} });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryCategory: category }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_category_save_failed', inquiryCount: Number(error?.inquiryCount || 0) }, headers);
+      }
+      return;
+    }
+
+    const adminInquiryCategoryDeleteMatch = request.method === 'DELETE'
+      ? url.pathname.match(/^\/api\/admin\/inquiries\/categories\/([^/]+)$/)
+      : null;
+    if (adminInquiryCategoryDeleteMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await inquiryService.deleteCategory({ admin: authority.adminAuth?.admin, categoryId: decodeURIComponent(adminInquiryCategoryDeleteMatch[1]) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryCategoryDelete: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_category_delete_failed', inquiryCount: Number(error?.inquiryCount || 0) }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/admin/inquiries/terms') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+        const term = await inquiryService.saveInquiryTerm({ admin: authority.adminAuth?.admin, input: body || {} });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryTerm: term }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_term_save_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminInquiryTermDeleteMatch = request.method === 'DELETE'
+      ? url.pathname.match(/^\/api\/admin\/inquiries\/terms\/([^/]+)$/)
+      : null;
+    if (adminInquiryTermDeleteMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await inquiryService.deleteInquiryTerm({ admin: authority.adminAuth?.admin, termId: decodeURIComponent(adminInquiryTermDeleteMatch[1]) });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryTermDelete: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_term_delete_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/inquiries') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const result = await inquiryService.listAdmin({
+          admin: authority.adminAuth?.admin,
+          query: {
+            search: url.searchParams.get('search') || '',
+            status: url.searchParams.get('status') || 'all',
+            categoryId: url.searchParams.get('categoryId') || 'all',
+            page: url.searchParams.get('page') || '1',
+            pageSize: url.searchParams.get('pageSize') || '10',
+          },
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryList: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_list_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const adminInquiryAnswerCreateMatch = request.method === 'POST'
+      ? url.pathname.match(/^\/api\/admin\/inquiries\/([^/]+)\/answers$/)
+      : null;
+    if (adminInquiryAnswerCreateMatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      try {
+        const body = await readJsonBody(request, { maxBytes: 256 * 1024 });
+        const inquiry = await inquiryService.addAnswer({ admin: authority.adminAuth?.admin, publicId: decodeURIComponent(adminInquiryAnswerCreateMatch[1]), input: body || {} });
+        writeJson(response, 201, { ...basePayload, authenticated: true, authorized: true, inquiry }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_answer_create_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminInquiryAnswerMatch = url.pathname.match(/^\/api\/admin\/inquiries\/([^/]+)\/answers\/([^/]+)$/);
+    if (adminInquiryAnswerMatch && ['PATCH', 'DELETE'].includes(request.method)) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      const publicId = decodeURIComponent(adminInquiryAnswerMatch[1]);
+      const answerId = decodeURIComponent(adminInquiryAnswerMatch[2]);
+      try {
+        const inquiry = request.method === 'PATCH'
+          ? await inquiryService.updateAnswer({ admin: authority.adminAuth?.admin, publicId, answerId, input: await readJsonBody(request, { maxBytes: 256 * 1024 }) })
+          : await inquiryService.deleteAnswer({ admin: authority.adminAuth?.admin, publicId, answerId });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiry }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_answer_mutation_failed' }, headers);
+      }
+      return;
+    }
+
+    const adminInquiryDetailMatch = url.pathname.match(/^\/api\/admin\/inquiries\/([^/]+)$/);
+    if (adminInquiryDetailMatch && ['GET', 'DELETE'].includes(request.method)) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      const publicId = decodeURIComponent(adminInquiryDetailMatch[1]);
+      try {
+        if (request.method === 'GET') {
+          const inquiry = await inquiryService.getAdmin({ admin: authority.adminAuth?.admin, publicId });
+          writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiry }, headers);
+        } else {
+          const result = await inquiryService.deleteAdmin({ admin: authority.adminAuth?.admin, publicId });
+          writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, inquiryDelete: result }, headers);
+        }
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'admin_inquiry_unavailable' }, headers);
+      }
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/api/boards/status') {
       try {

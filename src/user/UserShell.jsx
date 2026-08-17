@@ -31,6 +31,7 @@ const UserShell = ({
   goToAppHome,
   goToProtectedUserTab,
   goToUserFaq,
+  goToUserInquiry,
   goToUserLogin,
   goToUserMypage,
   goToUserNotice,
@@ -171,7 +172,7 @@ const UserShell = ({
                   type="button"
                   onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
                   className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                    ['notice', 'faq'].includes(userTab) || isCommunityMenuOpen
+                    ['notice', 'faq', 'inquiry'].includes(userTab) || isCommunityMenuOpen
                       ? 'bg-orange-50 font-semibold mk-brand-text'
                       : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   }`}
@@ -208,6 +209,17 @@ const UserShell = ({
                         }`}
                       >
                         FAQ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={goToUserInquiry}
+                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          userTab === 'inquiry'
+                            ? 'bg-orange-50 mk-brand-text'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        문의하기
                       </button>
                     </motion.div>
                   ) : null}

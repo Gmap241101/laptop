@@ -23,6 +23,7 @@ const loadAdminPopupPanel = () => import('./AdminPopupPanel.jsx');
 const AdminPopupPanel = memo(lazy(loadAdminPopupPanel));
 const loadAdminFaqPanel = () => import('./AdminFaqPanel.jsx');
 const AdminFaqPanel = memo(lazy(loadAdminFaqPanel));
+const AdminInquiryPanel = memo(lazy(() => import('./AdminInquiryPanel.jsx')));
 const loadAdminFooterPanel = () => import('./AdminFooterPanel.jsx');
 const AdminFooterPanel = memo(lazy(loadAdminFooterPanel));
 const AdminMemberAccountsPanel = memo(lazy(() => import('./AdminMemberAccountsPanel.jsx')));
@@ -85,6 +86,7 @@ const ADMIN_TAB_GROUP = {
   categories: 'rental',
   noticePosts: 'community',
   faqPosts: 'community',
+  inquiryPosts: 'community',
   siteSettings: 'site',
   homeManagement: 'site',
   homeContent: 'site',
@@ -247,6 +249,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
       items: [
         ['noticePosts', ClipboardList, '공지사항 관리'],
         ['faqPosts', ClipboardList, 'FAQ 관리'],
+        ['inquiryPosts', ClipboardList, '문의하기 관리'],
       ],
     },
     {
@@ -667,6 +670,11 @@ function AdminWorkspace({ ctx, panelCtx }) {
                                     {/* FAQ 관리 탭 */}
                   {adminTab === 'faqPosts' && (
                     <AdminFaqPanel ctx={panelCtx} />
+                  )}
+
+                  {/* 문의하기 관리 탭 */}
+                  {adminTab === 'inquiryPosts' && (
+                    <AdminInquiryPanel ctx={panelCtx} />
                   )}
 
                   {/* 푸터 관리 탭 */}

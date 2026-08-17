@@ -334,6 +334,41 @@ const boardService = {
   async deleteFaqCategory() { return { authority: 'postgresql', firestoreMirror: 'retired', deletedCategory: { id: 'CAT-1' } }; },
 };
 
+let inquiryMemberCreateInput = null;
+let inquiryGuestTokenSeen = '';
+let inquiryAdminQuerySeen = null;
+const inquirySmokeDetail = {
+  publicId: 'inq-smoke-1', authorType: 'member', memberUid: 'member:smoke', categoryId: 'rental', categoryName: '대여 문의',
+  title: 'Smoke inquiry', bodyText: 'Smoke inquiry body', authorName: 'Smoke User', authorEmail: 'smoke@example.com', authorTeam: 'QA', authorPhone: '010-0000-0000',
+  status: 'waiting', answerCount: 0, answers: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+};
+const inquiryService = {
+  async getPublicConfig() { return { source: 'postgresql', settings: { allowGuest: true, postsPerPage: 10 }, categories: [{ id: 'rental', name: '대여 문의' }], guestTerms: [] }; },
+  async createMember({ clerkUserId, input }) { inquiryMemberCreateInput = { clerkUserId, input }; return { ...inquirySmokeDetail, title: input?.title || inquirySmokeDetail.title }; },
+  async listMember({ clerkUserId }) { return { source: 'postgresql', page: 1, pageSize: 10, totalCount: clerkUserId === 'user_smoke' ? 1 : 0, totalPages: 1, items: clerkUserId === 'user_smoke' ? [inquirySmokeDetail] : [] }; },
+  async getMember({ clerkUserId, publicId }) { if (clerkUserId !== 'user_smoke' || publicId !== inquirySmokeDetail.publicId) { const error = new Error('not found'); error.code='inquiry_not_found'; error.status=404; throw error; } return inquirySmokeDetail; },
+  async updateMember({ publicId, input }) { return { ...inquirySmokeDetail, publicId, ...input }; },
+  async deleteMember({ publicId }) { return { deleted: true, publicId, logicalDelete: true }; },
+  async createGuest({ input }) { return { ...inquirySmokeDetail, publicId: 'inq-guest-1', authorType: 'guest', memberUid: null, authorName: input?.name || 'Guest' }; },
+  async verifyGuestAccess() { return { token: 'guest-smoke-token', expiresAt: new Date(Date.now() + 1800000).toISOString(), scopeCount: 1 }; },
+  async listGuest({ token }) { inquiryGuestTokenSeen = token; if (token !== 'guest-smoke-token') { const error = new Error('invalid'); error.code='guest_inquiry_access_invalid'; error.status=401; throw error; } return { source:'postgresql', page:1, pageSize:10, totalCount:1, totalPages:1, items:[{ ...inquirySmokeDetail, publicId:'inq-guest-1', authorType:'guest', memberUid:null }] }; },
+  async getGuest({ token, publicId }) { inquiryGuestTokenSeen = token; if (token !== 'guest-smoke-token' || publicId !== 'inq-guest-1') { const error = new Error('not found'); error.code='inquiry_not_found'; error.status=404; throw error; } return { ...inquirySmokeDetail, publicId, authorType:'guest', memberUid:null }; },
+  async updateGuest({ token, publicId, input }) { inquiryGuestTokenSeen = token; return { ...inquirySmokeDetail, publicId, authorType:'guest', memberUid:null, ...input }; },
+  async deleteGuest({ token, publicId }) { inquiryGuestTokenSeen = token; return { deleted:true, publicId, logicalDelete:true }; },
+  async listAdmin({ query }) { inquiryAdminQuerySeen = query; return { source:'postgresql', page:1, pageSize:10, totalCount:1, totalPages:1, items:[inquirySmokeDetail] }; },
+  async getAdmin({ publicId }) { return { ...inquirySmokeDetail, publicId }; },
+  async addAnswer({ publicId, input }) { return { ...inquirySmokeDetail, publicId, status:'answered', answerCount:1, answers:[{ id:'answer-1', bodyHtml:input?.bodyHtml || '<p>answer</p>' }] }; },
+  async updateAnswer({ publicId, answerId, input }) { return { ...inquirySmokeDetail, publicId, status:'answered', answerCount:1, answers:[{ id:answerId, bodyHtml:input?.bodyHtml || '<p>updated</p>' }] }; },
+  async deleteAnswer({ publicId }) { return { ...inquirySmokeDetail, publicId, status:'waiting', answerCount:0, answers:[] }; },
+  async deleteAdmin({ publicId }) { return { deleted:true, publicId, logicalDelete:true }; },
+  async getAdminSettings() { return { source:'postgresql', settings:{ allowGuest:true, postsPerPage:10, guestTermBindings:[] }, categories:[{id:'rental',name:'대여 문의'}], inquiryTerms:[], signupTerms:[] }; },
+  async saveAdminSettings({ input }) { return { source:'postgresql', settings:{ allowGuest:Boolean(input?.allowGuest), postsPerPage:Number(input?.postsPerPage || 10), guestTermBindings:input?.guestTermBindings || [] } }; },
+  async saveCategory({ input }) { return { id: input?.id || 'category-smoke', name: input?.name || 'Smoke category' }; },
+  async deleteCategory({ categoryId }) { return { deleted:true, categoryId, logicalDelete:true }; },
+  async saveInquiryTerm({ input }) { return { id: input?.id || 'term-smoke', title: input?.title || 'Smoke term', revision:1 }; },
+  async deleteInquiryTerm({ termId }) { return { deleted:true, termId, logicalDelete:true }; },
+};
+
 const server = createServer(createRequestHandler({
   config,
   databaseCheck,
@@ -356,6 +391,7 @@ const server = createServer(createRequestHandler({
   assetService,
   siteContentService,
   boardService,
+  inquiryService,
 }));
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -702,6 +738,44 @@ try {
     body: JSON.stringify({ documents: [{ key: 'homePage/config', payload: { enabled: true, title: 'Updated' } }] }),
   });
   if (replaceContent.status !== 200 || (await replaceContent.json()).siteContent?.source !== 'postgresql') throw new Error('PostgreSQL administrator content write failed.');
+
+  const inquiryConfigResponse = await fetch(`${baseUrl}/api/inquiries/config`, { headers: { Origin: allowedOrigin } });
+  const inquiryConfigBody = await inquiryConfigResponse.json();
+  if (inquiryConfigResponse.status !== 200 || inquiryConfigBody.inquiryConfig?.settings?.allowGuest !== true) throw new Error('Private inquiry public config endpoint failed.');
+
+  const inquiryMemberListResponse = await fetch(`${baseUrl}/api/inquiries/member?page=1`, { headers: authHeaders });
+  const inquiryMemberListBody = await inquiryMemberListResponse.json();
+  if (inquiryMemberListResponse.status !== 200 || inquiryMemberListBody.inquiryList?.items?.[0]?.publicId !== 'inq-smoke-1') throw new Error('Authenticated member inquiry list endpoint failed.');
+
+  const inquiryMemberCreateResponse = await fetch(`${baseUrl}/api/inquiries/member`, {
+    method: 'POST', headers: { ...authHeaders, 'Content-Type':'application/json' },
+    body: JSON.stringify({ categoryId:'rental', title:'HTTP smoke inquiry', bodyText:'private body' }),
+  });
+  if (inquiryMemberCreateResponse.status !== 201 || inquiryMemberCreateInput?.clerkUserId !== 'user_smoke') throw new Error('Authenticated member inquiry create endpoint failed to bind Clerk identity.');
+
+  const inquiryGuestVerifyResponse = await fetch(`${baseUrl}/api/inquiries/guest/verify`, {
+    method:'POST', headers:{ Origin:allowedOrigin, 'Content-Type':'application/json' },
+    body:JSON.stringify({ name:'Guest', lookupMethod:'email', lookupValue:'guest@example.com', password:'SmokeGuest1234' }),
+  });
+  const inquiryGuestVerifyBody = await inquiryGuestVerifyResponse.json();
+  if (inquiryGuestVerifyResponse.status !== 200 || inquiryGuestVerifyBody.guestInquiryAccess?.token !== 'guest-smoke-token') throw new Error('Guest inquiry verification endpoint failed.');
+
+  const inquiryGuestListResponse = await fetch(`${baseUrl}/api/inquiries/guest`, { headers:{ Origin:allowedOrigin, Authorization:'Guest guest-smoke-token' } });
+  if (inquiryGuestListResponse.status !== 200 || inquiryGuestTokenSeen !== 'guest-smoke-token') throw new Error('Guest inquiry access token was not enforced by the HTTP route.');
+
+  const inquiryGuestWrongScope = await fetch(`${baseUrl}/api/inquiries/guest/inq-other`, { headers:{ Origin:allowedOrigin, Authorization:'Guest guest-smoke-token' } });
+  const inquiryGuestWrongScopeBody = await inquiryGuestWrongScope.json();
+  if (inquiryGuestWrongScope.status !== 404 || inquiryGuestWrongScopeBody.error !== 'inquiry_not_found') throw new Error('Guest inquiry direct public-id scope bypass was not rejected.');
+
+  const inquiryAdminListResponse = await fetch(`${baseUrl}/api/admin/inquiries?search=Smoke&status=waiting&categoryId=rental&page=1&pageSize=10`, { headers:authHeaders });
+  const inquiryAdminListBody = await inquiryAdminListResponse.json();
+  if (inquiryAdminListResponse.status !== 200 || inquiryAdminListBody.inquiryList?.totalCount !== 1 || inquiryAdminQuerySeen?.categoryId !== 'rental') throw new Error('Administrator private inquiry list endpoint failed.');
+
+  const inquiryAnswerResponse = await fetch(`${baseUrl}/api/admin/inquiries/inq-smoke-1/answers`, {
+    method:'POST', headers:{ ...authHeaders, 'Content-Type':'application/json' }, body:JSON.stringify({ bodyHtml:'<p>answer</p>' }),
+  });
+  const inquiryAnswerBody = await inquiryAnswerResponse.json();
+  if (inquiryAnswerResponse.status !== 201 || inquiryAnswerBody.inquiry?.status !== 'answered' || inquiryAnswerBody.inquiry?.answerCount !== 1) throw new Error('Administrator inquiry answer endpoint failed.');
 
   const notices = await fetch(`${baseUrl}/api/boards/notice`, { headers: { Origin: allowedOrigin } });
   if (notices.status !== 200 || (await notices.json()).board?.source !== 'postgresql') throw new Error('PostgreSQL notice board read failed.');
