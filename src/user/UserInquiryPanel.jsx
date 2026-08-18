@@ -43,6 +43,15 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
+const formatDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric', month: 'numeric', day: 'numeric',
+  }).format(date);
+};
+
 const emptyForm = () => ({ categoryId: '', title: '', bodyHtml: '' });
 const emptyGuestForm = () => ({
   name: '', team: '', email: '', phone: '', password: '', passwordConfirm: '',
@@ -481,29 +490,6 @@ export default function UserInquiryPanel({ ctx }) {
     if (!detail) return null;
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setDetail(null);
-              setEditingPublicId('');
-              if (hasFirebaseAuthSession) {
-                setMemberView('list');
-                if (!listLoaded) void loadList({ targetPage: 1 });
-              }
-            }}
-          >
-            <ArrowLeft size={14} /> 목록으로
-          </Button>
-          {Number(detail.answerCount || 0) === 0 ? (
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={openEdit}><Pencil size={14} /> 수정</Button>
-              <Button type="button" variant="dangerOutline" onClick={deleteCurrent}><Trash2 size={14} /> 삭제</Button>
-            </div>
-          ) : null}
-        </div>
-
         <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
             <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '카테고리'}</span></div>
@@ -531,6 +517,70 @@ export default function UserInquiryPanel({ ctx }) {
               <div className="px-5 py-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div>
             </article>
           )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 관리자 답변이 없습니다.</div>}
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table className="min-w-[680px] w-full border-collapse text-left">
+            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+              <tr>
+                <th className="border-b border-slate-200 px-4 py-3 text-center">제목</th>
+                <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록자</th>
+                <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록일</th>
+                <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">조회수</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['이전글', detail.navigation?.previous],
+                ['다음글', detail.navigation?.next],
+              ].map(([label, item]) => (
+                <tr key={label} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="w-12 shrink-0 text-[11px] font-bold text-slate-500">{label}</span>
+                      {item ? (
+                        <button
+                          type="button"
+                          className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                          onClick={() => void openDetail(item.publicId)}
+                        >
+                          {item.title}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">{label}이 없습니다.</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '-' : '-'}</td>
+                  <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? formatDate(item.createdAt) : '-'}</td>
+                  <td className="px-4 py-3 text-center text-xs text-slate-500">-</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDetail(null);
+              setEditingPublicId('');
+              if (hasFirebaseAuthSession) {
+                setMemberView('list');
+                if (!listLoaded) void loadList({ targetPage: 1 });
+              }
+            }}
+          >
+            <ArrowLeft size={14} /> 목록으로
+          </Button>
+          {Number(detail.answerCount || 0) === 0 ? (
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={openEdit}><Pencil size={14} /> 수정</Button>
+              <Button type="button" variant="dangerOutline" onClick={deleteCurrent}><Trash2 size={14} /> 삭제</Button>
+            </div>
+          ) : null}
         </div>
       </div>
     );

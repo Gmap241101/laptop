@@ -842,17 +842,11 @@ export default function useBoardContentSubscriptionController({
   }, [debouncedAdminNoticeQuery]);
 
   useEffect(() => {
-    const hasSelectedNotice = Boolean(
-      selectedNoticePostId &&
-        ((noticePosts || []).some(
-          (post) => post.id === selectedNoticePostId
-        ) || selectedNoticePostOverride?.id === selectedNoticePostId)
-    );
     const shouldLoadSelectedNotice =
       view === 'user' &&
       userTab === 'notice' &&
       Boolean(selectedNoticePostId) &&
-      !hasSelectedNotice;
+      selectedNoticePostOverride?.id !== selectedNoticePostId;
 
     if (!shouldLoadSelectedNotice) return undefined;
 
@@ -917,13 +911,10 @@ export default function useBoardContentSubscriptionController({
   ]);
 
   useEffect(() => {
-    if (
-      !selectedNoticePostId ||
-      (noticePosts || []).some((post) => post.id === selectedNoticePostId)
-    ) {
+    if (!selectedNoticePostId) {
       setSelectedNoticePostOverride(null);
     }
-  }, [selectedNoticePostId, noticePosts]);
+  }, [selectedNoticePostId]);
 
   useEffect(() => {
     const shouldLoadUserFaq = view === 'user' && userTab === 'faq';

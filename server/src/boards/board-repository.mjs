@@ -185,8 +185,42 @@ export const createBoardRepository = (pool) => Object.freeze({
 
   async getNoticePost(postId) {
     await ensureBootstrapped(pool);
-    const result = await pool.query(`SELECT * FROM app_board_posts WHERE board_type='notice' AND post_id=$1`, [trim(postId)]);
-    return mapPost(result.rows[0]);
+    const result = await pool.query(
+      `WITH ordered AS (
+         SELECT *,
+                LAG(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_post_id,
+                LAG(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_title,
+                LAG(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_author_name,
+                LAG(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_created_at,
+                LAG(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_view_count,
+                LEAD(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_post_id,
+                LEAD(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_title,
+                LEAD(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_author_name,
+                LEAD(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_created_at,
+                LEAD(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_view_count
+           FROM app_board_posts
+          WHERE board_type='notice'
+       )
+       SELECT * FROM ordered WHERE post_id=$1`,
+      [trim(postId)],
+    );
+    const row = result.rows[0];
+    const post = mapPost(row);
+    if (!post) return null;
+    const mapNavigationItem = (prefix) => row?.[`${prefix}_post_id`] ? Object.freeze({
+      id: row[`${prefix}_post_id`],
+      title: row[`${prefix}_title`] || '',
+      authorName: row[`${prefix}_author_name`] || '',
+      createdAt: row[`${prefix}_created_at`] || null,
+      viewCount: Number(row[`${prefix}_view_count`] || 0),
+    }) : null;
+    return Object.freeze({
+      ...post,
+      navigation: Object.freeze({
+        previous: mapNavigationItem('previous'),
+        next: mapNavigationItem('next'),
+      }),
+    });
   },
 
   async incrementNoticeView(postId) {

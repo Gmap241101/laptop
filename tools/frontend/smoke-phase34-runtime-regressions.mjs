@@ -854,6 +854,18 @@ assert.match(faqBoardSubscriptionControllerSource, /searchWithinCategory:\s*faqS
 assert.match(faqBoardSubscriptionControllerSource, /\(shouldRunAdminFaqSearch \|\| shouldRunUserFaqSearch\)[\s\S]*faqSearchWithinCategory/, 'progressive FAQ search must preserve category-scoped search for both user and administrator views');
 assert.match(boardDerivedSelectorsSource, /paginatedAdminFaqPosts = faqSearchMode[\s\S]*adminRegularFaqPosts\.slice/, 'administrator FAQ search pages must slice cumulative search results to the active page');
 
+const userBoardPanelSource = fs.readFileSync(new URL('../../src/user/UserBoardPanel.jsx', import.meta.url), 'utf8');
+const boardSubscriptionSource = fs.readFileSync(new URL('../../src/features/boards/useBoardContentSubscriptionController.js', import.meta.url), 'utf8');
+const boardSelectorsSource = fs.readFileSync(new URL('../../src/features/boards/useBoardDerivedSelectors.js', import.meta.url), 'utf8');
+assert.match(userBoardPanelSource, /selectedNoticePost\.navigation\?\.previous/, 'notice detail must render the previous canonical notice row');
+assert.match(userBoardPanelSource, /selectedNoticePost\.navigation\?\.next/, 'notice detail must render the next canonical notice row');
+for (const marker of ['제목', '등록자', '등록일', '조회수']) assert.ok(userBoardPanelSource.includes(marker), `notice detail navigation header missing: ${marker}`);
+const noticeNavigationIndex = userBoardPanelSource.indexOf("['이전글', selectedNoticePost.navigation?.previous]");
+const noticeDetailListButtonIndex = userBoardPanelSource.indexOf('onClick={closeNoticePost}', noticeNavigationIndex);
+assert.ok(noticeNavigationIndex >= 0 && noticeDetailListButtonIndex > noticeNavigationIndex, 'notice detail list button must render below previous/next navigation');
+assert.match(boardSubscriptionSource, /selectedNoticePostOverride\?\.id !== selectedNoticePostId/, 'notice detail must fetch PostgreSQL detail metadata even when the current page already contains the selected post');
+assert.match(boardSelectorsSource, /selectedNoticePostOverride\?\.id === selectedNoticePostId[\s\S]*selectedNoticePostOverride[\s\S]*noticePosts\.find/, 'notice detail selector must prefer the authoritative detail payload containing navigation metadata');
+
 console.log('[phase34-runtime-regressions-frontend-smoke] PASS');
 
 

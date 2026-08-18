@@ -391,6 +391,18 @@ const boardPool = {
         }],
       };
     }
+    if (text.includes("SELECT scope, synced_at FROM app_board_status WHERE scope='all'")) {
+      return { rowCount: 1, rows: [{ scope: 'all', synced_at: '2026-08-13T01:00:00.000Z' }] };
+    }
+    if (text.includes('previous_post_id') && text.includes('next_post_id')) {
+      return { rowCount: 1, rows: [{
+        post_id: params[0], board_type: 'notice', category_id: null, title: '현재 공지', content_text: '본문', content_html: '<p>본문</p>', content_format: 'rich-html-v1',
+        is_pinned: false, author_uid: '', author_name: '관리자', view_count: 7, source_mode: 'postgresql-authoritative', mirror_state: 'retired',
+        created_at: '2026-08-13T01:00:00.000Z', updated_at: '2026-08-13T01:00:00.000Z',
+        previous_post_id: 'notice-newer', previous_title: '이전 공지', previous_author_name: '관리자1', previous_created_at: '2026-08-14T01:00:00.000Z', previous_view_count: 9,
+        next_post_id: 'notice-older', next_title: '다음 공지', next_author_name: '관리자2', next_created_at: '2026-08-12T01:00:00.000Z', next_view_count: 5,
+      }] };
+    }
     throw new Error(`Unexpected board SQL in Phase 34 regression smoke: ${text}`);
   },
 };
@@ -406,6 +418,11 @@ assert.equal(boardSqlCalls.length - faqQueryStart, 1, 'FAQ list entry must resol
 assert.equal(faqBoard.pageSize, 10, 'FAQ list without a client pageSize must use the authoritative PostgreSQL board configuration');
 assert.equal(faqBoard.categories[0]?.id, 'general');
 assert.equal(faqBoard.regularPosts[0]?.id, 'faq-1');
+const noticeDetail = await boardRepository.getNoticePost('notice-current');
+assert.equal(noticeDetail.id, 'notice-current');
+assert.equal(noticeDetail.navigation.previous?.id, 'notice-newer', 'notice detail must expose the row immediately above the current post in canonical list order');
+assert.equal(noticeDetail.navigation.next?.id, 'notice-older', 'notice detail must expose the row immediately below the current post in canonical list order');
+assert.equal(noticeDetail.navigation.previous?.viewCount, 9);
 const boardRepositorySource = fs.readFileSync(new URL('../../server/src/boards/board-repository.mjs', import.meta.url), 'utf8');
 const listNoticeStart = boardRepositorySource.indexOf('async listNotice(');
 const listNoticeEnd = boardRepositorySource.indexOf('async getNoticePost', listNoticeStart);

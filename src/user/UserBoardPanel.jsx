@@ -164,17 +164,6 @@ export default function UserBoardPanel({ ctx }) {
                 {userTab === 'notice' ? (
                   selectedNoticePost ? (
                     <div className="space-y-5">
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="shrink-0 px-4 py-2 text-xs"
-                          onClick={closeNoticePost}
-                        >
-                          목록으로
-                        </Button>
-                      </div>
-
                       <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
                           <div className="flex flex-wrap items-center gap-2">
@@ -214,6 +203,58 @@ export default function UserBoardPanel({ ctx }) {
                           />
                         </div>
                       </article>
+
+                      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                        <table className="min-w-[680px] w-full border-collapse text-left">
+                          <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                            <tr>
+                              <th className="border-b border-slate-200 px-4 py-3 text-center">제목</th>
+                              <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록자</th>
+                              <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록일</th>
+                              <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">조회수</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              ['이전글', selectedNoticePost.navigation?.previous],
+                              ['다음글', selectedNoticePost.navigation?.next],
+                            ].map(([label, item]) => (
+                              <tr key={label} className="border-b border-slate-100 last:border-b-0">
+                                <td className="px-4 py-3">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <span className="w-12 shrink-0 text-[11px] font-bold text-slate-500">{label}</span>
+                                    {item ? (
+                                      <button
+                                        type="button"
+                                        className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                                        onClick={() => openNoticePost(item)}
+                                      >
+                                        {item.title}
+                                      </button>
+                                    ) : (
+                                      <span className="text-xs text-slate-400">{label}이 없습니다.</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '관리자' : '-'}</td>
+                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? formatFirestoreDate(item.createdAt) : '-'}</td>
+                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? Number(item.viewCount || 0) : '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0 px-4 py-2 text-xs"
+                          onClick={closeNoticePost}
+                        >
+                          목록으로
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-5">

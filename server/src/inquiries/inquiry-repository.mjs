@@ -66,7 +66,7 @@ const mapAnswer = (row) => row ? Object.freeze({
   updatedAt: row.updated_at || null,
 }) : null;
 
-const mapInquiryDetail = (row, answers = [], consents = []) => row ? Object.freeze({
+const mapInquiryDetail = (row, answers = [], consents = [], navigation = {}) => row ? Object.freeze({
   ...mapInquirySummary(row),
   bodyHtml: row.body_html || '',
   bodyText: row.body_text || '',
@@ -84,6 +84,10 @@ const mapInquiryDetail = (row, answers = [], consents = []) => row ? Object.free
     contentHash: consent.content_hash || '',
     consentedAt: consent.consented_at || null,
   }))),
+  navigation: Object.freeze({
+    previous: navigation?.previous || null,
+    next: navigation?.next || null,
+  }),
 }) : null;
 
 const normalizePage = (value) => {
@@ -161,6 +165,48 @@ export const createInquiryRepository = (pool) => {
       values,
     );
     return result.rows[0] || null;
+  };
+
+  const getInquiryNavigation = async (client, { ownerType, memberUid = '', publicIds = [], publicId }) => {
+    const normalizedPublicId = trim(publicId);
+    const isMember = ownerType === 'member';
+    const scopedIds = [...new Set((publicIds || []).map(trim).filter(Boolean))];
+    if (!isMember && !scopedIds.includes(normalizedPublicId)) {
+      return Object.freeze({ previous: null, next: null });
+    }
+
+    const values = isMember ? [trim(memberUid), normalizedPublicId] : [scopedIds, normalizedPublicId];
+    const ownerClause = isMember
+      ? `i.member_uid=$1 AND i.author_type='member' AND i.deleted_at IS NULL`
+      : `i.public_id=ANY($1::text[]) AND i.author_type='guest' AND i.deleted_at IS NULL`;
+    const result = await client.query(
+      `WITH ordered AS (
+         SELECT i.public_id,i.title,i.author_name,i.created_at,
+                LAG(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_public_id,
+                LAG(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_title,
+                LAG(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_author_name,
+                LAG(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_created_at,
+                LEAD(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_public_id,
+                LEAD(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_title,
+                LEAD(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_author_name,
+                LEAD(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_created_at
+           FROM app_inquiries i
+          WHERE ${ownerClause}
+       )
+       SELECT * FROM ordered WHERE public_id=$2`,
+      values,
+    );
+    const row = result.rows[0];
+    const mapNavigationItem = (prefix) => row?.[`${prefix}_public_id`] ? Object.freeze({
+      publicId: row[`${prefix}_public_id`],
+      title: row[`${prefix}_title`] || '',
+      authorName: row[`${prefix}_author_name`] || '',
+      createdAt: row[`${prefix}_created_at`] || null,
+    }) : null;
+    return Object.freeze({
+      previous: mapNavigationItem('previous'),
+      next: mapNavigationItem('next'),
+    });
   };
 
   return Object.freeze({
@@ -446,8 +492,11 @@ export const createInquiryRepository = (pool) => {
     async getMemberInquiry({ memberUid, publicId }) {
       const row = await getInquiryRow(pool, `i.public_id=$1 AND i.member_uid=$2 AND i.author_type='member' AND i.deleted_at IS NULL`, [trim(publicId), trim(memberUid)]);
       if (!row) return null;
-      const answers = await listActiveAnswers(pool, row.inquiry_id);
-      return mapInquiryDetail(row, answers, []);
+      const [answers, navigation] = await Promise.all([
+        listActiveAnswers(pool, row.inquiry_id),
+        getInquiryNavigation(pool, { ownerType: 'member', memberUid, publicId }),
+      ]);
+      return mapInquiryDetail(row, answers, [], navigation);
     },
 
     async updateOwnedInquiry({ ownerType, memberUid = '', publicId, categoryId, title, bodyHtml, bodyText }) {
@@ -586,11 +635,12 @@ export const createInquiryRepository = (pool) => {
       if (!ids.includes(trim(publicId))) return null;
       const row = await getInquiryRow(pool, `i.public_id=$1 AND i.author_type='guest' AND i.deleted_at IS NULL`, [trim(publicId)]);
       if (!row) return null;
-      const [answers, consents] = await Promise.all([
+      const [answers, consents, navigation] = await Promise.all([
         listActiveAnswers(pool, row.inquiry_id),
         listConsents(pool, row.inquiry_id),
+        getInquiryNavigation(pool, { ownerType: 'guest', publicIds: ids, publicId }),
       ]);
-      return mapInquiryDetail(row, answers, consents);
+      return mapInquiryDetail(row, answers, consents, navigation);
     },
 
     async listAdminInquiries({ search = '', status = 'all', categoryId = 'all', page = 1, pageSize = 10 }) {

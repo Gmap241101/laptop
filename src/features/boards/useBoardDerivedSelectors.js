@@ -159,10 +159,9 @@ export default function useBoardDerivedSelectors({
   const selectedNoticePost = useMemo(
     () =>
       selectedNoticePostId
-        ? noticePosts.find((post) => post.id === selectedNoticePostId) ||
-          (selectedNoticePostOverride?.id === selectedNoticePostId
+        ? (selectedNoticePostOverride?.id === selectedNoticePostId
             ? selectedNoticePostOverride
-            : null)
+            : noticePosts.find((post) => post.id === selectedNoticePostId) || null)
         : null,
     [noticePosts, selectedNoticePostId, selectedNoticePostOverride]
   );

@@ -178,6 +178,12 @@ assert.match(repositorySource, /i\.public_id=\$1\s+AND\s+i\.member_uid=\$2\s+AND
 assert.match(repositorySource, /LOWER\(i\.title\) LIKE \$2 OR LOWER\(i\.body_text\) LIKE \$2/);
 assert.match(serviceSource, /listMemberInquiries\(\{ memberUid: member\.memberUid, search, page, pageSize \}\)/);
 assert.match(repositorySource, /ans\.deleted_at IS NULL/);
+assert.match(repositorySource, /const getInquiryNavigation = async/);
+assert.match(repositorySource, /LAG\(i\.public_id\) OVER \(ORDER BY i\.created_at DESC,i\.inquiry_id DESC\)/);
+assert.match(repositorySource, /LEAD\(i\.public_id\) OVER \(ORDER BY i\.created_at DESC,i\.inquiry_id DESC\)/);
+assert.match(repositorySource, /i\.member_uid=\$1 AND i\.author_type='member' AND i\.deleted_at IS NULL/);
+assert.match(repositorySource, /i\.public_id=ANY\(\$1::text\[\]\) AND i\.author_type='guest' AND i\.deleted_at IS NULL/);
+assert.match(repositorySource, /navigation: Object\.freeze\(\{/);
 assert.match(repositorySource, /SET deleted_at=NOW\(\),deleted_by=/);
 assert.doesNotMatch(serviceSource, /from\s+['"][^'"]*(?:firebase|firestore)|\b(?:getDocs|collection|onSnapshot)\s*\(/i);
 assert.doesNotMatch(migrationSource, /retention_until|retentionUntil/i);
