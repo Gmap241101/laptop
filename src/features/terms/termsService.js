@@ -163,6 +163,15 @@ const requestSignupTermContent = async (termValue, { fetchImpl = fetch } = {}) =
   return normalizeActiveTerm({ ...term, ...remoteTerm });
 };
 
+export const primeSignupTermsPolicyCache = (policyValue, { ttlMs = SIGNUP_TERMS_POLICY_CACHE_TTL_MS } = {}) => {
+  const policy = normalizeTermsPolicy(policyValue || {});
+  signupTermsPolicyCache = {
+    policy,
+    expiresAt: Date.now() + Math.max(5_000, Number(ttlMs) || SIGNUP_TERMS_POLICY_CACHE_TTL_MS),
+  };
+  return policy;
+};
+
 export const getCachedSignupTermsPolicy = () => {
   if (!signupTermsPolicyCache) return null;
   if (Date.now() >= signupTermsPolicyCache.expiresAt) {

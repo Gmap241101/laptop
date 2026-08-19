@@ -187,6 +187,27 @@ const sanitizeMemberProfileReadCandidate = (profile, { source = 'postgresql-auth
   shadowSyncedAt: profile.syncedAt || null,
 });
 
+const sanitizeUserSessionProfile = (account = {}) => Object.freeze({
+  uid: account.firebaseUid || '',
+  email: account.memberEmail || account.firebaseEmail || account.primaryEmail || '',
+  maskedEmail: account.memberMaskedEmail || '',
+  name: account.memberName || '',
+  team: account.memberTeam || '',
+  phone: account.memberPhone || '',
+  status: account.memberStatus || '',
+  directoryMemberId: account.directoryMemberId || '',
+  directoryVerifiedVersion: Number(account.directoryVerifiedVersion || 0),
+  directoryOverrideByAdmin: Boolean(account.directoryOverrideByAdmin),
+  profileRequiredReason: account.profileRequiredReason || '',
+  rejoinedAccount: Boolean(account.rejoinedAccount),
+  termsConsentRevision: Number(account.termsConsentRevision || 0),
+  termsConsentPolicyVersion: Number(account.termsConsentPolicyVersion || 0),
+  identityKey: account.identityKey || '',
+  recoveryKey: account.recoveryKey || '',
+  previousAccountUids: Array.isArray(account.previousAccountUids) ? account.previousAccountUids : [],
+});
+
+
 export const createRequestHandler = ({
   config,
   databaseCheck,
@@ -210,6 +231,7 @@ export const createRequestHandler = ({
   },
   accountLifecycleService = {
     async signup() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
+    async getPolicy() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
     async getTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
     async bootstrapTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
     async saveTerms() { const error = new Error('Account lifecycle service is not configured.'); error.code = 'account_lifecycle_not_configured'; throw error; },
@@ -636,7 +658,9 @@ export const createRequestHandler = ({
       return Object.freeze({ auth, firebaseIdentity, userAuth: null });
     }
     try {
-      const userAuth = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+      const userAuth = typeof userClerkAuthService.getCurrentFast === 'function'
+        ? await userClerkAuthService.getCurrentFast({ clerkUserId: auth.userId })
+        : await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
       const account = userAuth?.account || {};
       const clerkUser = userAuth?.clerkUser || {};
       const firebaseIdentity = Object.freeze({
@@ -1049,23 +1073,42 @@ export const createRequestHandler = ({
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
       try {
-        const result = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const currentLoader = typeof userClerkAuthService.getCurrentFast === 'function'
+          ? userClerkAuthService.getCurrentFast.bind(userClerkAuthService)
+          : userClerkAuthService.getCurrent.bind(userClerkAuthService);
+        const [result, termsPolicyResult, sessionPolicyResult] = await Promise.all([
+          currentLoader({ clerkUserId: auth.userId }),
+          config.accountLifecycleCompatibilityDisabled && typeof accountLifecycleService.getPolicy === 'function'
+            ? accountLifecycleService.getPolicy().catch(() => null)
+            : Promise.resolve(null),
+          typeof systemConfigService.get === 'function'
+            ? systemConfigService.get('user-session-policy').catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        const account = result.account || {};
+        const profile = sanitizeUserSessionProfile(account);
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
           authorized: true,
           userAuthentication: {
             authority: result.authority,
+            verification: result.verification || 'clerk-postgresql',
             clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
-            firebaseUid: result.account?.firebaseUid || '',
-            legacyMemberKey: result.account?.firebaseUid || '',
+            firebaseUid: account.firebaseUid || '',
+            legacyMemberKey: account.firebaseUid || '',
             legacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
-            email: result.account?.firebaseEmail || result.account?.primaryEmail || result.clerkUser?.primaryEmail || '',
-            displayName: result.clerkUser?.displayName || '',
+            email: account.memberEmail || account.firebaseEmail || account.primaryEmail || result.clerkUser?.primaryEmail || '',
+            displayName: account.memberName || result.clerkUser?.displayName || '',
             firebaseAuthCompatibility: config.userFirebaseAuthCompatibilityDisabled ? 'retired' : 'signed-in-required',
-            memberStatus: result.account?.memberStatus || '',
-            authAuthorityMode: result.account?.authAuthorityMode || '',
-            lifecycleAuthorityMode: result.account?.lifecycleAuthorityMode || '',
+            memberStatus: account.memberStatus || '',
+            authAuthorityMode: account.authAuthorityMode || '',
+            lifecycleAuthorityMode: account.lifecycleAuthorityMode || '',
+            profile,
+            termsPolicy: termsPolicyResult?.source === 'postgresql' ? termsPolicyResult.payload : null,
+            termsPolicySource: termsPolicyResult?.source || '',
+            sessionPolicy: sessionPolicyResult?.source === 'postgresql' ? sessionPolicyResult.payload : null,
+            sessionPolicySource: sessionPolicyResult?.source || '',
           },
         }, headers);
       } catch (error) {

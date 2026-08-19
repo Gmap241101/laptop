@@ -4,7 +4,8 @@ const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
 const OBSERVATION_EVENT = 'rental:board-content-cutover';
 const REFRESH_EVENT = 'rental:board-content-refresh';
-const BOARD_READ_CACHE_TTL_MS = 5000;
+const BOARD_READ_CACHE_TTL_MS = 60_000;
+const BOARD_READ_STALE_TTL_MS = 5 * 60_000;
 const boardReadCache = new Map();
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
@@ -97,20 +98,42 @@ const withBoardReadCache = async ({ key, useCache = true, loader }) => {
   const cached = boardReadCache.get(key);
   if (cached?.promise && (cached.pending || cached.expiresAt > now)) return cached.promise;
 
-  const entry = { pending: true, expiresAt: 0, promise: null };
+  const entry = {
+    pending: true,
+    expiresAt: 0,
+    staleUntil: cached?.staleUntil || 0,
+    value: cached?.value,
+    promise: null,
+  };
   entry.promise = Promise.resolve()
     .then(loader)
     .then((value) => {
       entry.pending = false;
+      entry.value = value;
       entry.expiresAt = Date.now() + BOARD_READ_CACHE_TTL_MS;
+      entry.staleUntil = Date.now() + BOARD_READ_STALE_TTL_MS;
       return value;
     })
     .catch((error) => {
+      if (entry.value && entry.staleUntil > Date.now()) {
+        entry.pending = false;
+        entry.expiresAt = 0;
+        return entry.value;
+      }
       boardReadCache.delete(key);
       throw error;
     });
   boardReadCache.set(key, entry);
   return entry.promise;
+};
+
+const peekBoardReadCache = (key, { allowStale = true } = {}) => {
+  const cached = boardReadCache.get(key);
+  if (!cached?.value) return null;
+  const now = Date.now();
+  if (cached.expiresAt > now) return cached.value;
+  if (allowStale && cached.staleUntil > now) return cached.value;
+  return null;
 };
 
 const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) => {
@@ -131,7 +154,7 @@ const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) =
   return payload;
 };
 
-export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = null, home = false, useCache = true, fetchImpl = fetch } = {}) => {
+const createNoticeBoardPath = ({ search = '', page = 1, pageSize = null, home = false } = {}) => {
   const params = new URLSearchParams();
   if (home) params.set('home', '1');
   else {
@@ -139,7 +162,16 @@ export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = nul
     params.set('page', String(page));
     if (Number(pageSize) > 0) params.set('pageSize', String(pageSize));
   }
-  const path = `/api/boards/notice?${params.toString()}`;
+  return `/api/boards/notice?${params.toString()}`;
+};
+
+export const getCachedNoticeBoard = (options = {}) => {
+  const path = createNoticeBoardPath(options);
+  return peekBoardReadCache(`notice|${path}`);
+};
+
+export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = null, home = false, useCache = true, fetchImpl = fetch } = {}) => {
+  const path = createNoticeBoardPath({ search, page, pageSize, home });
   return withBoardReadCache({
     key: `notice|${path}`,
     useCache: useCache && fetchImpl === fetch,
@@ -166,14 +198,23 @@ export const incrementNoticePostView = async (postId, { fetchImpl = fetch } = {}
   return Number(payload?.noticeView?.viewCount || 0);
 };
 
-export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, useCache = true, fetchImpl = fetch } = {}) => {
+const createFaqBoardPath = ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false } = {}) => {
   const params = new URLSearchParams();
   if (trim(search)) params.set('search', trim(search));
   params.set('page', String(page));
   if (Number(pageSize) > 0) params.set('pageSize', String(pageSize));
   if (trim(categoryId)) params.set('categoryId', trim(categoryId));
   if (searchWithinCategory) params.set('searchWithinCategory', '1');
-  const path = `/api/boards/faq?${params.toString()}`;
+  return `/api/boards/faq?${params.toString()}`;
+};
+
+export const getCachedFaqBoard = (options = {}) => {
+  const path = createFaqBoardPath(options);
+  return peekBoardReadCache(`faq|${path}`);
+};
+
+export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, useCache = true, fetchImpl = fetch } = {}) => {
+  const path = createFaqBoardPath({ search, page, pageSize, categoryId, searchWithinCategory });
   return withBoardReadCache({
     key: `faq|${path}`,
     useCache: useCache && fetchImpl === fetch,
@@ -186,6 +227,11 @@ export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, 
     },
   });
 };
+
+export const prefetchUserCommunityBoards = async () => Promise.allSettled([
+  requestNoticeBoard({ page: 1, useCache: true }),
+  requestFaqBoard({ page: 1, categoryId: 'all', useCache: true }),
+]);
 
 const getAdminTokens = async () => {
   const { clerkStagingClient } = await import('../../clerk/clerkStagingClient.js');

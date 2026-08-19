@@ -39,6 +39,22 @@ const mapRow = (row) => {
     clerkLastVerifiedAt: row.clerk_last_verified_at || null,
     passwordAuthorityUpdatedAt: row.password_authority_updated_at || null,
     withdrawnAt: row.withdrawn_at || null,
+    memberEmail: trim(row.member_email).toLowerCase(),
+    memberMaskedEmail: trim(row.member_masked_email),
+    memberName: trim(row.member_name),
+    memberTeam: trim(row.member_team),
+    memberPhone: trim(row.member_phone),
+    directoryMemberId: trim(row.directory_member_id),
+    directoryVerifiedVersion: Number(row.directory_verified_version || 0),
+    directoryOverrideByAdmin: Boolean(row.directory_override_by_admin),
+    profileRequiredReason: trim(row.profile_required_reason),
+    rejoinedAccount: Boolean(row.rejoined_account),
+    termsConsentRevision: Number(row.terms_consent_revision || 0),
+    termsConsentPolicyVersion: Number(row.terms_consent_policy_version || 0),
+    termsConsentBootstrapCompleted: Boolean(row.terms_consent_bootstrap_completed_at),
+    identityKey: trim(row.identity_key),
+    recoveryKey: trim(row.recovery_key),
+    previousAccountUids: Array.isArray(row.previous_account_uids) ? row.previous_account_uids : [],
   });
 };
 
@@ -76,7 +92,13 @@ const SELECT_CONTEXT = `
          l.firebase_uid, l.firebase_email,
          m.status AS member_status, m.auth_authority_mode, m.lifecycle_authority_mode,
          m.clerk_account_state, m.clerk_linked_at, m.clerk_last_verified_at,
-         m.password_authority_updated_at, m.withdrawn_at
+         m.password_authority_updated_at, m.withdrawn_at,
+         m.email AS member_email, m.masked_email AS member_masked_email,
+         m.name AS member_name, m.team AS member_team, m.phone AS member_phone,
+         m.directory_member_id, m.directory_verified_version, m.directory_override_by_admin,
+         m.profile_required_reason, m.rejoined_account,
+         m.terms_consent_revision, m.terms_consent_policy_version, m.terms_consent_bootstrap_completed_at,
+         m.identity_key, m.recovery_key, m.previous_account_uids
     FROM app_user_identities u
     JOIN app_user_firebase_links l ON l.app_user_id = u.id
     JOIN app_member_accounts m ON m.firebase_uid = l.firebase_uid

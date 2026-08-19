@@ -34,7 +34,10 @@ import {
 import { richTextHtmlToText } from '../../utils/richTextCore.js';
 import useBoardProgressiveSearch from './useBoardProgressiveSearch.js';
 import {
+  getCachedFaqBoard,
+  getCachedNoticeBoard,
   incrementNoticePostView,
+  prefetchUserCommunityBoards,
   publishBoardContentObservation,
   readBoardContentCutoverConfig,
   requestFaqBoard,
@@ -304,6 +307,27 @@ export default function useBoardContentSubscriptionController({
     setBoardRefreshVersion((current) => current + 1);
   }), []);
 
+  useEffect(() => {
+    if (!boardReadRequested || view !== 'user' || userTab !== 'home' || !noticePostsReady) return undefined;
+    let cancelled = false;
+    const prefetch = () => {
+      if (cancelled) return;
+      void prefetchUserCommunityBoards();
+    };
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(prefetch, { timeout: 1200 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = window.setTimeout(prefetch, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [boardReadRequested, noticePostsReady, userTab, view]);
+
   const showToast = useCallback((message, type = 'success') => {
     triggerToastRef.current?.(message, type);
   }, []);
@@ -330,30 +354,41 @@ export default function useBoardContentSubscriptionController({
         ? 6
         : undefined;
     let cancelled = false;
-    setNoticePostsReady(false);
-    setNoticePostsLoadErrorMessage('');
+    const requestOptions = {
+      search,
+      page: requestPage,
+      pageSize: requestPageSize,
+      home: shouldLoadUserHomeNotice,
+    };
+    const applyNoticeBoard = (board) => {
+      if (cancelled || !board) return;
+      const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
+      setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
+      setNoticePostsPerPageInput(safePostsPerPage);
+      setNoticeBoardConfigReady(true);
+      setNoticeBoardConfigLoadErrorMessage('');
+      setNoticePinnedPosts(board?.pinnedPosts || []);
+      setNoticeRegularPagePosts(board?.regularPosts || []);
+      setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
+      setNoticeHasNextPage(Boolean(board?.hasNextPage));
+      setNoticePostsLoadErrorMessage('');
+      setNoticePostsReady(true);
+      setNoticePostgresFallback(false);
+    };
+    const cachedBoard = getCachedNoticeBoard(requestOptions);
+    if (cachedBoard) {
+      applyNoticeBoard(cachedBoard);
+    } else {
+      setNoticePostsReady(false);
+      setNoticePostsLoadErrorMessage('');
+    }
 
     const loadNotice = () => {
       void requestNoticeBoard({
-        search,
-        page: requestPage,
-        pageSize: requestPageSize,
-        home: shouldLoadUserHomeNotice,
+        ...requestOptions,
         useCache: true,
       }).then((board) => {
-        if (cancelled) return;
-        const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
-        setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
-        setNoticePostsPerPageInput(safePostsPerPage);
-        setNoticeBoardConfigReady(true);
-        setNoticeBoardConfigLoadErrorMessage('');
-        setNoticePinnedPosts(board?.pinnedPosts || []);
-        setNoticeRegularPagePosts(board?.regularPosts || []);
-        setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
-        setNoticeHasNextPage(Boolean(board?.hasNextPage));
-        setNoticePostsLoadErrorMessage('');
-        setNoticePostsReady(true);
-        setNoticePostgresFallback(false);
+        applyNoticeBoard(board);
       }).catch((error) => {
         if (cancelled) return;
         console.error('Phase 26 notice PostgreSQL read failed:', error);
@@ -427,18 +462,15 @@ export default function useBoardContentSubscriptionController({
       ? Math.min(500, activePage * postsPerPage)
       : undefined;
     let cancelled = false;
-    setFaqPostsReady(false);
-    setFaqPostsLoadErrorMessage('');
-
-    void requestFaqBoard({
+    const requestOptions = {
       search,
       page: requestPage,
       pageSize: requestPageSize,
       categoryId: activeFaqCategoryId,
       searchWithinCategory: faqSearchWithinCategory,
-      useCache: true,
-    }).then((board) => {
-      if (cancelled) return;
+    };
+    const applyFaqBoard = (board) => {
+      if (cancelled || !board) return;
       const safePostsPerPage = getSafeFaqPostsPerPage(board?.config?.postsPerPage);
       setFaqBoardConfig({ postsPerPage: safePostsPerPage });
       setFaqPostsPerPageInput(safePostsPerPage);
@@ -454,6 +486,20 @@ export default function useBoardContentSubscriptionController({
       setFaqPostsLoadErrorMessage('');
       setFaqPostsReady(true);
       setFaqPostgresFallback(false);
+    };
+    const cachedBoard = getCachedFaqBoard(requestOptions);
+    if (cachedBoard) {
+      applyFaqBoard(cachedBoard);
+    } else {
+      setFaqPostsReady(false);
+      setFaqPostsLoadErrorMessage('');
+    }
+
+    void requestFaqBoard({
+      ...requestOptions,
+      useCache: true,
+    }).then((board) => {
+      applyFaqBoard(board);
     }).catch((error) => {
       if (cancelled) return;
       console.error('Phase 26 FAQ PostgreSQL read failed:', error);

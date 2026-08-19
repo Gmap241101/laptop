@@ -20,6 +20,7 @@ export default function useUserTermsCompliance({
     cachedPolicy || normalizeTermsPolicy({})
   );
   const [ready, setReady] = useState(() => !enabled || Boolean(cachedPolicy));
+  const [resolvedRefreshKey, setResolvedRefreshKey] = useState(() => cachedPolicy ? refreshKey : -1);
   const [errorMessage, setErrorMessage] = useState('');
   const accountKey = String(account?.uid || account?.firebaseUid || account?.legacyMemberKey || '');
   const accountConsentRevision = Math.max(0, Number(account?.termsConsentRevision) || 0);
@@ -35,6 +36,7 @@ export default function useUserTermsCompliance({
   useEffect(() => {
     if (!enabled) {
       setReady(true);
+      setResolvedRefreshKey(refreshKey);
       setErrorMessage('');
       return undefined;
     }
@@ -44,9 +46,11 @@ export default function useUserTermsCompliance({
     if (immediatelyCachedPolicy) {
       setPolicy(immediatelyCachedPolicy);
       setReady(true);
+      setResolvedRefreshKey(refreshKey);
       setErrorMessage('');
     } else {
       setReady(false);
+      setResolvedRefreshKey(-1);
       setErrorMessage('');
     }
 
@@ -55,12 +59,14 @@ export default function useUserTermsCompliance({
         if (!active) return;
         setPolicy(nextPolicy);
         setReady(true);
+        setResolvedRefreshKey(refreshKey);
         setErrorMessage('');
       })
       .catch((error) => {
         if (!active) return;
         console.error('User PostgreSQL terms compliance policy error:', error);
         setReady(true);
+        setResolvedRefreshKey(refreshKey);
         setErrorMessage('약관 적용 상태를 PostgreSQL에서 확인하지 못했습니다.');
       });
 
@@ -69,23 +75,27 @@ export default function useUserTermsCompliance({
     };
   }, [enabled, refreshKey]);
 
+  const latestCachedPolicy = getCachedSignupTermsPolicy();
+  const effectivePolicy = latestCachedPolicy || policy;
+  const effectiveReady = !enabled || Boolean(latestCachedPolicy) || (ready && resolvedRefreshKey === refreshKey);
+
   const consentRequired = useMemo(
-    () => ready && !errorMessage && isTermsConsentRequiredForAccount({
-      policy,
+    () => effectiveReady && !errorMessage && isTermsConsentRequiredForAccount({
+      policy: effectivePolicy,
       account: { ...(account || {}), termsConsentRevision: effectiveConsentRevision },
     }),
-    [account, effectiveConsentRevision, errorMessage, policy, ready]
+    [account, effectiveConsentRevision, effectivePolicy, effectiveReady, errorMessage]
   );
 
   useEffect(() => {
-    if (!enabled || !ready || errorMessage || !consentRequired || policy.activeTerms.length === 0) {
+    if (!enabled || !effectiveReady || errorMessage || !consentRequired || effectivePolicy.activeTerms.length === 0) {
       return undefined;
     }
 
     let cancelled = false;
     const preload = () => {
       if (cancelled) return;
-      void preloadSignupTermContents(policy.activeTerms).catch(() => {});
+      void preloadSignupTermContents(effectivePolicy.activeTerms).catch(() => {});
     };
 
     if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
@@ -100,13 +110,13 @@ export default function useUserTermsCompliance({
     return () => {
       cancelled = true;
     };
-  }, [consentRequired, enabled, errorMessage, policy, ready]);
+  }, [consentRequired, effectivePolicy, effectiveReady, enabled, errorMessage]);
 
   return {
     consentRequired,
     errorMessage,
-    policy,
-    ready,
+    policy: effectivePolicy,
+    ready: effectiveReady,
     markConsentRevision,
   };
 }

@@ -120,6 +120,9 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     return { settings, policy };
   };
 
+  let termsPolicyReadCache = null;
+  const TERMS_POLICY_READ_CACHE_TTL_MS = 30_000;
+
   const loadTermsPolicy = async () => {
     if (typeof siteContentRepository.getDocument === 'function') {
       const document = await siteContentRepository.getDocument('terms', 'signupTermsPolicy/current');
@@ -127,6 +130,16 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
     }
     const terms = await siteContentRepository.getDomain('terms');
     return normalizePolicy(getDocument(terms, 'signupTermsPolicy/current')?.payload || {});
+  };
+
+  const loadTermsPolicyCached = async () => {
+    const now = Date.now();
+    if (termsPolicyReadCache?.policy && termsPolicyReadCache.expiresAt > now) {
+      return termsPolicyReadCache.policy;
+    }
+    const policy = await loadTermsPolicy();
+    termsPolicyReadCache = { policy, expiresAt: Date.now() + TERMS_POLICY_READ_CACHE_TTL_MS };
+    return policy;
   };
 
   const resolveFirebaseUid = async (clerkUserId) => {
@@ -258,6 +271,11 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
       assertAuthorityEnabled();
       if (typeof repository.rollbackUnlinkedSignup !== 'function') return false;
       return repository.rollbackUnlinkedSignup({ firebaseUid: trim(firebaseUid) });
+    },
+
+    async getPolicy() {
+      assertAuthorityEnabled();
+      return Object.freeze({ source: 'postgresql', payload: await loadTermsPolicyCached() });
     },
 
     async getTerms({ clerkUserId, includeLogs = true }) {

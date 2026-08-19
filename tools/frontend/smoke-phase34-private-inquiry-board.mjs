@@ -71,7 +71,7 @@ assert.match(userPanel, /includeGuestTerms: true, includeCategories: true/);
 assert.match(userPanel, /guestMode === 'create' && guestTermsLoading/);
 assert.match(api, /includeGuestTerms: includeGuestTerms \? '1' : ''/);
 assert.match(api, /includeCategories: includeCategories \? '' : '0'/);
-assert.match(api, /async listMember\(\{ search = '', page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /async listMember\(\{ search = '', page = 1, pageSize, useCache = true \} = \{\}\)/);
 assert.match(api, /queryString\(\{ search, page, pageSize \}\)/);
 assert.match(api, /async listGuest\(\{ token, page = 1, pageSize \} = \{\}\)/);
 
@@ -122,6 +122,9 @@ for (const endpoint of [
 ]) assert.ok(api.includes(endpoint), `Inquiry API endpoint missing: ${endpoint}`);
 assert.match(api, /Authorization = `Guest \$\{normalizedGuestToken\}`/);
 assert.match(api, /Authorization = `Bearer \$\{token\}`/);
+assert.match(api, /INQUIRY_READ_CACHE_TTL_MS = 60_000/);
+assert.match(api, /async prefetchMemberHome\(\)/);
+assert.match(api, /withInquiryReadCache/);
 
 for (const source of [userPanel, adminPanel, api]) {
   assert.doesNotMatch(source, /from\s+['"][^'"]*(?:firebase|firestore)|\b(?:getDocs|collection|onSnapshot)\s*\(/i);
