@@ -44,6 +44,12 @@ const prefetchUserInquiry = (authenticated) => {
     .catch(() => {});
 };
 
+const prefetchUserCommunity = (authenticated) => {
+  prefetchUserNotice();
+  prefetchUserFaq();
+  prefetchUserInquiry(authenticated);
+};
+
 const UserShell = ({
   communityMenuRef,
   contextGroups,
@@ -78,6 +84,14 @@ const UserShell = ({
   const [isMobileCommunityOpen, setIsMobileCommunityOpen] = React.useState(true);
   const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
+
+  React.useEffect(() => {
+    if (userTab !== 'home') return undefined;
+    const timer = window.setTimeout(() => {
+      prefetchUserCommunity(Boolean(firebaseAuthUser));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [firebaseAuthUser?.id, firebaseAuthUser?.uid, userTab]);
 
   React.useEffect(() => {
     if (!isMobileMenuOpen) return undefined;
@@ -189,6 +203,7 @@ const UserShell = ({
 
               <button
                 type="button"
+                onPointerDown={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}
                 onClick={() => setIsMobileMenuOpen(true)}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden"
                 aria-label="메뉴 열기"
@@ -229,7 +244,12 @@ const UserShell = ({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setIsCommunityMenuOpen((prev) => !prev)}
+                  onPointerEnter={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}
+                  onFocus={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}
+                  onClick={() => {
+                    prefetchUserCommunity(Boolean(firebaseAuthUser));
+                    setIsCommunityMenuOpen((prev) => !prev);
+                  }}
                   className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                     ['notice', 'faq', 'inquiry'].includes(userTab) || isCommunityMenuOpen
                       ? 'bg-orange-50 font-semibold mk-brand-text'
@@ -452,7 +472,11 @@ const UserShell = ({
               </button>
               <button
                 type="button"
-                onClick={() => setIsMobileCommunityOpen((prev) => !prev)}
+                onPointerDown={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}
+                onClick={() => {
+                  prefetchUserCommunity(Boolean(firebaseAuthUser));
+                  setIsMobileCommunityOpen((prev) => !prev);
+                }}
                 className={`mt-1 flex w-full items-center justify-between rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
                   ['notice', 'faq', 'inquiry'].includes(userTab)
                     ? 'bg-orange-50 mk-brand-text'

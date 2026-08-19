@@ -19,7 +19,7 @@ import {
   normalizeSystemAdminSettings,
   normalizeUserSessionPolicy,
 } from '../../utils/systemSettings.js';
-import { publishMemberProfileReadObservation } from '../members/memberProfileReadObservation.js';
+import { normalizeMemberProfileRead, publishMemberProfileReadObservation } from '../members/memberProfileReadObservation.js';
 import {
   chooseMemberProfileReadSource,
   loadMemberProfileWithoutFirestoreWatcher,
@@ -48,6 +48,7 @@ import {
   readUserFirebaseAuthRetirementConfig,
 } from './userFirebaseAuthRetirement.js';
 import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
+import { primeSignupTermsPolicy } from '../terms/termsService.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
   readLegacyFirestoreReadFallbackConfig,
@@ -201,6 +202,7 @@ export default function useAuthIdentityPolicySubscriptionController({
   view,
 }) {
   const observedFirebaseAuthUidRef = useRef('');
+  const userSessionProfileRef = useRef(null);
   const adminAccountsApplyingRemoteRef = useRef(false);
   const adminAccountsLastSyncedRef = useRef({});
   const allowAdminAccountsWriteRef = useRef(false);
@@ -260,8 +262,34 @@ export default function useAuthIdentityPolicySubscriptionController({
             email: authority.email || '',
             displayName: authority.displayName || '',
           });
+          const sessionProfile = normalizeMemberProfileRead(authority.memberProfile, principal?.uid || '');
+          if (sessionPayload?.signupTermsPolicy) {
+            primeSignupTermsPolicy(sessionPayload.signupTermsPolicy);
+          }
+          if (sessionProfile?.uid && principal?.uid && sessionProfile.uid === principal.uid) {
+            userSessionProfileRef.current = sessionProfile;
+            const parsedPhone = parseDomesticPhoneNumber(sessionProfile.phone || '');
+            setUserProfile(sessionProfile);
+            setUserProfileForm({
+              name: sessionProfile.name || '',
+              team: sessionProfile.team || '',
+              phonePrefix: parsedPhone.prefix,
+              phoneMiddle: parsedPhone.middle,
+              phoneLast: parsedPhone.last,
+              newPassword: '',
+              newPasswordConfirm: '',
+            });
+            setUserProfileReady(true);
+          } else {
+            userSessionProfileRef.current = null;
+          }
           setFirebaseRuntimePrincipal(principal);
           setFirebaseAuthUser(principal);
+          if (runtimeSurface === 'user' && principal) {
+            setCurrentAuthAdminAccount(null);
+            setCurrentAuthRoleErrorMessage('');
+            setCurrentAuthRoleReady(true);
+          }
           if (!principal && !readUserAuthTransition()) {
             clearUserAuthenticatedSession('clerk-postgresql-signed-out');
           }
@@ -271,6 +299,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           const unauthorized = [401, 403].includes(Number(error?.status || 0));
           setFirebaseAuthUser(null);
           setFirebaseRuntimePrincipal(null);
+          userSessionProfileRef.current = null;
           if (runtimeSurface === 'admin') {
             setCurrentAuthAdminAccount(null);
             setAdminAccounts([]);
@@ -455,7 +484,10 @@ export default function useAuthIdentityPolicySubscriptionController({
       return;
     }
 
-    setUserProfileReady(false);
+    const sessionBootstrapProfile = userSessionProfileRef.current?.uid === firebaseAuthUser.uid
+      ? userSessionProfileRef.current
+      : null;
+    if (!sessionBootstrapProfile) setUserProfileReady(false);
 
     let active = true;
     let firestoreProfile = undefined;
@@ -606,7 +638,18 @@ export default function useAuthIdentityPolicySubscriptionController({
         }
       };
 
-      void refreshPostgresProfile({ allowFirestoreFallback: legacyFallbackAllowed });
+      if (sessionBootstrapProfile) {
+        commitResolvedProfile({
+          profile: sessionBootstrapProfile,
+          source: 'postgresql-auth-session',
+          equivalent: true,
+          changedFields: [],
+          fallbackReason: '',
+          firestoreFallbackReads: 0,
+        });
+      } else {
+        void refreshPostgresProfile({ allowFirestoreFallback: legacyFallbackAllowed });
+      }
 
       const postgresRefreshTimer = setInterval(() => {
         void refreshPostgresProfile();

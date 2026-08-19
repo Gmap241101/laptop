@@ -59,7 +59,7 @@ function UserWorkspace({ ctx, panelCtx }) {
   const [termsComplianceRefreshKey, setTermsComplianceRefreshKey] = useState(0);
   const termsCompliance = useUserTermsCompliance({
     account: userProfile,
-    enabled: isProtectedUserTab && hasFirebaseAuthSession,
+    enabled: isProtectedUserTab && hasFirebaseAuthSession && firebaseAuthReady,
     refreshKey: termsComplianceRefreshKey,
   });
 

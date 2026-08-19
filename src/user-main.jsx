@@ -5,6 +5,7 @@ clearAdminRouteIntent();
 
 const initialRoute = getRouteStateFromPath();
 preconnectUserHomeAuthority();
+
 if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
   void preloadUserHomeBootstrap().catch(() => {});
 } else if (initialRoute.view === 'user' && initialRoute.userTab === 'signup') {
@@ -12,10 +13,11 @@ if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
     .then(({ preloadSignupTermsPolicy }) => preloadSignupTermsPolicy())
     .catch(() => {});
 } else if (initialRoute.view === 'user' && PROTECTED_USER_TABS.has(initialRoute.userTab)) {
-  void import('./features/terms/termsService.js')
-    .then(({ preloadSignupTermsPolicy }) => preloadSignupTermsPolicy())
-    .catch(() => {});
+  // Protected user routes receive the current terms policy in the verified Clerk/PostgreSQL
+  // session bootstrap. If that optional bundle is unavailable, useUserTermsCompliance falls
+  // back to the standalone policy endpoint without bypassing the existing readiness gate.
 }
+
 
 void import('./bootstrap/renderUserRoot.jsx')
   .then(({ renderUserRoot }) => {

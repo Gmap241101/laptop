@@ -34,6 +34,8 @@ import {
 import { richTextHtmlToText } from '../../utils/richTextCore.js';
 import useBoardProgressiveSearch from './useBoardProgressiveSearch.js';
 import {
+  getCachedFaqBoard,
+  getCachedNoticeBoard,
   incrementNoticePostView,
   publishBoardContentObservation,
   readBoardContentCutoverConfig,
@@ -330,6 +332,28 @@ export default function useBoardContentSubscriptionController({
         ? 6
         : undefined;
     let cancelled = false;
+    const cachedNoticeBoard = getCachedNoticeBoard({
+      search,
+      page: requestPage,
+      pageSize: requestPageSize,
+      home: shouldLoadUserHomeNotice,
+    });
+    if (cachedNoticeBoard) {
+      const safePostsPerPage = getSafeNoticePostsPerPage(cachedNoticeBoard?.config?.postsPerPage);
+      setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
+      setNoticePostsPerPageInput(safePostsPerPage);
+      setNoticeBoardConfigReady(true);
+      setNoticeBoardConfigLoadErrorMessage('');
+      setNoticePinnedPosts(cachedNoticeBoard?.pinnedPosts || []);
+      setNoticeRegularPagePosts(cachedNoticeBoard?.regularPosts || []);
+      setNoticeRegularTotalCount(Number(cachedNoticeBoard?.totalRegularCount || 0));
+      setNoticeHasNextPage(Boolean(cachedNoticeBoard?.hasNextPage));
+      setNoticePostsLoadErrorMessage('');
+      setNoticePostsReady(true);
+      setNoticePostgresFallback(false);
+      return undefined;
+    }
+
     setNoticePostsReady(false);
     setNoticePostsLoadErrorMessage('');
 
@@ -427,6 +451,32 @@ export default function useBoardContentSubscriptionController({
       ? Math.min(500, activePage * postsPerPage)
       : undefined;
     let cancelled = false;
+    const cachedFaqBoard = getCachedFaqBoard({
+      search,
+      page: requestPage,
+      pageSize: requestPageSize,
+      categoryId: activeFaqCategoryId,
+      searchWithinCategory: faqSearchWithinCategory,
+    });
+    if (cachedFaqBoard) {
+      const safePostsPerPage = getSafeFaqPostsPerPage(cachedFaqBoard?.config?.postsPerPage);
+      setFaqBoardConfig({ postsPerPage: safePostsPerPage });
+      setFaqPostsPerPageInput(safePostsPerPage);
+      setFaqBoardConfigReady(true);
+      setFaqBoardConfigLoadErrorMessage('');
+      setFaqCategories(cachedFaqBoard?.categories || []);
+      setFaqCategoriesReady(true);
+      setFaqCategoriesLoadErrorMessage('');
+      setFaqPinnedPosts(cachedFaqBoard?.pinnedPosts || []);
+      setFaqRegularPagePosts(cachedFaqBoard?.regularPosts || []);
+      setFaqRegularTotalCount(Number(cachedFaqBoard?.totalRegularCount || 0));
+      setFaqHasNextPage(Boolean(cachedFaqBoard?.hasNextPage));
+      setFaqPostsLoadErrorMessage('');
+      setFaqPostsReady(true);
+      setFaqPostgresFallback(false);
+      return undefined;
+    }
+
     setFaqPostsReady(false);
     setFaqPostsLoadErrorMessage('');
 

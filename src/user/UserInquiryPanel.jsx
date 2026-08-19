@@ -99,19 +99,26 @@ const Field = ({ label, children }) => (
 export default function UserInquiryPanel({ ctx }) {
   const { hasFirebaseAuthSession, goToUserLogin, triggerToast } = ctx;
   const redirectingToLoginRef = useRef(false);
+  const cachedSummaryConfig = inquiryApi.peekPublicConfig({
+    includeGuestTerms: false,
+    includeCategories: hasFirebaseAuthSession,
+  });
+  const cachedMemberList = hasFirebaseAuthSession
+    ? inquiryApi.peekMemberList({ page: 1, search: '' })
+    : null;
 
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState(() => cachedSummaryConfig);
   const [configError, setConfigError] = useState('');
-  const [configLoading, setConfigLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(() => !cachedSummaryConfig);
   const [guestTermsReady, setGuestTermsReady] = useState(false);
   const [guestTermsLoading, setGuestTermsLoading] = useState(false);
 
   const [listLoading, setListLoading] = useState(false);
-  const [listLoaded, setListLoaded] = useState(false);
-  const [items, setItems] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [page, setPage] = useState(1);
-  const [listPageSize, setListPageSize] = useState(PAGE_SIZE_FALLBACK);
+  const [listLoaded, setListLoaded] = useState(() => Boolean(cachedMemberList));
+  const [items, setItems] = useState(() => Array.isArray(cachedMemberList?.items) ? cachedMemberList.items : []);
+  const [totalCount, setTotalCount] = useState(() => Number(cachedMemberList?.totalCount || 0));
+  const [page, setPage] = useState(() => Number(cachedMemberList?.page || 1));
+  const [listPageSize, setListPageSize] = useState(() => Number(cachedMemberList?.pageSize || PAGE_SIZE_FALLBACK));
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -176,6 +183,15 @@ export default function UserInquiryPanel({ ctx }) {
     }
   }, [applyConfig, config, guestTermsReady, notify]);
 
+  const applyListResult = useCallback((result, targetPage = 1) => {
+    const safeResult = result || {};
+    setItems(Array.isArray(safeResult.items) ? safeResult.items : []);
+    setTotalCount(Number(safeResult.totalCount || 0));
+    setPage(Number(safeResult.page || targetPage || 1));
+    setListPageSize(Number(safeResult.pageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK));
+    setListLoaded(true);
+  }, [config?.postsPerPage]);
+
   const clearGuestSession = useCallback(() => {
     writeGuestAccess(null);
     setGuestAccess(null);
@@ -197,11 +213,7 @@ export default function UserInquiryPanel({ ctx }) {
         : access?.token
           ? await inquiryApi.listGuest({ token: access.token, page: targetPage })
           : { items: [], totalCount: 0, page: 1, pageSize: config?.postsPerPage || PAGE_SIZE_FALLBACK };
-      setItems(Array.isArray(result.items) ? result.items : []);
-      setTotalCount(Number(result.totalCount || 0));
-      setPage(Number(result.page || targetPage || 1));
-      setListPageSize(Number(result.pageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK));
-      setListLoaded(true);
+      applyListResult(result, targetPage);
       return result;
     } catch (error) {
       if (!hasFirebaseAuthSession && ['guest_inquiry_session_required', 'guest_inquiry_session_invalid'].includes(error?.code)) {
@@ -213,16 +225,29 @@ export default function UserInquiryPanel({ ctx }) {
     } finally {
       setListLoading(false);
     }
-  }, [clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, memberSearchQuery, notify, page]);
+  }, [applyListResult, clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, memberSearchQuery, notify, page]);
 
   useEffect(() => {
     let active = true;
     (async () => {
       if (hasFirebaseAuthSession) {
-        await Promise.all([
-          loadSummaryConfig(),
-          loadList({ targetPage: 1, search: '' }),
-        ]);
+        const warmConfig = inquiryApi.peekPublicConfig({
+          includeGuestTerms: false,
+          includeCategories: true,
+        });
+        const warmList = inquiryApi.peekMemberList({ page: 1, search: '' });
+        if (warmConfig) applyConfig(warmConfig);
+        if (warmList) applyListResult(warmList, 1);
+        if (!warmConfig && !warmList) {
+          await Promise.all([
+            loadSummaryConfig(),
+            loadList({ targetPage: 1, search: '' }),
+          ]);
+        } else if (!warmConfig) {
+          await loadSummaryConfig();
+        } else if (!warmList) {
+          await loadList({ targetPage: 1, search: '' });
+        }
         return;
       }
 

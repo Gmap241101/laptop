@@ -1,8 +1,9 @@
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const trim = (value) => String(value ?? '').trim();
-const INQUIRY_READ_CACHE_TTL_MS = 15_000;
+const INQUIRY_READ_CACHE_TTL_MS = 30_000;
 const inquiryReadCache = new Map();
+let lastMemberSessionCacheKey = '';
 
 const clearInquiryReadCache = (prefix = '') => {
   for (const key of inquiryReadCache.keys()) {
@@ -10,16 +11,26 @@ const clearInquiryReadCache = (prefix = '') => {
   }
 };
 
+const getFreshInquiryReadValue = (key) => {
+  const cached = inquiryReadCache.get(key);
+  if (!cached || cached.pending || Date.now() >= cached.expiresAt) {
+    if (cached && !cached.pending) inquiryReadCache.delete(key);
+    return null;
+  }
+  return cached.value ?? null;
+};
+
 const withInquiryReadCache = async (key, loader) => {
   const now = Date.now();
   const cached = inquiryReadCache.get(key);
   if (cached?.promise && (cached.pending || cached.expiresAt > now)) return cached.promise;
 
-  const entry = { pending: true, expiresAt: 0, promise: null };
+  const entry = { pending: true, expiresAt: 0, promise: null, value: null };
   entry.promise = Promise.resolve()
     .then(loader)
     .then((value) => {
       entry.pending = false;
+      entry.value = value;
       entry.expiresAt = Date.now() + INQUIRY_READ_CACHE_TTL_MS;
       return value;
     })
@@ -33,7 +44,9 @@ const withInquiryReadCache = async (key, loader) => {
 
 const getMemberSessionCacheKey = async () => {
   const clerk = await clerkStagingClient.initialize();
-  return trim(clerk?.session?.id || clerk?.user?.id);
+  const sessionKey = trim(clerk?.session?.id || clerk?.user?.id);
+  if (sessionKey) lastMemberSessionCacheKey = sessionKey;
+  return sessionKey;
 };
 
 const getApiBaseUrl = () => {
@@ -112,12 +125,28 @@ const queryString = (params = {}) => {
   return rendered ? `?${rendered}` : '';
 };
 
+const createPublicConfigPath = ({ includeGuestTerms = false, includeCategories = true } = {}) =>
+  `/api/inquiries/config${queryString({
+    includeGuestTerms: includeGuestTerms ? '1' : '',
+    includeCategories: includeCategories ? '' : '0',
+  })}`;
+
+const createMemberListPath = ({ search = '', page = 1, pageSize } = {}) =>
+  `/api/inquiries/member${queryString({ search, page, pageSize })}`;
+
 export const inquiryApi = Object.freeze({
+  peekPublicConfig(options = {}) {
+    const path = createPublicConfigPath(options);
+    return getFreshInquiryReadValue(`public-config|${path}`);
+  },
+
+  peekMemberList(options = {}) {
+    if (!lastMemberSessionCacheKey) return null;
+    const path = createMemberListPath(options);
+    return getFreshInquiryReadValue(`member-list|${lastMemberSessionCacheKey}|${path}`);
+  },
   async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
-    const path = `/api/inquiries/config${queryString({
-      includeGuestTerms: includeGuestTerms ? '1' : '',
-      includeCategories: includeCategories ? '' : '0',
-    })}`;
+    const path = createPublicConfigPath({ includeGuestTerms, includeCategories });
     return withInquiryReadCache(`public-config|${path}`, async () => {
       const payload = await requestJson({ path });
       return payload.inquiryConfig || {};
@@ -125,7 +154,7 @@ export const inquiryApi = Object.freeze({
   },
 
   async listMember({ search = '', page = 1, pageSize } = {}) {
-    const path = `/api/inquiries/member${queryString({ search, page, pageSize })}`;
+    const path = createMemberListPath({ search, page, pageSize });
     const sessionKey = await getMemberSessionCacheKey();
     if (!sessionKey) {
       const error = new Error('로그인이 필요합니다.');

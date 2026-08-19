@@ -1049,23 +1049,53 @@ export const createRequestHandler = ({
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
       try {
-        const result = await userClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+        const [result, signupTermsPolicy] = await Promise.all([
+          userClerkAuthService.getCurrent({ clerkUserId: auth.userId }),
+          siteContentService.getSignupTermsPolicy().catch((error) => {
+            console.warn('[user-auth] signup terms policy bundle unavailable', {
+              requestId,
+              code: error?.code,
+              name: error?.name,
+            });
+            return null;
+          }),
+        ]);
+        const account = result.account || {};
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
           authorized: true,
+          ...(signupTermsPolicy ? { signupTermsPolicy } : {}),
           userAuthentication: {
             authority: result.authority,
             clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
-            firebaseUid: result.account?.firebaseUid || '',
-            legacyMemberKey: result.account?.firebaseUid || '',
+            firebaseUid: account.firebaseUid || '',
+            legacyMemberKey: account.firebaseUid || '',
             legacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
-            email: result.account?.firebaseEmail || result.account?.primaryEmail || result.clerkUser?.primaryEmail || '',
-            displayName: result.clerkUser?.displayName || '',
+            email: account.firebaseEmail || account.primaryEmail || result.clerkUser?.primaryEmail || '',
+            displayName: result.clerkUser?.displayName || account.name || '',
             firebaseAuthCompatibility: config.userFirebaseAuthCompatibilityDisabled ? 'retired' : 'signed-in-required',
-            memberStatus: result.account?.memberStatus || '',
-            authAuthorityMode: result.account?.authAuthorityMode || '',
-            lifecycleAuthorityMode: result.account?.lifecycleAuthorityMode || '',
+            memberStatus: account.memberStatus || '',
+            authAuthorityMode: account.authAuthorityMode || '',
+            lifecycleAuthorityMode: account.lifecycleAuthorityMode || '',
+            memberProfile: {
+              uid: account.firebaseUid || '',
+              email: account.email || account.firebaseEmail || account.primaryEmail || '',
+              maskedEmail: account.maskedEmail || '',
+              name: account.name || '',
+              team: account.team || '',
+              phone: account.phone || '',
+              status: account.status || account.memberStatus || '',
+              directoryMemberId: account.directoryMemberId || '',
+              directoryVerifiedVersion: Number(account.directoryVerifiedVersion || 0),
+              profileRequiredReason: account.profileRequiredReason || '',
+              rejoinedAccount: Boolean(account.rejoinedAccount),
+              termsConsentRevision: Number(account.termsConsentRevision || 0),
+              termsConsentPolicyVersion: Number(account.termsConsentPolicyVersion || 0),
+              identityKey: account.identityKey || '',
+              recoveryKey: account.recoveryKey || '',
+              previousAccountUids: Array.isArray(account.previousAccountUids) ? account.previousAccountUids : [],
+            },
           },
         }, headers);
       } catch (error) {

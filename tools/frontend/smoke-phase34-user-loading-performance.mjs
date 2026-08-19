@@ -5,31 +5,58 @@ const read = (relative) => fs.readFileSync(new URL(`../../${relative}`, import.m
 
 const workspace = read('src/user/UserWorkspace.jsx');
 const termsHook = read('src/features/terms/useUserTermsCompliance.js');
+const termsService = read('src/features/terms/termsService.js');
+const authController = read('src/features/auth/useAuthIdentityPolicySubscriptionController.js');
 const userMain = read('src/user-main.jsx');
 const clerkClient = read('src/clerk/clerkStagingClient.js');
 const boardCutover = read('src/features/boards/boardContentCutover.js');
+const boardController = read('src/features/boards/useBoardContentSubscriptionController.js');
 const inquiryApi = read('src/features/inquiries/inquiryApi.js');
+const inquiryPanel = read('src/user/UserInquiryPanel.jsx');
 const userShell = read('src/user/UserShell.jsx');
 
 assert.ok(workspace.includes('!firebaseAuthReady || !currentAuthRoleReady'), 'login readiness gate must remain unchanged');
 assert.ok(workspace.includes('!userProfileReady || !termsCompliance.ready'), 'profile/terms readiness gate must remain unchanged');
+assert.ok(workspace.includes('enabled: isProtectedUserTab && hasFirebaseAuthSession && firebaseAuthReady'), 'terms policy read must wait for verified session bootstrap so bundled policy can be consumed before any fallback request');
 assert.equal(workspace.includes('effectiveReady'), false, 'failed effectiveReady shortcut must not return');
 assert.equal(termsHook.includes('effectiveReady'), false, 'terms hook must keep its original ready state machine');
 assert.equal(clerkClient.includes('getCurrentFast'), false, 'frontend must not depend on a fast user-authority endpoint');
 
-assert.ok(userMain.includes('PROTECTED_USER_TABS.has(initialRoute.userTab)'), 'direct protected routes must prewarm terms policy without bypassing readiness');
-assert.ok(userMain.includes('preloadSignupTermsPolicy'), 'terms policy prewarm must reuse the existing bounded terms cache');
-assert.ok(clerkClient.includes('clerkSessionTokenPending = new WeakMap()'), 'concurrent Clerk token reads must be coalesced');
-assert.ok(clerkClient.includes('USER_SESSION_VERIFICATION_CACHE_TTL_MS = 3000'), 'session verification reuse must be short and bounded');
-assert.ok(boardCutover.includes('BOARD_READ_CACHE_TTL_MS = 30_000'), 'board list cache must remain bounded');
-assert.ok(inquiryApi.includes('INQUIRY_READ_CACHE_TTL_MS = 15_000'), 'inquiry list/config cache must remain bounded');
-assert.ok(inquiryApi.includes('member-list|${sessionKey}|${path}'), 'member inquiry cache must be scoped to the active Clerk session');
-assert.ok(inquiryApi.includes("clearInquiryReadCache('member-list|')"), 'member inquiry mutations must invalidate cached lists');
-assert.ok(userShell.includes('onPointerEnter={prefetchUserNotice}'), 'notice prefetch must be tied to explicit user intent');
-assert.ok(userShell.includes('onPointerEnter={prefetchUserFaq}'), 'FAQ prefetch must be tied to explicit user intent');
-assert.ok(userShell.includes('prefetchUserInquiry(Boolean(firebaseAuthUser))'), 'inquiry prefetch must preserve member/public scope');
+assert.ok(termsService.includes('primeSignupTermsPolicy'), 'verified session bootstrap must be able to seed the existing bounded terms cache');
+assert.ok(authController.includes('primeSignupTermsPolicy(sessionPayload.signupTermsPolicy)'), 'auth bootstrap must seed terms before publishing readiness');
+assert.ok(authController.includes('normalizeMemberProfileRead(authority.memberProfile'), 'auth bootstrap must consume the authoritative member profile bundled with the session');
+assert.ok(authController.includes("source: 'postgresql-auth-session'"), 'profile controller must reuse the verified session profile instead of issuing a sequential initial profile read');
+assert.ok(authController.includes("setCurrentAuthRoleReady(true)"), 'successful general-user session bootstrap must publish role readiness in the same bootstrap turn');
+assert.ok(workspace.includes('약관 적용 상태를 확인하는 중입니다.'), 'the original fallback readiness UI must remain available when the session bundle is unavailable');
 
-assert.equal(userShell.includes('requestIdleCallback'), false, 'community list prefetch must not use broad idle prefetch');
+assert.ok(userMain.includes("initialRoute.userTab === 'signup'"), 'signup must continue to prewarm its terms policy independently');
+assert.ok(userMain.includes('Protected user routes receive the current terms policy'), 'protected routes must use the verified session terms bundle instead of a duplicate startup request');
+assert.equal(userMain.includes('requestNoticeBoard'), false, 'user entrypoint must not compete with first paint by starting board reads');
+assert.equal(userMain.includes('preloadPublicCommunityData'), false, 'community warmup must stay out of the critical user entrypoint');
+
+assert.ok(clerkClient.includes('clerkSessionTokenPending = new WeakMap()'), 'concurrent Clerk token reads must be coalesced');
+assert.ok(clerkClient.includes('USER_SESSION_VERIFICATION_CACHE_TTL_MS = 3000'), 'session verification reuse must remain short and bounded');
+assert.ok(boardCutover.includes('BOARD_READ_CACHE_TTL_MS = 60_000'), 'board list cache must remain bounded while covering normal menu navigation');
+assert.ok(boardCutover.includes('getCachedNoticeBoard'), 'notice controller must be able to consume a completed prefetch synchronously');
+assert.ok(boardCutover.includes('getCachedFaqBoard'), 'FAQ controller must be able to consume a completed prefetch synchronously');
+assert.ok(boardController.includes('cachedNoticeBoard'), 'notice route must apply a warm first-page result without entering the loading state');
+assert.ok(boardController.includes('cachedFaqBoard'), 'FAQ route must apply a warm first-page result without entering the loading state');
+
+assert.ok(inquiryApi.includes('INQUIRY_READ_CACHE_TTL_MS = 30_000'), 'inquiry list/config cache must remain bounded');
+assert.ok(inquiryApi.includes('peekPublicConfig'), 'inquiry panel must be able to synchronously consume prefetched config');
+assert.ok(inquiryApi.includes('peekMemberList'), 'inquiry panel must be able to synchronously consume a prefetched member list');
+assert.ok(inquiryApi.includes('member-list|${sessionKey}|${path}'), 'member inquiry cache must remain scoped to the active Clerk session');
+assert.ok(inquiryApi.includes("clearInquiryReadCache('member-list|')"), 'member inquiry mutations must invalidate cached lists');
+assert.ok(inquiryPanel.includes('cachedMemberList'), 'inquiry first render must initialize from a completed session-scoped prefetch when available');
+assert.ok(inquiryPanel.includes('if (!warmConfig && !warmList)'), 'inquiry panel must use completed warm data before starting both network reads');
+assert.ok(inquiryPanel.includes('else if (!warmList)'), 'inquiry panel must fetch the member list only when its warm value is unavailable');
+
+assert.ok(userShell.includes('prefetchUserCommunity'), 'community parent interaction must warm notice, FAQ, and inquiry data together');
+assert.ok(userShell.includes("if (userTab !== 'home') return undefined"), 'background community warmup must be limited to the already-painted home shell');
+assert.ok(userShell.includes('window.setTimeout(() =>'), 'home community warmup must start after the shell commit instead of competing in the critical entrypoint');
+assert.ok(userShell.includes('onPointerDown={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}'), 'mobile menu intent must start community prefetch before navigation');
+assert.ok(userShell.includes('onPointerEnter={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}'), 'desktop community intent must start community prefetch before submenu selection');
+assert.equal(userShell.includes('requestIdleCallback'), false, 'community prefetch must not reintroduce the failed broad idle-render shortcut');
 assert.equal(boardCutover.includes('staleWhileRevalidate'), false, 'board rendering must not use a stale-while-revalidate shortcut');
 
 console.log('[phase34-user-loading-performance-frontend-smoke] PASS');

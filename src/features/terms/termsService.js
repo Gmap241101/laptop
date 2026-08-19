@@ -172,6 +172,19 @@ export const getCachedSignupTermsPolicy = () => {
   return signupTermsPolicyCache.policy;
 };
 
+export const primeSignupTermsPolicy = (policyEnvelope = null) => {
+  const payload = policyEnvelope?.source === 'postgresql'
+    ? policyEnvelope.payload
+    : policyEnvelope;
+  if (!payload || typeof payload !== 'object') return null;
+  const policy = normalizeTermsPolicy(payload);
+  signupTermsPolicyCache = {
+    policy,
+    expiresAt: Date.now() + SIGNUP_TERMS_POLICY_CACHE_TTL_MS,
+  };
+  return policy;
+};
+
 export const preloadSignupTermsPolicy = async ({ force = false } = {}) => {
   const cachedPolicy = force ? null : getCachedSignupTermsPolicy();
   if (cachedPolicy) return cachedPolicy;
