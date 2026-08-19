@@ -4,7 +4,7 @@ const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
 const OBSERVATION_EVENT = 'rental:board-content-cutover';
 const REFRESH_EVENT = 'rental:board-content-refresh';
-const BOARD_READ_CACHE_TTL_MS = 5000;
+const BOARD_READ_CACHE_TTL_MS = 30_000;
 const boardReadCache = new Map();
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';

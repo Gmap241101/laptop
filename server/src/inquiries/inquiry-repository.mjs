@@ -459,31 +459,41 @@ export const createInquiryRepository = (pool) => {
 
     async listMemberInquiries({ memberUid, search = '', page, pageSize }) {
       const safePage = normalizePage(page);
-      const settings = await getSettings();
-      const safePageSize = normalizePageSize(pageSize, settings.postsPerPage);
-      const offset = (safePage - 1) * safePageSize;
+      const requestedPageSize = Math.trunc(Number(pageSize));
+      const safeRequestedPageSize = Number.isFinite(requestedPageSize) && requestedPageSize >= 5 && requestedPageSize <= 50
+        ? requestedPageSize
+        : null;
       const normalizedSearch = lower(search);
       const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
-      const [rowsResult, countResult] = await Promise.all([
-        pool.query(
-          `${INQUIRY_WITH_STATUS_SELECT}
+      const result = await pool.query(
+        `WITH effective_settings AS (
+           SELECT CASE
+                    WHEN $3::int IS NOT NULL AND $3::int BETWEEN 5 AND 50 THEN $3::int
+                    ELSE COALESCE((SELECT NULLIF(posts_per_page,0) FROM app_inquiry_settings WHERE setting_key='current'),10)
+                  END::int AS page_size
+         ), filtered AS (
+           ${INQUIRY_WITH_STATUS_SELECT}
             WHERE i.member_uid=$1 AND i.author_type='member' AND i.deleted_at IS NULL
               AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
-            ORDER BY i.created_at DESC,i.inquiry_id DESC
-            LIMIT $3 OFFSET $4`,
-          [trim(memberUid), searchPattern, safePageSize, offset],
-        ),
-        pool.query(
-          `SELECT COUNT(*)::int AS count
-             FROM app_inquiries
-            WHERE member_uid=$1 AND author_type='member' AND deleted_at IS NULL
-              AND ($2::text IS NULL OR LOWER(title) LIKE $2 OR LOWER(body_text) LIKE $2)`,
-          [trim(memberUid), searchPattern],
-        ),
-      ]);
+         ), paged AS (
+           SELECT *
+             FROM filtered
+            ORDER BY created_at DESC,inquiry_id DESC
+            LIMIT (SELECT page_size FROM effective_settings)
+           OFFSET (($4::int - 1) * (SELECT page_size FROM effective_settings))
+         )
+         SELECT settings.page_size,
+                COALESCE((SELECT jsonb_agg(to_jsonb(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count
+           FROM effective_settings settings`,
+        [trim(memberUid), searchPattern, safeRequestedPageSize, safePage],
+      );
+      const row = result.rows[0] || {};
+      const safePageSize = normalizePageSize(row.page_size, 10);
+      const rows = Array.isArray(row.items) ? row.items : [];
       return Object.freeze({
-        items: Object.freeze(rowsResult.rows.map(mapInquirySummary)),
-        totalCount: Number(countResult.rows[0]?.count || 0),
+        items: Object.freeze(rows.map(mapInquirySummary)),
+        totalCount: Number(row.total_count || 0),
         page: safePage,
         pageSize: safePageSize,
       });

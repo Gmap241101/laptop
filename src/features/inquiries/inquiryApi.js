@@ -1,6 +1,40 @@
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const trim = (value) => String(value ?? '').trim();
+const INQUIRY_READ_CACHE_TTL_MS = 15_000;
+const inquiryReadCache = new Map();
+
+const clearInquiryReadCache = (prefix = '') => {
+  for (const key of inquiryReadCache.keys()) {
+    if (!prefix || key.startsWith(prefix)) inquiryReadCache.delete(key);
+  }
+};
+
+const withInquiryReadCache = async (key, loader) => {
+  const now = Date.now();
+  const cached = inquiryReadCache.get(key);
+  if (cached?.promise && (cached.pending || cached.expiresAt > now)) return cached.promise;
+
+  const entry = { pending: true, expiresAt: 0, promise: null };
+  entry.promise = Promise.resolve()
+    .then(loader)
+    .then((value) => {
+      entry.pending = false;
+      entry.expiresAt = Date.now() + INQUIRY_READ_CACHE_TTL_MS;
+      return value;
+    })
+    .catch((error) => {
+      inquiryReadCache.delete(key);
+      throw error;
+    });
+  inquiryReadCache.set(key, entry);
+  return entry.promise;
+};
+
+const getMemberSessionCacheKey = async () => {
+  const clerk = await clerkStagingClient.initialize();
+  return trim(clerk?.session?.id || clerk?.user?.id);
+};
 
 const getApiBaseUrl = () => {
   const configured = trim(clerkStagingClient?.config?.apiBaseUrl || import.meta.env?.VITE_API_URL);
@@ -33,8 +67,12 @@ const requestJson = async ({ path, method = 'GET', body, auth = 'public', guestT
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   if (auth === 'clerk') {
-    const clerk = await clerkStagingClient.initialize();
-    const token = await clerk?.session?.getToken?.();
+    const token = typeof clerkStagingClient.getSessionToken === 'function'
+      ? await clerkStagingClient.getSessionToken()
+      : await (async () => {
+          const clerk = await clerkStagingClient.initialize();
+          return clerk?.session?.getToken?.();
+        })();
     if (!token) {
       const error = new Error('로그인이 필요합니다.');
       error.code = 'inquiry_clerk_session_required';
@@ -76,21 +114,29 @@ const queryString = (params = {}) => {
 
 export const inquiryApi = Object.freeze({
   async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
-    const payload = await requestJson({
-      path: `/api/inquiries/config${queryString({
-        includeGuestTerms: includeGuestTerms ? '1' : '',
-        includeCategories: includeCategories ? '' : '0',
-      })}`,
+    const path = `/api/inquiries/config${queryString({
+      includeGuestTerms: includeGuestTerms ? '1' : '',
+      includeCategories: includeCategories ? '' : '0',
+    })}`;
+    return withInquiryReadCache(`public-config|${path}`, async () => {
+      const payload = await requestJson({ path });
+      return payload.inquiryConfig || {};
     });
-    return payload.inquiryConfig || {};
   },
 
   async listMember({ search = '', page = 1, pageSize } = {}) {
-    const payload = await requestJson({
-      path: `/api/inquiries/member${queryString({ search, page, pageSize })}`,
-      auth: 'clerk',
+    const path = `/api/inquiries/member${queryString({ search, page, pageSize })}`;
+    const sessionKey = await getMemberSessionCacheKey();
+    if (!sessionKey) {
+      const error = new Error('로그인이 필요합니다.');
+      error.code = 'inquiry_clerk_session_required';
+      error.status = 401;
+      throw error;
+    }
+    return withInquiryReadCache(`member-list|${sessionKey}|${path}`, async () => {
+      const payload = await requestJson({ path, auth: 'clerk' });
+      return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize: Number(pageSize || 10) };
     });
-    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize: Number(pageSize || 10) };
   },
 
   async getMember(publicId) {
@@ -100,16 +146,19 @@ export const inquiryApi = Object.freeze({
 
   async createMember(input) {
     const payload = await requestJson({ path: '/api/inquiries/member', method: 'POST', body: input, auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiry || null;
   },
 
   async updateMember(publicId, input) {
     const payload = await requestJson({ path: `/api/inquiries/member/${encodeURIComponent(publicId)}`, method: 'PATCH', body: input, auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiry || null;
   },
 
   async deleteMember(publicId) {
     const payload = await requestJson({ path: `/api/inquiries/member/${encodeURIComponent(publicId)}`, method: 'DELETE', auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiryDelete || {};
   },
 
@@ -172,16 +221,22 @@ export const inquiryApi = Object.freeze({
 
   async saveAdminSettings(input) {
     const payload = await requestJson({ path: '/api/admin/inquiries/settings', method: 'PUT', body: input, auth: 'clerk' });
+    clearInquiryReadCache('public-config|');
+    clearInquiryReadCache('member-list|');
     return payload.inquirySettings || {};
   },
 
   async saveCategory(input) {
     const payload = await requestJson({ path: '/api/admin/inquiries/categories', method: 'POST', body: input, auth: 'clerk' });
+    clearInquiryReadCache('public-config|');
+    clearInquiryReadCache('member-list|');
     return payload.inquiryCategory || null;
   },
 
   async deleteCategory(id) {
     const payload = await requestJson({ path: `/api/admin/inquiries/categories/${encodeURIComponent(id)}`, method: 'DELETE', auth: 'clerk' });
+    clearInquiryReadCache('public-config|');
+    clearInquiryReadCache('member-list|');
     return payload.inquiryCategoryDelete || {};
   },
 
@@ -197,16 +252,19 @@ export const inquiryApi = Object.freeze({
 
   async addAnswer(publicId, input) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers`, method: 'POST', body: input, auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiry || null;
   },
 
   async updateAnswer(publicId, answerId, input) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers/${encodeURIComponent(answerId)}`, method: 'PATCH', body: input, auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiry || null;
   },
 
   async deleteAnswer(publicId, answerId) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers/${encodeURIComponent(answerId)}`, method: 'DELETE', auth: 'clerk' });
+    clearInquiryReadCache('member-list|');
     return payload.inquiry || null;
   },
 });

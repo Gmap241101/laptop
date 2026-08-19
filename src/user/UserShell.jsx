@@ -20,6 +20,30 @@ const MemoizedUserFooter = React.memo(UserFooter);
 const MemoizedUserDialogs = React.memo(UserDialogs);
 const MemoizedUserPopupLayer = React.memo(UserPopupLayer);
 
+const prefetchUserNotice = () => {
+  void import('../features/boards/boardContentCutover.js')
+    .then(({ requestNoticeBoard }) => requestNoticeBoard({ search: '', page: 1, useCache: true }))
+    .catch(() => {});
+};
+
+const prefetchUserFaq = () => {
+  void import('../features/boards/boardContentCutover.js')
+    .then(({ requestFaqBoard }) => requestFaqBoard({ search: '', page: 1, categoryId: 'all', useCache: true }))
+    .catch(() => {});
+};
+
+const prefetchUserInquiry = (authenticated) => {
+  void import('../features/inquiries/inquiryApi.js')
+    .then(async ({ inquiryApi }) => {
+      const reads = [
+        inquiryApi.getPublicConfig({ includeGuestTerms: false, includeCategories: Boolean(authenticated) }),
+      ];
+      if (authenticated) reads.push(inquiryApi.listMember({ page: 1, search: '' }));
+      await Promise.all(reads);
+    })
+    .catch(() => {});
+};
+
 const UserShell = ({
   communityMenuRef,
   contextGroups,
@@ -191,6 +215,8 @@ const UserShell = ({
                       <button
                         type="button"
                         onClick={goToUserNotice}
+                        onPointerEnter={prefetchUserNotice}
+                        onFocus={prefetchUserNotice}
                         className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                           userTab === 'notice'
                             ? 'bg-orange-50 mk-brand-text'
@@ -202,6 +228,8 @@ const UserShell = ({
                       <button
                         type="button"
                         onClick={goToUserFaq}
+                        onPointerEnter={prefetchUserFaq}
+                        onFocus={prefetchUserFaq}
                         className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                           userTab === 'faq'
                             ? 'bg-orange-50 mk-brand-text'
@@ -213,6 +241,8 @@ const UserShell = ({
                       <button
                         type="button"
                         onClick={goToUserInquiry}
+                        onPointerEnter={() => prefetchUserInquiry(Boolean(firebaseAuthUser))}
+                        onFocus={() => prefetchUserInquiry(Boolean(firebaseAuthUser))}
                         className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
                           userTab === 'inquiry'
                             ? 'bg-orange-50 mk-brand-text'

@@ -6,7 +6,9 @@ const trim = (value) => (typeof value === 'string' ? value.trim() : '');
 const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
 const firebaseRuntimeRetired = () => true;
 const ADMIN_RENTAL_REQUEST_CACHE_TTL_MS = 5000;
+const USER_SESSION_VERIFICATION_CACHE_TTL_MS = 3000;
 const adminRentalRequestReadCache = new Map();
+const clerkSessionTokenPending = new WeakMap();
 
 const clearAdminRentalRequestReadCache = () => adminRentalRequestReadCache.clear();
 
@@ -96,9 +98,24 @@ const getSessionToken = async (clerk) => {
     throw new Error('Clerk sign-in is required before calling the backend.');
   }
 
-  const token = await session.getToken();
-  if (!token) throw new Error('Clerk did not return a session token.');
-  return token;
+  const existing = clerkSessionTokenPending.get(session);
+  if (existing) return existing;
+
+  const pending = Promise.resolve()
+    .then(() => session.getToken())
+    .then((token) => {
+      if (!token) throw new Error('Clerk did not return a session token.');
+      return token;
+    });
+  clerkSessionTokenPending.set(session, pending);
+
+  try {
+    return await pending;
+  } finally {
+    if (clerkSessionTokenPending.get(session) === pending) {
+      clerkSessionTokenPending.delete(session);
+    }
+  }
 };
 
 const endActiveClerkSessionWithoutNavigation = async (clerk) => {
@@ -1580,6 +1597,13 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
   let pendingAdminClientTrust = null;
   let pendingUserPasswordReset = null;
   let pendingUserSignupEmailVerification = null;
+  let userSessionVerificationCache = null;
+  let userSessionVerificationPending = null;
+
+  const clearUserSessionVerificationCache = () => {
+    userSessionVerificationCache = null;
+    userSessionVerificationPending = null;
+  };
 
   const createAdminClientTrustError = (code, message) => {
     const error = new Error(message);
@@ -1709,12 +1733,17 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async initialize() {
       return initialize();
     },
+    async getSessionToken() {
+      const clerk = await initialize();
+      return getSessionToken(clerk);
+    },
     async openSignIn() {
       const clerk = await initialize();
       await clerk.openSignIn();
     },
     async signOut(options = undefined) {
       const clerk = await initialize();
+      clearUserSessionVerificationCache();
       if (options && typeof options === 'object') {
         await clerk.signOut(options);
         return;
@@ -2010,7 +2039,42 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     },
     async getUserClerkSession() {
       const clerk = await initialize();
-      return requestUserClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+      const sessionKey = trim(clerk?.session?.id);
+      if (
+        sessionKey &&
+        userSessionVerificationCache?.sessionKey === sessionKey &&
+        Date.now() < userSessionVerificationCache.expiresAt
+      ) {
+        return userSessionVerificationCache.payload;
+      }
+      if (
+        sessionKey &&
+        userSessionVerificationPending?.sessionKey === sessionKey
+      ) {
+        return userSessionVerificationPending.promise;
+      }
+
+      const promise = requestUserClerkSession({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl })
+        .then((payload) => {
+          if (sessionKey && trim(clerk?.session?.id) === sessionKey) {
+            userSessionVerificationCache = {
+              sessionKey,
+              payload,
+              expiresAt: Date.now() + USER_SESSION_VERIFICATION_CACHE_TTL_MS,
+            };
+          }
+          return payload;
+        })
+        .finally(() => {
+          if (userSessionVerificationPending?.promise === promise) {
+            userSessionVerificationPending = null;
+          }
+        });
+
+      if (sessionKey) {
+        userSessionVerificationPending = { sessionKey, promise };
+      }
+      return promise;
     },
     async migrateUserToClerk(firebaseIdToken, password) {
       return requestUserClerkMigration({ apiBaseUrl: config.apiBaseUrl, fetchImpl, firebaseIdToken, password });

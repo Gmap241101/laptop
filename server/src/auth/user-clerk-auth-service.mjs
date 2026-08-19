@@ -25,6 +25,7 @@ const compatibilityIdentity = ({ uid, email, provider = 'clerk-postgresql' }) =>
   signInProvider: provider,
   idToken: '',
 });
+const CURRENT_USER_AUTH_CACHE_TTL_MS = 3000;
 
 export const createUserClerkAuthService = ({
   repository,
@@ -49,6 +50,16 @@ export const createUserClerkAuthService = ({
   if (userFirebaseAuthCompatibilityDisabled && (!accountLifecycleService || typeof accountLifecycleService.signup !== 'function' || typeof accountLifecycleService.provisionAdminMember !== 'function')) {
     throw new TypeError('PostgreSQL account lifecycle service is required when user Firebase Auth compatibility is retired.');
   }
+
+  const currentUserAuthCache = new Map();
+  const currentUserAuthPending = new Map();
+
+  const invalidateCurrentUserAuth = (clerkUserId) => {
+    const key = trim(clerkUserId);
+    if (!key) return;
+    currentUserAuthCache.delete(key);
+    currentUserAuthPending.delete(key);
+  };
 
   const ensureRecentFirebaseAuthentication = (firebaseIdentity) => {
     const authTime = Number(firebaseIdentity?.authTime);
@@ -137,7 +148,7 @@ export const createUserClerkAuthService = ({
     return { source, clerkUser, appUser, account: await repository.findByFirebaseUid(source.uid) };
   };
 
-  const getCurrent = async (clerkUserId) => {
+  const loadCurrent = async (clerkUserId) => {
     if (accountLifecycleCompatibilityDisabled) {
       const admin = await adminIdentityRepository.findByClerkUserId(trim(clerkUserId));
       if (admin && trim(admin.status) !== 'retired') {
@@ -151,6 +162,35 @@ export const createUserClerkAuthService = ({
     if (lower(clerkUser.primaryEmail) !== lower(account.firebaseEmail || account.primaryEmail)) throw serviceError('user_clerk_email_mismatch', 'Clerk email does not match the linked member account.', 409);
     const verified = await repository.markVerifiedLogin({ firebaseUid: account.firebaseUid });
     return Object.freeze({ authority: 'clerk', account: verified, clerkUser });
+  };
+
+  const getCurrent = async (clerkUserId, { force = false } = {}) => {
+    const key = trim(clerkUserId);
+    if (!key) throw serviceError('user_clerk_identity_missing', 'Current Clerk user ID is required.', 401);
+    if (force) invalidateCurrentUserAuth(key);
+
+    const cached = currentUserAuthCache.get(key);
+    if (!force && cached && Date.now() < cached.expiresAt) return cached.value;
+    if (cached) currentUserAuthCache.delete(key);
+
+    const existing = currentUserAuthPending.get(key);
+    if (!force && existing) return existing;
+
+    const pending = loadCurrent(key)
+      .then((value) => {
+        currentUserAuthCache.set(key, {
+          value,
+          expiresAt: Date.now() + CURRENT_USER_AUTH_CACHE_TTL_MS,
+        });
+        return value;
+      })
+      .finally(() => {
+        if (currentUserAuthPending.get(key) === pending) {
+          currentUserAuthPending.delete(key);
+        }
+      });
+    currentUserAuthPending.set(key, pending);
+    return pending;
   };
 
   return Object.freeze({
@@ -422,14 +462,14 @@ export const createUserClerkAuthService = ({
     },
 
     async verifyPassword({ clerkUserId, password }) {
-      const current = await getCurrent(clerkUserId);
+      const current = await getCurrent(clerkUserId, { force: true });
       if (typeof password !== 'string' || !password) throw serviceError('user_password_required', 'Current password is required.', 400);
       await clerkClient.verifyPassword(clerkUserId, password);
       return Object.freeze({ authority: 'clerk', verified: true, account: current.account });
     },
 
     async changePassword({ clerkUserId, firebaseIdentity = null, currentPassword, newPassword }) {
-      const current = await getCurrent(clerkUserId);
+      const current = await getCurrent(clerkUserId, { force: true });
       if (!userFirebaseAuthCompatibilityDisabled && current.account.firebaseUid !== trim(firebaseIdentity?.uid)) {
         throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
       }
@@ -437,6 +477,7 @@ export const createUserClerkAuthService = ({
       await clerkClient.verifyPassword(clerkUserId, currentPassword);
       await clerkClient.updateUser(clerkUserId, { password: newPassword });
       const account = await repository.markPasswordAuthority({ firebaseUid: current.account.firebaseUid });
+      invalidateCurrentUserAuth(clerkUserId);
       return Object.freeze({ authority: 'clerk', changed: true, account });
     },
 
@@ -543,7 +584,7 @@ export const createUserClerkAuthService = ({
     },
 
     async finalizeWithdrawal({ clerkUserId, firebaseIdentity = null, password }) {
-      const current = await getCurrent(clerkUserId);
+      const current = await getCurrent(clerkUserId, { force: true });
       if (!userFirebaseAuthCompatibilityDisabled && current.account.firebaseUid !== trim(firebaseIdentity?.uid)) {
         throw serviceError('user_firebase_identity_mismatch', 'Firebase compatibility identity does not match Clerk user.', 409);
       }
@@ -568,6 +609,7 @@ export const createUserClerkAuthService = ({
         console.warn('[user-auth] Clerk user deletion deferred after PostgreSQL withdrawal authority was committed', { clerkUserId, legacyMemberKey: current.account.firebaseUid, clerkCleanupError });
       }
       const account = await repository.markClerkRetired({ firebaseUid: current.account.firebaseUid, deleted: clerkDeleted });
+      invalidateCurrentUserAuth(clerkUserId);
       return Object.freeze({ authority: 'postgresql', withdrawn: true, clerkDeleted, clerkCleanupError, account });
     },
   });

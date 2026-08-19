@@ -64,9 +64,10 @@ const ensurePostgresqlRentalRestrictionReadModel = async (pool, { appUserId, fir
         AND m.lifecycle_authority_mode='postgresql-authoritative'
         AND m.terms_consent_bootstrap_completed_at IS NOT NULL
      ON CONFLICT (firebase_uid) DO UPDATE SET
-       app_user_id=COALESCE(app_rental_restrictions.app_user_id,EXCLUDED.app_user_id),
+       app_user_id=EXCLUDED.app_user_id,
        updated_at=NOW()
-     WHERE app_rental_restrictions.authority_mode='postgresql-authoritative'`,
+     WHERE app_rental_restrictions.authority_mode='postgresql-authoritative'
+       AND app_rental_restrictions.app_user_id IS DISTINCT FROM EXCLUDED.app_user_id`,
     [uid, appUserId],
   );
 };
@@ -153,11 +154,18 @@ export const createUserClerkAuthRepository = (pool) => {
     async markVerifiedLogin({ firebaseUid }) {
       const uid = trim(firebaseUid);
       const result = await pool.query(
-        `UPDATE app_member_accounts
+        `UPDATE app_member_accounts m
             SET auth_authority_mode='clerk-authoritative', clerk_last_verified_at=NOW(),
                 clerk_account_state='active', updated_at=NOW()
-          WHERE firebase_uid=$1
-          RETURNING app_user_id, firebase_uid`,
+           FROM app_user_firebase_links l
+           JOIN app_user_identities u ON u.id=l.app_user_id
+          WHERE m.firebase_uid=$1
+            AND l.firebase_uid=m.firebase_uid
+          RETURNING u.id AS app_user_id, u.clerk_user_id, u.primary_email,
+                    l.firebase_uid, l.firebase_email,
+                    m.status AS member_status, m.auth_authority_mode, m.lifecycle_authority_mode,
+                    m.clerk_account_state, m.clerk_linked_at, m.clerk_last_verified_at,
+                    m.password_authority_updated_at, m.withdrawn_at`,
         [uid],
       );
       if (result.rows[0]?.app_user_id) {
@@ -166,7 +174,7 @@ export const createUserClerkAuthRepository = (pool) => {
           firebaseUid: result.rows[0].firebase_uid,
         });
       }
-      return this.findByFirebaseUid(uid);
+      return mapRow(result.rows[0]);
     },
 
     async markPasswordAuthority({ firebaseUid }) {
