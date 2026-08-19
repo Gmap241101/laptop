@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createUserClerkAuthService } from '../../server/src/auth/user-clerk-auth-service.mjs';
 
-
 let clerkBackendReads = 0;
 let verifiedLoginWrites = 0;
 const testAccount = Object.freeze({
@@ -52,7 +51,6 @@ assert.equal(clerkBackendReads, 1, 'explicit strong verification must still call
 assert.equal(verifiedLoginWrites, 1, 'explicit strong verification must still persist verified login state');
 
 const userAuthServiceSource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-service.mjs', import.meta.url), 'utf8');
-const userAuthRepositorySource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-repository.mjs', import.meta.url), 'utf8');
 const serverAppSource = fs.readFileSync(new URL('../../server/src/app.mjs', import.meta.url), 'utf8');
 const accountLifecycleSource = fs.readFileSync(new URL('../../server/src/accounts/account-lifecycle-service.mjs', import.meta.url), 'utf8');
 
@@ -73,20 +71,14 @@ assert.ok(authenticateUserAuthorityBlock, 'server must define protected-user aut
 assert.match(authenticateUserAuthorityBlock, /userClerkAuthService\.getCurrentFast/, 'routine protected APIs must prefer the fast PostgreSQL authority path');
 
 const sessionRouteBlock = serverAppSource.match(/if \(request\.method === 'GET' && url\.pathname === '\/api\/users\/auth\/session'\) \{[\s\S]*?\n      return;\n    \}/)?.[0] || '';
-assert.ok(sessionRouteBlock, 'user session bootstrap route must exist');
-assert.match(sessionRouteBlock, /Promise\.all\(\[/, 'user session bootstrap must parallelize independent PostgreSQL policy/profile reads');
-assert.match(sessionRouteBlock, /accountLifecycleService\.getPolicy/, 'session bootstrap must include the active signup terms policy');
-assert.match(sessionRouteBlock, /systemConfigService\.get\('user-session-policy'\)/, 'session bootstrap must include the user session policy');
-assert.match(sessionRouteBlock, /profile,/, 'session bootstrap must include the PostgreSQL member profile');
-assert.match(sessionRouteBlock, /termsPolicy:/, 'session bootstrap must expose terms policy to prime the client cache');
-assert.match(sessionRouteBlock, /sessionPolicy:/, 'session bootstrap must expose user session policy to avoid a second critical-path request');
+assert.ok(sessionRouteBlock, 'user session route must exist');
+assert.match(sessionRouteBlock, /getCurrentFast/, 'user session check should retain the low-latency PostgreSQL fast authority path');
+assert.equal(sessionRouteBlock.includes('Promise.all(['), false, 'session check must not bundle unrelated profile/terms/session-policy reads into the render-critical response');
+assert.equal(sessionRouteBlock.includes('termsPolicy:'), false, 'session response must not inject terms policy into the user render pipeline');
+assert.equal(sessionRouteBlock.includes('sessionPolicy:'), false, 'session response must not inject session policy into the user render pipeline');
+assert.equal(sessionRouteBlock.includes('profile,'), false, 'session response must not inject a partial member profile into the user render pipeline');
 
-assert.match(accountLifecycleSource, /TERMS_POLICY_READ_CACHE_TTL_MS\s*=\s*30_000/, 'terms policy read cache must bound repeated PostgreSQL reads during session bootstrap');
+assert.match(accountLifecycleSource, /TERMS_POLICY_READ_CACHE_TTL_MS\s*=\s*30_000/, 'terms policy PostgreSQL reads should retain a short bounded backend cache');
 assert.match(accountLifecycleSource, /loadTermsPolicyCached/, 'terms policy cache loader must exist');
-assert.match(accountLifecycleSource, /async getPolicy\(\)/, 'account lifecycle service must expose cached policy reads for session bootstrap');
-
-for (const field of ['memberEmail', 'memberName', 'memberTeam', 'memberPhone', 'termsConsentRevision', 'termsConsentPolicyVersion']) {
-  assert.ok(userAuthRepositorySource.includes(field), `fast PostgreSQL user authority must include ${field} required by bootstrap profile/terms gates`);
-}
 
 console.log('[phase34-user-loading-performance-backend-smoke] PASS');

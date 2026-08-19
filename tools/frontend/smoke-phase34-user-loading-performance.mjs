@@ -9,34 +9,35 @@ const boardControllerSource = fs.readFileSync(new URL('../../src/features/boards
 const inquiryApiSource = fs.readFileSync(new URL('../../src/features/inquiries/inquiryApi.js', import.meta.url), 'utf8');
 const userWorkspaceSource = fs.readFileSync(new URL('../../src/user/UserWorkspace.jsx', import.meta.url), 'utf8');
 
-assert.match(identitySource, /primeSignupTermsPolicyCache\(authority\.termsPolicy\)/, 'session bootstrap must prime signup terms policy cache before the protected-route terms gate runs');
-assert.match(identitySource, /authority\.sessionPolicy/, 'session bootstrap must consume the bundled user session policy');
-assert.match(identitySource, /setUserSessionPolicyReady\(true\)/, 'bundled user session policy must resolve readiness without a second critical-path request');
-assert.match(identitySource, /authority\.profile/, 'session bootstrap must consume the bundled member profile');
-assert.match(identitySource, /setUserProfileReady\(true\)/, 'bundled member profile must resolve profile readiness immediately');
-assert.match(identitySource, /setCurrentAuthRoleReady\(true\)/, 'user role readiness must resolve from the authenticated bootstrap response');
-assert.match(identitySource, /userSessionBootstrapProfileRef/, 'profile refresh must recognize a session-bootstrap profile and skip the duplicate first read');
-assert.match(identitySource, /userSessionPolicyBootstrapRef/, 'session policy effect must recognize bootstrap data and skip the duplicate first read');
-assert.match(identitySource, /inquiryApi\.prefetchMemberHome/, 'signed-in inquiry list/config should be warmed only after the critical session bootstrap has completed');
+// Render-safety contract: session bootstrap must not inject a partial profile/policy shape
+// into the React render path before the canonical profile/terms subscriptions settle.
+assert.equal(identitySource.includes('userSessionBootstrapProfileRef'), false, 'session bootstrap profile injection must remain disabled after the user render crash regression');
+assert.equal(identitySource.includes('userSessionPolicyBootstrapRef'), false, 'session bootstrap session-policy injection must remain disabled after the user render crash regression');
+assert.equal(identitySource.includes('primeSignupTermsPolicyCache(authority.termsPolicy)'), false, 'session response must not mutate the terms render cache directly');
+assert.equal(identitySource.includes('authority.profile'), false, 'partial session profile must not become the render-time user profile');
+assert.equal(identitySource.includes('authority.sessionPolicy'), false, 'partial bundled session policy must not become render-time policy state');
 
+// Terms keep the existing bounded client cache, but the stable compliance hook remains the authority.
 assert.match(termsServiceSource, /SIGNUP_TERMS_POLICY_CACHE_TTL_MS\s*=\s*60_000/, 'signup terms policy client cache must avoid repeated policy reads during navigation');
-assert.match(termsServiceSource, /primeSignupTermsPolicyCache/, 'session bootstrap must be able to prime the terms policy cache');
-assert.match(termsComplianceSource, /effectivePolicy/, 'terms gate must use freshly primed/cached policy without transient stale-ready races');
-assert.match(termsComplianceSource, /effectiveReady/, 'terms gate readiness must track the current refresh key rather than a stale previous result');
+assert.match(termsComplianceSource, /effectivePolicy/, 'terms gate must keep normalized cached-policy handling');
+assert.match(termsComplianceSource, /effectiveReady/, 'terms gate readiness must remain tied to the current refresh result');
 
+// Community reads use a longer bounded cache and safe idle warming, without stale data being
+// pushed synchronously into panel state before the normal request resolves.
 assert.match(boardCutoverSource, /BOARD_READ_CACHE_TTL_MS\s*=\s*60_000/, 'community board reads should have a practical fresh cache window');
-assert.match(boardCutoverSource, /BOARD_READ_STALE_TTL_MS\s*=\s*5\s*\*\s*60_000/, 'community board reads should retain a bounded stale-while-revalidate window');
-assert.match(boardCutoverSource, /getCachedNoticeBoard/, 'notice board must expose cached data for immediate render');
-assert.match(boardCutoverSource, /getCachedFaqBoard/, 'FAQ board must expose cached data for immediate render');
-assert.match(boardCutoverSource, /prefetchUserCommunityBoards/, 'notice and FAQ first pages must support background warming');
-assert.match(boardControllerSource, /const cachedBoard = getCachedNoticeBoard\(requestOptions\)/, 'notice controller must hydrate from cache before network refresh');
-assert.match(boardControllerSource, /const cachedBoard = getCachedFaqBoard\(requestOptions\)/, 'FAQ controller must hydrate from cache before network refresh');
-assert.match(boardControllerSource, /prefetchUserCommunityBoards\(\)/, 'home board data should warm notice/FAQ list data after the home critical path is ready');
+assert.equal(boardCutoverSource.includes('BOARD_READ_STALE_TTL_MS'), false, 'stale synchronous board hydration is disabled for render safety');
+assert.equal(boardCutoverSource.includes('getCachedNoticeBoard'), false, 'notice panel must not synchronously inject stale cached board state');
+assert.equal(boardCutoverSource.includes('getCachedFaqBoard'), false, 'FAQ panel must not synchronously inject stale cached board state');
+assert.match(boardCutoverSource, /prefetchUserCommunityBoards/, 'notice and FAQ first pages must support safe background warming');
+assert.match(boardControllerSource, /prefetchUserCommunityBoards\(\)/, 'home board data should warm notice/FAQ data after the home critical path is ready');
+assert.equal(boardControllerSource.includes('const cachedBoard = getCachedNoticeBoard'), false, 'notice render path must use the established async state transition');
+assert.equal(boardControllerSource.includes('const cachedBoard = getCachedFaqBoard'), false, 'FAQ render path must use the established async state transition');
 
+// Inquiry cache remains session-scoped and mutation-invalidated. It is not injected into auth state.
 assert.match(inquiryApiSource, /INQUIRY_READ_CACHE_TTL_MS\s*=\s*60_000/, 'inquiry list/config reads should use a bounded client cache');
 assert.match(inquiryApiSource, /sessionKey/, 'member inquiry cache must be scoped to the authenticated Clerk session');
-assert.match(inquiryApiSource, /async prefetchMemberHome\(\)/, 'member inquiry first page/config must support background warming');
-assert.match(inquiryApiSource, /Promise\.allSettled\(\[/, 'inquiry config and member list prefetch should run in parallel');
+assert.match(inquiryApiSource, /invalidateInquiryReadCache\('member:'\)/, 'member inquiry mutations must invalidate cached member lists');
+assert.match(inquiryApiSource, /async prefetchMemberHome\(\)/, 'inquiry data may still expose an explicit non-rendering prefetch helper');
 
 assert.equal(userWorkspaceSource.includes('requestIdleCallback'), false, 'user workspace must not preload lazy panel chunks and compete with first paint');
 assert.equal(userWorkspaceSource.includes("import('../features/inquiries/inquiryApi.js')"), false, 'inquiry data prefetch must not be coupled to the lazy UI workspace');

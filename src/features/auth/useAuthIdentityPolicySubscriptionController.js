@@ -48,8 +48,6 @@ import {
   readUserFirebaseAuthRetirementConfig,
 } from './userFirebaseAuthRetirement.js';
 import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
-import { primeSignupTermsPolicyCache } from '../terms/termsService.js';
-import { inquiryApi } from '../inquiries/inquiryApi.js';
 import {
   isLegacyFirestoreReadFallbackAllowed,
   readLegacyFirestoreReadFallbackConfig,
@@ -207,8 +205,6 @@ export default function useAuthIdentityPolicySubscriptionController({
   const adminAccountsLastSyncedRef = useRef({});
   const allowAdminAccountsWriteRef = useRef(false);
   const triggerToastRef = useRef(triggerToast);
-  const userSessionBootstrapProfileRef = useRef(null);
-  const userSessionPolicyBootstrapRef = useRef(null);
   const hasFirebaseAuthSession = Boolean(
     firebaseAuthUser || firebaseAuth.currentUser
   );
@@ -222,7 +218,6 @@ export default function useAuthIdentityPolicySubscriptionController({
     const firebaseRuntime = readFirebaseRuntimeRetirementConfig();
     if (firebaseRuntime.requested || (firebaseRetirement.requested && runtimeSurface === 'user')) {
       let active = true;
-      let cancelInquiryPrefetch = () => {};
       setFirebaseAuthReady(false);
       void (async () => {
         try {
@@ -265,62 +260,8 @@ export default function useAuthIdentityPolicySubscriptionController({
             email: authority.email || '',
             displayName: authority.displayName || '',
           });
-          const bootstrapProfile = authority.profile && typeof authority.profile === 'object'
-            ? authority.profile
-            : null;
-          if (authority.termsPolicy && typeof authority.termsPolicy === 'object') {
-            primeSignupTermsPolicyCache(authority.termsPolicy);
-          }
-          if (authority.sessionPolicy && typeof authority.sessionPolicy === 'object') {
-            const normalizedSessionPolicy = normalizeUserSessionPolicy(authority.sessionPolicy);
-            userSessionPolicyBootstrapRef.current = normalizedSessionPolicy;
-            setUserSessionPolicy(normalizedSessionPolicy);
-            setUserSessionPolicyLoadErrorMessage('');
-            setUserSessionPolicyReady(true);
-          }
-          if (principal && bootstrapProfile?.uid === principal.uid) {
-            userSessionBootstrapProfileRef.current = bootstrapProfile;
-            const parsedPhone = parseDomesticPhoneNumber(bootstrapProfile.phone || '');
-            setUserProfile(bootstrapProfile);
-            setUserProfileForm({
-              name: bootstrapProfile.name || '',
-              team: bootstrapProfile.team || '',
-              phonePrefix: parsedPhone.prefix,
-              phoneMiddle: parsedPhone.middle,
-              phoneLast: parsedPhone.last,
-              newPassword: '',
-              newPasswordConfirm: '',
-            });
-            setUserProfileReady(true);
-          } else {
-            userSessionBootstrapProfileRef.current = null;
-          }
           setFirebaseRuntimePrincipal(principal);
           setFirebaseAuthUser(principal);
-          if (runtimeSurface === 'user') {
-            setCurrentAuthRoleErrorMessage('');
-            setCurrentAuthRoleReady(true);
-          }
-          if (runtimeSurface === 'user' && principal) {
-            let cancelled = false;
-            const prefetch = () => {
-              if (cancelled || !active) return;
-              void inquiryApi.prefetchMemberHome?.().catch(() => {});
-            };
-            if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-              const handle = window.requestIdleCallback(prefetch, { timeout: 1800 });
-              cancelInquiryPrefetch = () => {
-                cancelled = true;
-                window.cancelIdleCallback?.(handle);
-              };
-            } else if (typeof window !== 'undefined') {
-              const timer = window.setTimeout(prefetch, 900);
-              cancelInquiryPrefetch = () => {
-                cancelled = true;
-                window.clearTimeout(timer);
-              };
-            }
-          }
           if (!principal && !readUserAuthTransition()) {
             clearUserAuthenticatedSession('clerk-postgresql-signed-out');
           }
@@ -330,10 +271,6 @@ export default function useAuthIdentityPolicySubscriptionController({
           const unauthorized = [401, 403].includes(Number(error?.status || 0));
           setFirebaseAuthUser(null);
           setFirebaseRuntimePrincipal(null);
-          if (runtimeSurface === 'user') {
-            userSessionBootstrapProfileRef.current = null;
-            userSessionPolicyBootstrapRef.current = null;
-          }
           if (runtimeSurface === 'admin') {
             setCurrentAuthAdminAccount(null);
             setAdminAccounts([]);
@@ -349,10 +286,7 @@ export default function useAuthIdentityPolicySubscriptionController({
           if (active) setFirebaseAuthReady(true);
         }
       })();
-      return () => {
-        active = false;
-        cancelInquiryPrefetch();
-      };
+      return () => { active = false; };
     }
 
     const unsubscribe = onAuthStateChanged(
@@ -521,13 +455,7 @@ export default function useAuthIdentityPolicySubscriptionController({
       return;
     }
 
-    const sessionBootstrapProfile = userSessionBootstrapProfileRef.current;
-    const hasSessionBootstrapProfile = Boolean(
-      sessionBootstrapProfile && sessionBootstrapProfile.uid === firebaseAuthUser.uid
-    );
-    if (!hasSessionBootstrapProfile) {
-      setUserProfileReady(false);
-    }
+    setUserProfileReady(false);
 
     let active = true;
     let firestoreProfile = undefined;
@@ -596,17 +524,6 @@ export default function useAuthIdentityPolicySubscriptionController({
       });
       setUserProfileReady(true);
     };
-
-    if (hasSessionBootstrapProfile) {
-      commitResolvedProfile({
-        profile: sessionBootstrapProfile,
-        source: 'postgresql-session-bootstrap',
-        equivalent: true,
-        changedFields: [],
-        fallbackReason: '',
-        firestoreFallbackReads: 0,
-      });
-    }
 
     if (!shouldUseMemberProfileFirestoreWatcher(cutoverConfig)) {
       let refreshInFlight = false;
@@ -689,9 +606,7 @@ export default function useAuthIdentityPolicySubscriptionController({
         }
       };
 
-      if (!hasSessionBootstrapProfile) {
-        void refreshPostgresProfile({ allowFirestoreFallback: legacyFallbackAllowed });
-      }
+      void refreshPostgresProfile({ allowFirestoreFallback: legacyFallbackAllowed });
 
       const postgresRefreshTimer = setInterval(() => {
         void refreshPostgresProfile();
@@ -995,15 +910,6 @@ export default function useAuthIdentityPolicySubscriptionController({
       setUserSessionPolicyLoadErrorMessage('');
       return undefined;
     }
-    if (!firebaseAuthReady) {
-      return undefined;
-    }
-    if (firebaseAuthUser && userSessionPolicyBootstrapRef.current) {
-      setUserSessionPolicy(userSessionPolicyBootstrapRef.current);
-      setUserSessionPolicyReady(true);
-      setUserSessionPolicyLoadErrorMessage('');
-      return undefined;
-    }
     let cancelled = false;
     const run = async () => {
       setUserSessionPolicyReady(false);
@@ -1023,7 +929,7 @@ export default function useAuthIdentityPolicySubscriptionController({
     };
     void run();
     return () => { cancelled = true; };
-  }, [firebaseAuthReady, firebaseAuthUser?.uid, runtimeSurface]);
+  }, [runtimeSurface]);
 
   useEffect(() => {
     if (runtimeSurface !== 'admin') {

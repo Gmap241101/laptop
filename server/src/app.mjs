@@ -1076,17 +1076,7 @@ export const createRequestHandler = ({
         const currentLoader = typeof userClerkAuthService.getCurrentFast === 'function'
           ? userClerkAuthService.getCurrentFast.bind(userClerkAuthService)
           : userClerkAuthService.getCurrent.bind(userClerkAuthService);
-        const [result, termsPolicyResult, sessionPolicyResult] = await Promise.all([
-          currentLoader({ clerkUserId: auth.userId }),
-          config.accountLifecycleCompatibilityDisabled && typeof accountLifecycleService.getPolicy === 'function'
-            ? accountLifecycleService.getPolicy().catch(() => null)
-            : Promise.resolve(null),
-          typeof systemConfigService.get === 'function'
-            ? systemConfigService.get('user-session-policy').catch(() => null)
-            : Promise.resolve(null),
-        ]);
-        const account = result.account || {};
-        const profile = sanitizeUserSessionProfile(account);
+        const result = await currentLoader({ clerkUserId: auth.userId });
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,
@@ -1095,20 +1085,15 @@ export const createRequestHandler = ({
             authority: result.authority,
             verification: result.verification || 'clerk-postgresql',
             clerkUserId: result.clerkUser?.clerkUserId || auth.userId,
-            firebaseUid: account.firebaseUid || '',
-            legacyMemberKey: account.firebaseUid || '',
+            firebaseUid: result.account?.firebaseUid || '',
+            legacyMemberKey: result.account?.firebaseUid || '',
             legacyMemberKeySource: config.userFirebaseAuthCompatibilityDisabled ? 'postgresql-compatibility-key' : 'firebase-uid',
-            email: account.memberEmail || account.firebaseEmail || account.primaryEmail || result.clerkUser?.primaryEmail || '',
-            displayName: account.memberName || result.clerkUser?.displayName || '',
+            email: result.account?.firebaseEmail || result.account?.primaryEmail || result.account?.memberEmail || result.clerkUser?.primaryEmail || '',
+            displayName: result.clerkUser?.displayName || result.account?.memberName || '',
             firebaseAuthCompatibility: config.userFirebaseAuthCompatibilityDisabled ? 'retired' : 'signed-in-required',
-            memberStatus: account.memberStatus || '',
-            authAuthorityMode: account.authAuthorityMode || '',
-            lifecycleAuthorityMode: account.lifecycleAuthorityMode || '',
-            profile,
-            termsPolicy: termsPolicyResult?.source === 'postgresql' ? termsPolicyResult.payload : null,
-            termsPolicySource: termsPolicyResult?.source || '',
-            sessionPolicy: sessionPolicyResult?.source === 'postgresql' ? sessionPolicyResult.payload : null,
-            sessionPolicySource: sessionPolicyResult?.source || '',
+            memberStatus: result.account?.memberStatus || '',
+            authAuthorityMode: result.account?.authAuthorityMode || '',
+            lifecycleAuthorityMode: result.account?.lifecycleAuthorityMode || '',
           },
         }, headers);
       } catch (error) {

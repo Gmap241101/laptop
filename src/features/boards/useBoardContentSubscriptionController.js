@@ -34,8 +34,6 @@ import {
 import { richTextHtmlToText } from '../../utils/richTextCore.js';
 import useBoardProgressiveSearch from './useBoardProgressiveSearch.js';
 import {
-  getCachedFaqBoard,
-  getCachedNoticeBoard,
   incrementNoticePostView,
   prefetchUserCommunityBoards,
   publishBoardContentObservation,
@@ -321,6 +319,7 @@ export default function useBoardContentSubscriptionController({
         window.cancelIdleCallback?.(handle);
       };
     }
+    if (typeof window === 'undefined') return undefined;
     const timer = window.setTimeout(prefetch, 350);
     return () => {
       cancelled = true;
@@ -354,41 +353,30 @@ export default function useBoardContentSubscriptionController({
         ? 6
         : undefined;
     let cancelled = false;
-    const requestOptions = {
-      search,
-      page: requestPage,
-      pageSize: requestPageSize,
-      home: shouldLoadUserHomeNotice,
-    };
-    const applyNoticeBoard = (board) => {
-      if (cancelled || !board) return;
-      const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
-      setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
-      setNoticePostsPerPageInput(safePostsPerPage);
-      setNoticeBoardConfigReady(true);
-      setNoticeBoardConfigLoadErrorMessage('');
-      setNoticePinnedPosts(board?.pinnedPosts || []);
-      setNoticeRegularPagePosts(board?.regularPosts || []);
-      setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
-      setNoticeHasNextPage(Boolean(board?.hasNextPage));
-      setNoticePostsLoadErrorMessage('');
-      setNoticePostsReady(true);
-      setNoticePostgresFallback(false);
-    };
-    const cachedBoard = getCachedNoticeBoard(requestOptions);
-    if (cachedBoard) {
-      applyNoticeBoard(cachedBoard);
-    } else {
-      setNoticePostsReady(false);
-      setNoticePostsLoadErrorMessage('');
-    }
+    setNoticePostsReady(false);
+    setNoticePostsLoadErrorMessage('');
 
     const loadNotice = () => {
       void requestNoticeBoard({
-        ...requestOptions,
+        search,
+        page: requestPage,
+        pageSize: requestPageSize,
+        home: shouldLoadUserHomeNotice,
         useCache: true,
       }).then((board) => {
-        applyNoticeBoard(board);
+        if (cancelled) return;
+        const safePostsPerPage = getSafeNoticePostsPerPage(board?.config?.postsPerPage);
+        setNoticeBoardConfig({ postsPerPage: safePostsPerPage });
+        setNoticePostsPerPageInput(safePostsPerPage);
+        setNoticeBoardConfigReady(true);
+        setNoticeBoardConfigLoadErrorMessage('');
+        setNoticePinnedPosts(board?.pinnedPosts || []);
+        setNoticeRegularPagePosts(board?.regularPosts || []);
+        setNoticeRegularTotalCount(Number(board?.totalRegularCount || 0));
+        setNoticeHasNextPage(Boolean(board?.hasNextPage));
+        setNoticePostsLoadErrorMessage('');
+        setNoticePostsReady(true);
+        setNoticePostgresFallback(false);
       }).catch((error) => {
         if (cancelled) return;
         console.error('Phase 26 notice PostgreSQL read failed:', error);
@@ -462,15 +450,18 @@ export default function useBoardContentSubscriptionController({
       ? Math.min(500, activePage * postsPerPage)
       : undefined;
     let cancelled = false;
-    const requestOptions = {
+    setFaqPostsReady(false);
+    setFaqPostsLoadErrorMessage('');
+
+    void requestFaqBoard({
       search,
       page: requestPage,
       pageSize: requestPageSize,
       categoryId: activeFaqCategoryId,
       searchWithinCategory: faqSearchWithinCategory,
-    };
-    const applyFaqBoard = (board) => {
-      if (cancelled || !board) return;
+      useCache: true,
+    }).then((board) => {
+      if (cancelled) return;
       const safePostsPerPage = getSafeFaqPostsPerPage(board?.config?.postsPerPage);
       setFaqBoardConfig({ postsPerPage: safePostsPerPage });
       setFaqPostsPerPageInput(safePostsPerPage);
@@ -486,20 +477,6 @@ export default function useBoardContentSubscriptionController({
       setFaqPostsLoadErrorMessage('');
       setFaqPostsReady(true);
       setFaqPostgresFallback(false);
-    };
-    const cachedBoard = getCachedFaqBoard(requestOptions);
-    if (cachedBoard) {
-      applyFaqBoard(cachedBoard);
-    } else {
-      setFaqPostsReady(false);
-      setFaqPostsLoadErrorMessage('');
-    }
-
-    void requestFaqBoard({
-      ...requestOptions,
-      useCache: true,
-    }).then((board) => {
-      applyFaqBoard(board);
     }).catch((error) => {
       if (cancelled) return;
       console.error('Phase 26 FAQ PostgreSQL read failed:', error);
