@@ -327,7 +327,7 @@ export default function UserInquiryPanel({ ctx }) {
   const saveMemberOrGuestInquiry = async () => {
     const bodyText = htmlToText(form.bodyHtml);
     if (!form.categoryId || !form.title.trim() || !bodyText) {
-      notify('문의 카테고리, 제목, 본문을 모두 입력해 주세요.', 'error');
+      notify('문의 구분, 제목, 본문을 모두 입력해 주세요.', 'error');
       return;
     }
     setSaving(true);
@@ -461,18 +461,20 @@ export default function UserInquiryPanel({ ctx }) {
       <div>
         <h3 className="text-base font-bold text-slate-900">{editingPublicId ? '문의 수정' : '문의 작성'}</h3>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          {editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '문의 카테고리, 제목, 본문을 입력해 주세요.'}
+          {editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '문의 구분, 제목, 본문을 입력해 주세요.'}
         </p>
       </div>
-      <Field label="문의 카테고리">
-        <Select value={form.categoryId} onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}>
-          <option value="">선택</option>
-          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </Select>
-      </Field>
-      <Field label="제목">
-        <Input value={form.title} maxLength={200} onChange={(title) => setForm((current) => ({ ...current, title }))} />
-      </Field>
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]">
+        <Field label="문의 구분">
+          <Select value={form.categoryId} onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}>
+            <option value="">선택</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="제목">
+          <Input value={form.title} maxLength={200} onChange={(title) => setForm((current) => ({ ...current, title }))} />
+        </Field>
+      </div>
       <RichTextEditor
         label="문의 본문"
         value={form.bodyHtml}
@@ -490,10 +492,10 @@ export default function UserInquiryPanel({ ctx }) {
   const renderDetail = () => {
     if (!detail) return null;
     return (
-      <div className="space-y-5">
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex min-h-0 flex-1 flex-col gap-5">
+        <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
-            <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '카테고리'}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '문의 구분'}</span></div>
             <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
             <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
               <div><span className="text-slate-400">회원 구분</span><div className="mt-1 font-semibold text-slate-800">{detail.authorType === 'member' ? '회원' : '비회원'}</div></div>
@@ -504,7 +506,7 @@ export default function UserInquiryPanel({ ctx }) {
               <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
             </div>
           </div>
-          <div className="px-5 py-6"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+          <div className="flex-1 px-5 py-6"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
         </article>
 
         <div className="space-y-3">
@@ -608,7 +610,7 @@ export default function UserInquiryPanel({ ctx }) {
       {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{!guest && memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
-            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">카테고리</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
+            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
             <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button type="button" className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline" onClick={() => openDetail(item.publicId)}>{item.title}</button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
           </table>
         </div>
@@ -624,7 +626,7 @@ export default function UserInquiryPanel({ ctx }) {
     </div>
   );
   const renderInquiryShell = (children) => (
-    <Card className="flex min-h-full flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
+    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -657,7 +659,7 @@ export default function UserInquiryPanel({ ctx }) {
   }
 
   return renderInquiryShell(
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
 
       {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'intro' ? (
         <div className="grid gap-4 md:grid-cols-2">
@@ -698,12 +700,14 @@ export default function UserInquiryPanel({ ctx }) {
                 <Field label="문의 확인 비밀번호"><Input type="password" value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" /></Field>
                 <Field label="문의 확인 비밀번호 확인"><Input type="password" value={guestForm.passwordConfirm} onChange={(passwordConfirm) => setGuestForm((current) => ({ ...current, passwordConfirm }))} autoComplete="new-password" /></Field>
               </div>
-              <Field label="문의 카테고리">
-                <Select value={guestForm.categoryId} onChange={(categoryId) => setGuestForm((current) => ({ ...current, categoryId }))}>
-                  <option value="">선택</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </Select>
-              </Field>
-              <Field label="제목"><Input value={guestForm.title} onChange={(title) => setGuestForm((current) => ({ ...current, title }))} maxLength={200} /></Field>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]">
+                <Field label="문의 구분">
+                  <Select value={guestForm.categoryId} onChange={(categoryId) => setGuestForm((current) => ({ ...current, categoryId }))}>
+                    <option value="">선택</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="제목"><Input value={guestForm.title} onChange={(title) => setGuestForm((current) => ({ ...current, title }))} maxLength={200} /></Field>
+              </div>
               <RichTextEditor label="문의 본문" value={guestForm.bodyHtml} onChange={(bodyHtml) => setGuestForm((current) => ({ ...current, bodyHtml }))} minHeight={320} disabled={saving} />
 
               {guestTerms.length > 0 ? (

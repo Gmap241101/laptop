@@ -78,6 +78,12 @@ assert.match(api, /async listGuest\(\{ token, page = 1, pageSize \} = \{\}\)/);
 // Inquiry uses the same public-board hero/header shell as notices.
 assert.match(userPanel, /bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white/);
 assert.match(userPanel, /relative mx-auto max-w-3xl text-center/);
+
+assert.match(userPanel, /md:grid-cols-\[minmax\(0,1fr\)_minmax\(0,4fr\)\]/, 'desktop inquiry compose must place inquiry type and title in a 1:4 row');
+assert.ok(!userPanel.includes('문의 카테고리'), 'user inquiry UI must use 문의 구분 terminology');
+assert.ok(!adminPanel.includes('문의 카테고리'), 'admin inquiry UI must use 문의 구분 terminology');
+assert.match(userPanel, /flex min-h-0 flex-1 flex-col gap-5/, 'short inquiry detail must flex-fill the available viewport body area');
+assert.match(userPanel, /flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/, 'inquiry body card must expand into remaining viewport height');
 assert.match(userPanel, /text-2xl font-black tracking-tight/);
 assert.doesNotMatch(userPanel, /<Plus[^>]*\/?\s*>/);
 
@@ -87,8 +93,8 @@ assert.match(context, /inquiryPosts:\s*contextKeys\('triggerConfirm triggerToast
 
 for (const marker of [
   '문의하기 관리', '문의 검색', '답변대기', '답변완료', '추가답변',
-  '회원구분', '카테고리', '작성자', '작성일시', '답변수', '최근 답변일시',
-  '카테고리 관리', '문의 설정', '회원만 문의 가능', '회원 + 비회원 문의 가능',
+  '회원구분', '문의 구분', '작성자', '작성일시', '답변수', '최근 답변일시',
+  '문의 구분 관리', '문의 설정', '회원만 문의 가능', '회원 + 비회원 문의 가능',
   '비회원 문의 적용 약관', '기존 회원가입 약관', '문의 전용 약관',
   '관리자 답변 등록', '관리자 답변 수정', 'RichTextEditor', '논리삭제',
   'sm:grid-cols-[1fr_auto_1fr]',

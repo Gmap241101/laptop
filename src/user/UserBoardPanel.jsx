@@ -139,7 +139,7 @@ export default function UserBoardPanel({ ctx }) {
   }
 
   return (
-            <Card className="flex min-h-full flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -164,8 +164,8 @@ export default function UserBoardPanel({ ctx }) {
               <CardContent className="flex flex-1 flex-col p-6">
                 {userTab === 'notice' ? (
                   selectedNoticePost ? (
-                    <div className="space-y-5">
-                      <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex min-h-0 flex-1 flex-col gap-5">
+                      <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
                         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
                           <div className="flex flex-wrap items-center gap-2">
                             {selectedNoticePost.isPinned && (
@@ -196,7 +196,7 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="px-5 py-6">
+                        <div className="flex-1 px-5 py-6">
                           <RichTextContent
                             html={selectedNoticePost.contentHtml}
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
