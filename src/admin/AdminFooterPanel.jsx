@@ -11,6 +11,7 @@ import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import { preloadAdminFooterPageContent } from '../features/boards/adminSiteContentCatalogService.js';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 const FOOTER_PAGE_PAGE_SIZE = 10;
 
@@ -795,29 +796,12 @@ export default function AdminFooterPanel({ ctx }) {
               <div className="text-[11px] text-slate-500 sm:justify-self-start">
                 전체 메뉴 페이지 {footerPages.length}건 · {safeFooterPageListPage} / {footerPageTotalPages}페이지
               </div>
-              <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-3 py-2 text-xs"
-                  disabled={safeFooterPageListPage <= 1}
-                  onClick={() => setFooterPageListPage((prev) => Math.max(1, prev - 1))}
-                >
-                  이전
-                </Button>
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                  {safeFooterPageListPage} / {footerPageTotalPages}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-3 py-2 text-xs"
-                  disabled={safeFooterPageListPage >= footerPageTotalPages}
-                  onClick={() => setFooterPageListPage((prev) => Math.min(footerPageTotalPages, prev + 1))}
-                >
-                  다음
-                </Button>
-              </div>
+              <PaginationControls
+                className="sm:justify-self-center"
+                currentPage={safeFooterPageListPage}
+                totalPages={footerPageTotalPages}
+                onPageChange={(nextPage) => setFooterPageListPage(nextPage)}
+              />
               <div className="flex sm:justify-self-end">
                 <Button
                   type="button"

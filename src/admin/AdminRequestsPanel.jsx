@@ -1,6 +1,7 @@
 import AdminRequestDialogs from './AdminRequestDialogs.jsx';
 import useAdminRequestDetailController from '../features/requests/useAdminRequestDetailController.js';
 import useAdminRequestsController from '../features/requests/useAdminRequestsController.js';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 export default function AdminRequestsPanel({ ctx }) {
   const {
@@ -1017,48 +1018,11 @@ export default function AdminRequestsPanel({ ctx }) {
                               {adminRequestTotalPages}페이지
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={
-                                  safeAdminRequestPage <= 1
-                                }
-                                onClick={() =>
-                                  setAdminRequestPage(
-                                    (prev) =>
-                                      Math.max(
-                                        1,
-                                        prev - 1
-                                      )
-                                  )
-                                }
-                              >
-                                이전
-                              </Button>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={
-                                  safeAdminRequestPage >=
-                                  adminRequestTotalPages
-                                }
-                                onClick={() =>
-                                  setAdminRequestPage(
-                                    (prev) =>
-                                      Math.min(
-                                        adminRequestTotalPages,
-                                        prev + 1
-                                      )
-                                  )
-                                }
-                              >
-                                다음
-                              </Button>
-                            </div>
+                            <PaginationControls
+                              currentPage={safeAdminRequestPage}
+                              totalPages={adminRequestTotalPages}
+                              onPageChange={(nextPage) => setAdminRequestPage(nextPage)}
+                            />
                           </div>
                         </>
                       )}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
 
 import { Button, Card, CardContent, Input, Select } from '../components/CommonUI.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -540,7 +541,10 @@ export default function UserInquiryPanel({ ctx }) {
                         </button>
                       </div>
                     ) : (
-                      <span className="text-xs font-normal text-slate-400">{label}이 없습니다.</span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="w-12 shrink-0 text-[11px] font-normal text-slate-500">{label}</span>
+                        <span className="text-xs font-normal text-slate-400">{label}이 없습니다.</span>
+                      </div>
                     )}
                   </td>
                   <td className="w-32 px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '' : ''}</td>
@@ -612,7 +616,7 @@ export default function UserInquiryPanel({ ctx }) {
 
       <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
-        <div className="flex items-center justify-center gap-2 sm:justify-self-center"><Button type="button" variant="outline" disabled={page <= 1 || listLoading} onClick={() => loadList({ targetPage: page - 1 })}>이전</Button><div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{page} / {totalPages}</div><Button type="button" variant="outline" disabled={page >= totalPages || listLoading} onClick={() => loadList({ targetPage: page + 1 })}>다음</Button></div>
+        <PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage })} />
         <div className="flex flex-wrap gap-2 sm:justify-self-end">
           {guest ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : <Button type="button" variant="primary" onClick={showMemberCompose}>문의 작성</Button>}
         </div>
@@ -620,7 +624,7 @@ export default function UserInquiryPanel({ ctx }) {
     </div>
   );
   const renderInquiryShell = (children) => (
-    <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+    <Card className="flex min-h-full flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -631,7 +635,7 @@ export default function UserInquiryPanel({ ctx }) {
           </p>
         </div>
       </div>
-      <CardContent className="p-6">{children}</CardContent>
+      <CardContent className="flex flex-1 flex-col p-6">{children}</CardContent>
     </Card>
   );
 

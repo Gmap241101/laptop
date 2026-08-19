@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import RichTextContent from '../components/RichTextContent.jsx';
 import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';
 import AdminFaqCategoryDialog from './AdminFaqCategoryDialog.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 export default function AdminFaqPanel({ ctx }) {
   const {
@@ -336,35 +337,15 @@ export default function AdminFaqPanel({ ctx }) {
                           <div className="text-[11px] text-slate-500 sm:justify-self-start">
                             전체 FAQ {faqResultCount}건 · {safeAdminFaqPage} / {adminFaqTotalPages}페이지
                           </div>
-                          <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="px-3 py-2 text-xs"
-                              disabled={safeAdminFaqPage <= 1}
-                              onClick={() => {
-                                setAdminFaqPage((prev) => Math.max(1, prev - 1));
-                                setAdminExpandedFaqPostId('');
-                              }}
-                            >
-                              이전
-                            </Button>
-                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                              {safeAdminFaqPage} / {adminFaqTotalPages}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="px-3 py-2 text-xs"
-                              disabled={safeAdminFaqPage >= adminFaqTotalPages}
-                              onClick={() => {
-                                setAdminFaqPage((prev) => Math.min(adminFaqTotalPages, prev + 1));
-                                setAdminExpandedFaqPostId('');
-                              }}
-                            >
-                              다음
-                            </Button>
-                          </div>
+                          <PaginationControls
+                            className="sm:justify-self-center"
+                            currentPage={safeAdminFaqPage}
+                            totalPages={adminFaqTotalPages}
+                            onPageChange={(nextPage) => {
+                              setAdminFaqPage(nextPage);
+                              setAdminExpandedFaqPostId('');
+                            }}
+                          />
                           <div className="flex flex-wrap gap-2 sm:justify-self-end">
                             <Button type="button" variant="outline" onClick={() => setCategoryDialogOpen(true)}>카테고리 관리</Button>
                             <Button type="button" variant="outline" onClick={() => setSettingsDialogOpen(true)}>목록 표시 설정</Button>

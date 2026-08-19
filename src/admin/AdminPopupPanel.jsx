@@ -11,6 +11,8 @@ import {
   Trash2,
 } from 'lucide-react';
 
+import PaginationControls from '../components/PaginationControls.jsx';
+
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100];
 
 const STATUS_OPTIONS = [
@@ -330,11 +332,7 @@ export default function AdminPopupPanel({ ctx }) {
           <div className="text-[11px] text-slate-500 sm:justify-self-start">
             검색 결과 {filteredPosts.length}건 · {safePage} / {totalPages}페이지
           </div>
-          <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>이전</Button>
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{safePage} / {totalPages}</div>
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safePage >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>다음</Button>
-          </div>
+          <PaginationControls className="sm:justify-self-center" currentPage={safePage} totalPages={totalPages} onPageChange={(nextPage) => setPage(nextPage)} />
           <div className="flex sm:justify-self-end">
             <Button type="button" variant="primary" onClick={() => openPopupPostDialog()}>
               팝업 등록

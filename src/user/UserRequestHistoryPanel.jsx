@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import PaginationControls from '../components/PaginationControls.jsx';
+
 const getRequestCreatedAtMillis = (request = {}) => {
   const timestamp = request.createdAt;
 
@@ -798,29 +800,12 @@ export default function UserRequestHistoryPanel({ ctx }) {
                     <div className="text-xs text-slate-500">
                       총 {effectiveTotalCount}건 · {safePage}/{totalPages}페이지
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={safePage <= 1}
-                        onClick={() => setRequestPage((page) => Math.max(1, page - 1))}
-                      >
-                        이전
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={
-                          safePage >= totalPages ||
-                          (historyTab && !historySearchMode && !historyHasNextPage)
-                        }
-                        onClick={() =>
-                          setRequestPage((page) => Math.min(totalPages, page + 1))
-                        }
-                      >
-                        다음
-                      </Button>
-                    </div>
+                    <PaginationControls
+                      currentPage={safePage}
+                      totalPages={totalPages}
+                      nextDisabled={historyTab && !historySearchMode && !historyHasNextPage && safePage >= totalPages}
+                      onPageChange={(nextPage) => setRequestPage(nextPage)}
+                    />
                   </div>
                 </>
               )}

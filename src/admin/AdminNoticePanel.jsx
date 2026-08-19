@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 export default function AdminNoticePanel({ ctx }) {
   const {
@@ -151,13 +152,12 @@ export default function AdminNoticePanel({ ctx }) {
           <div className="text-[11px] text-slate-500 sm:justify-self-start">
             검색 결과 {noticeResultCount}건 · {safeAdminNoticePage} / {adminNoticeTotalPages}페이지
           </div>
-          <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safeAdminNoticePage <= 1} onClick={() => setAdminNoticePage((prev) => Math.max(1, prev - 1))}>이전</Button>
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-              {safeAdminNoticePage} / {adminNoticeTotalPages}
-            </div>
-            <Button type="button" variant="outline" className="px-3 py-2 text-xs" disabled={safeAdminNoticePage >= adminNoticeTotalPages} onClick={() => setAdminNoticePage((prev) => Math.min(adminNoticeTotalPages, prev + 1))}>다음</Button>
-          </div>
+          <PaginationControls
+            className="sm:justify-self-center"
+            currentPage={safeAdminNoticePage}
+            totalPages={adminNoticeTotalPages}
+            onPageChange={(nextPage) => setAdminNoticePage(nextPage)}
+          />
           <div className="flex flex-wrap gap-2 sm:justify-self-end">
             <Button type="button" variant="outline" onClick={() => setSettingsDialogOpen(true)}>목록 표시 설정</Button>
             <Button type="button" variant="primary" onClick={() => openNoticePostDialog()}>공지사항 등록</Button>

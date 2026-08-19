@@ -6,6 +6,7 @@ import AdminMemberAccountEditDialog from './AdminMemberAccountEditDialog.jsx';
 import AdminMemberRentalHistoryDialog from './AdminMemberRentalHistoryDialog.jsx';
 import AdminMemberTermsDialog from './AdminMemberTermsDialog.jsx';
 import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 import useAdminMemberAccountsController, {
   ADMIN_MEMBER_ACCOUNT_PAGE_SIZE_OPTIONS,
@@ -490,34 +491,13 @@ export default function AdminMemberAccountsPanel({ ctx }) {
               <div className="text-[11px] text-slate-500 sm:justify-self-start">
                 검색 결과 {adminUserAccountResultCount}건 · {safeAdminUserAccountPage} / {adminUserAccountTotalPages}페이지
               </div>
-              <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-3 py-2 text-xs"
-                  disabled={safeAdminUserAccountPage <= 1}
-                  onClick={() => setAdminUserAccountPage((prev) => Math.max(1, prev - 1))}
-                >
-                  이전
-                </Button>
-                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                  {safeAdminUserAccountPage} / {adminUserAccountTotalPages}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="px-3 py-2 text-xs"
-                  disabled={
-                    safeAdminUserAccountPage >= adminUserAccountTotalPages ||
-                    (!adminUserAccountSearchMode && !adminUserAccountHasNextPage)
-                  }
-                  onClick={() =>
-                    setAdminUserAccountPage((prev) => Math.min(adminUserAccountTotalPages, prev + 1))
-                  }
-                >
-                  다음
-                </Button>
-              </div>
+              <PaginationControls
+                className="sm:justify-self-center"
+                currentPage={safeAdminUserAccountPage}
+                totalPages={adminUserAccountTotalPages}
+                nextDisabled={!adminUserAccountSearchMode && !adminUserAccountHasNextPage && safeAdminUserAccountPage >= adminUserAccountTotalPages}
+                onPageChange={(nextPage) => setAdminUserAccountPage(nextPage)}
+              />
               <div className="flex sm:justify-self-end">
                 <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>
                   회원 신규 등록

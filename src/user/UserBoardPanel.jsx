@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
+import PaginationControls from '../components/PaginationControls.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 
 export default function UserBoardPanel({ ctx }) {
@@ -138,7 +139,7 @@ export default function UserBoardPanel({ ctx }) {
   }
 
   return (
-            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+            <Card className="flex min-h-full flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -160,7 +161,7 @@ export default function UserBoardPanel({ ctx }) {
                 </div>
               </div>
 
-              <CardContent className="p-6">
+              <CardContent className="flex flex-1 flex-col p-6">
                 {userTab === 'notice' ? (
                   selectedNoticePost ? (
                     <div className="space-y-5">
@@ -225,7 +226,10 @@ export default function UserBoardPanel({ ctx }) {
                                       </button>
                                     </div>
                                   ) : (
-                                    <span className="text-xs font-normal text-slate-400">{label}이 없습니다.</span>
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <span className="w-12 shrink-0 text-[11px] font-normal text-slate-500">{label}</span>
+                                      <span className="text-xs font-normal text-slate-400">{label}이 없습니다.</span>
+                                    </div>
                                   )}
                                 </td>
                                 <td className="w-32 px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '관리자' : ''}</td>
@@ -385,45 +389,11 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
 
                           {regularNoticePosts.length > 0 && (
-                            <div className="flex items-center justify-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={safeNoticePage <= 1}
-                                onClick={() =>
-                                  setNoticePage((prev) =>
-                                    Math.max(1, prev - 1)
-                                  )
-                                }
-                              >
-                                이전
-                              </Button>
-
-                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                                {safeNoticePage} / {noticeTotalPages}
-                              </div>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 py-2 text-xs"
-                                disabled={
-                                  safeNoticePage >=
-                                  noticeTotalPages
-                                }
-                                onClick={() =>
-                                  setNoticePage((prev) =>
-                                    Math.min(
-                                      noticeTotalPages,
-                                      prev + 1
-                                    )
-                                  )
-                                }
-                              >
-                                다음
-                              </Button>
-                            </div>
+                            <PaginationControls
+                              currentPage={safeNoticePage}
+                              totalPages={noticeTotalPages}
+                              onPageChange={(nextPage) => setNoticePage(nextPage)}
+                            />
                           )}
                         </>
                       )}
@@ -662,47 +632,14 @@ export default function UserBoardPanel({ ctx }) {
                         </div>
 
                         {regularFaqPosts.length > 0 && (
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="px-3 py-2 text-xs"
-                              disabled={safeFaqPage <= 1}
-                              onClick={() => {
-                                setFaqPage((prev) =>
-                                  Math.max(1, prev - 1)
-                                );
-                                setExpandedFaqPostId('');
-                              }}
-                            >
-                              이전
-                            </Button>
-
-                            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-                              {safeFaqPage} / {faqTotalPages}
-                            </div>
-
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="px-3 py-2 text-xs"
-                              disabled={
-                                safeFaqPage >=
-                                faqTotalPages
-                              }
-                              onClick={() => {
-                                setFaqPage((prev) =>
-                                  Math.min(
-                                    faqTotalPages,
-                                    prev + 1
-                                  )
-                                );
-                                setExpandedFaqPostId('');
-                              }}
-                            >
-                              다음
-                            </Button>
-                          </div>
+                          <PaginationControls
+                            currentPage={safeFaqPage}
+                            totalPages={faqTotalPages}
+                            onPageChange={(nextPage) => {
+                              setFaqPage(nextPage);
+                              setExpandedFaqPostId('');
+                            }}
+                          />
                         )}
                       </>
                     )}

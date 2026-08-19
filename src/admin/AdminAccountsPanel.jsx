@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import AdminAccountCreateDialog from './AdminAccountCreateDialog.jsx';
 import AdminAccountEditDialog from './AdminAccountEditDialog.jsx';
 import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 const ADMIN_ACCOUNT_PAGE_SIZE_OPTIONS = [10, 30, 50];
@@ -171,11 +172,7 @@ export default function AdminAccountsPanel({ ctx }) {
           </div>
           <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div className="text-[11px] text-slate-500 sm:justify-self-start">검색 결과 0건 · 1 / 1페이지</div>
-            <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-              <Button variant="outline" disabled className="px-3 py-2 text-xs">이전</Button>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">1 / 1</div>
-              <Button variant="outline" disabled className="px-3 py-2 text-xs">다음</Button>
-            </div>
+            <PaginationControls className="sm:justify-self-center" currentPage={1} totalPages={1} disabled onPageChange={() => {}} />
             <div className="flex sm:justify-self-end"><Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>관리자 계정 신규 등록</Button></div>
           </div>
         </div>
@@ -290,11 +287,7 @@ export default function AdminAccountsPanel({ ctx }) {
             <div className="text-[11px] text-slate-500 sm:justify-self-start">
               검색 결과 {filteredAdminAccounts.length}건 · {displayAdminAccountPage} / {adminAccountTotalPages}페이지
             </div>
-            <div className="flex items-center justify-center gap-2 sm:justify-self-center">
-              <Button variant="outline" disabled={displayAdminAccountPage <= 1} onClick={() => setAdminAccountPage((prev) => Math.max(1, prev - 1))} className="px-3 py-2 text-xs">이전</Button>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">{displayAdminAccountPage} / {adminAccountTotalPages}</div>
-              <Button variant="outline" disabled={displayAdminAccountPage >= adminAccountTotalPages} onClick={() => setAdminAccountPage((prev) => Math.min(adminAccountTotalPages, prev + 1))} className="px-3 py-2 text-xs">다음</Button>
-            </div>
+            <PaginationControls className="sm:justify-self-center" currentPage={displayAdminAccountPage} totalPages={adminAccountTotalPages} onPageChange={(nextPage) => setAdminAccountPage(nextPage)} />
             <div className="flex sm:justify-self-end">
               <Button type="button" variant="primary" onClick={() => setCreateDialogOpen(true)}>관리자 계정 신규 등록</Button>
             </div>
