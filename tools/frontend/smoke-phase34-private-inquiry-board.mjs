@@ -80,6 +80,10 @@ assert.match(userPanel, /bg-gradient-to-br from-slate-950 via-slate-900 to-slate
 assert.match(userPanel, /relative mx-auto max-w-3xl text-center/);
 
 assert.match(userPanel, /md:grid-cols-\[minmax\(0,1fr\)_minmax\(0,4fr\)\]/, 'desktop inquiry compose must place inquiry type and title in a 1:4 row');
+assert.match(userPanel, /mb-1\.5 text-xs font-semibold text-slate-600/, 'inquiry type and title labels must match the rich-text body label size');
+assert.match(userPanel, /이용 중 궁금하신 점을 작성해주세요\. 담당자 확인 후 답변드리겠습니다\./, 'member inquiry compose guidance copy must match the requested wording');
+assert.doesNotMatch(userPanel, /categoryId: current\.categoryId \|\| next\.categories\?\.\[0\]\?\.id/, 'loading inquiry config must not auto-select the first inquiry type');
+assert.doesNotMatch(userPanel, /categoryId: categories\[0\]\?\.id \|\| ''/, 'new inquiry forms must default inquiry type to the explicit 선택 option');
 assert.ok(!userPanel.includes('문의 카테고리'), 'user inquiry UI must use 문의 구분 terminology');
 assert.ok(!adminPanel.includes('문의 카테고리'), 'admin inquiry UI must use 문의 구분 terminology');
 assert.match(userPanel, /flex min-h-0 flex-1 flex-col gap-5/, 'short inquiry detail must flex-fill the available viewport body area');

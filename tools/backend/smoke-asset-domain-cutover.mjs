@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createAssetRepository } from '../../server/src/assets/asset-repository.mjs';
 import { createAssetService } from '../../server/src/assets/asset-service.mjs';
 
 const identity = { uid: 'admin:phase34', source: 'clerk-postgresql', clerkUserId: 'user_admin' };
@@ -80,6 +81,47 @@ assert.equal(deleted.firestoreMirror, 'retired');
 
 await assert.rejects(() => service.create({ uid: 'legacy', source: 'firebase' }, { category: '노트북', assetNo: 'A-004' }), (error) => error?.code === 'admin_postgresql_identity_required');
 
+let transientCoreReadFailures = 0;
+const resilientPool = {
+  async query(sql) {
+    const source = String(sql);
+    if (source.includes('FROM app_asset_categories ORDER BY')) {
+      if (transientCoreReadFailures < 1) {
+        transientCoreReadFailures += 1;
+        throw new Error('transient pool read failure');
+      }
+      return { rows: [{ name: '노트북', updated_at: '2026-08-19T00:00:00.000Z' }] };
+    }
+    if (source.includes('FROM app_rental_assets asset')) {
+      return { rows: [{
+        asset_id: 'NB-RESILIENT-1', category_name: '노트북', asset_no: 'A-101', asset_no_normalized: 'a-101',
+        serial_no: 'SN-101', model: 'Model 101', manufacture_date: '2026-01-01', photo: '', note: '',
+        base_status: '대여가능', created_at: '2026-08-18T00:00:00.000Z', updated_at: '2026-08-19T00:00:00.000Z',
+      }] };
+    }
+    if (source.includes('FROM app_rental_asset_reservation_guards')) {
+      throw new Error('reservation guard read unavailable');
+    }
+    if (source.includes('FROM app_rental_requests request')) {
+      return { rows: [{ request_id: 'REQ-RESILIENT', laptop_id: 'NB-RESILIENT-1', start_date: '2026-08-20', due_date: '2026-08-21', status: '신청중' }] };
+    }
+    if (source.includes('FROM app_asset_catalog_status')) {
+      throw new Error('derived metadata read unavailable');
+    }
+    throw new Error(`Unexpected resilient asset query: ${source}`);
+  },
+  async connect() {
+    throw new Error('connect() is not used by the resilient public catalog smoke.');
+  },
+};
+const resilientRepository = createAssetRepository(resilientPool);
+const resilientCatalog = await resilientRepository.getCatalog('2026-08-19');
+assert.equal(transientCoreReadFailures, 1, 'public asset catalog must retry one transient uncoded core read failure');
+assert.equal(resilientCatalog.assets.length, 1);
+assert.equal(resilientCatalog.assets[0].currentRequestId, 'REQ-RESILIENT');
+assert.equal(resilientCatalog.availability.length, 1, 'canonical rental requests must recover availability when reservation guards are unavailable');
+assert.equal(resilientCatalog.sync?.sourceMode, 'postgresql-canonical-fallback', 'derived catalog metadata failure must synthesize canonical sync metadata');
+
 const [migration, repoSource, serviceSource, appSource, indexSource] = await Promise.all([
   readFile(new URL('../../server/migrations/012_phase20_asset_domain_cutover.sql', import.meta.url), 'utf8'),
   readFile(new URL('../../server/src/assets/asset-repository.mjs', import.meta.url), 'utf8'),
@@ -88,7 +130,7 @@ const [migration, repoSource, serviceSource, appSource, indexSource] = await Pro
   readFile(new URL('../../server/src/index.mjs', import.meta.url), 'utf8'),
 ]);
 for (const marker of ['app_asset_categories', 'app_rental_assets', 'app_asset_catalog_syncs']) assert.ok(migration.includes(marker), marker);
-for (const marker of ['app_rental_asset_reservation_guards', 'pg_advisory_xact_lock', 'createAuthoritative', 'bulkCreateAuthoritative', 'saveCategoriesAuthoritative']) assert.ok(repoSource.includes(marker), marker);
+for (const marker of ['app_rental_asset_reservation_guards', 'app_rental_requests request', 'asset_catalog_availability_read_failed', 'postgresql-canonical-fallback', 'pg_advisory_xact_lock', 'createAuthoritative', 'bulkCreateAuthoritative', 'saveCategoriesAuthoritative']) assert.ok(repoSource.includes(marker), marker);
 for (const marker of ['getPublicCatalog', "source: 'postgresql-existing'", "authority: 'postgresql'", "firestoreMirror: 'retired'", 'admin_postgresql_identity_required']) assert.ok(serviceSource.includes(marker), marker);
 for (const forbidden of ['firestoreClient', 'mirrorCreate', 'mirrorEdit', 'mirrorDelete', 'mirrorBulkCreate', 'mirrorCategories', 'firebaseIdToken']) assert.ok(!serviceSource.includes(forbidden), `asset service must not retain ${forbidden}`);
 for (const marker of ['/api/assets/catalog', '/api/admin/assets/bootstrap', '/api/admin/assets/bulk', '/api/admin/assets/categories']) assert.ok(appSource.includes(marker), marker);

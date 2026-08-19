@@ -91,7 +91,7 @@ const InquiryStatusBadge = ({ status }) => (
 
 const Field = ({ label, children }) => (
   <div>
-    <div className="mb-1.5 text-[11px] font-semibold text-slate-600">{label}</div>
+    <div className="mb-1.5 text-xs font-semibold text-slate-600">{label}</div>
     {children}
   </div>
 );
@@ -141,8 +141,6 @@ export default function UserInquiryPanel({ ctx }) {
   const applyConfig = useCallback((next, { includeGuestTerms = false } = {}) => {
     setConfig((current) => includeGuestTerms ? { ...(current || {}), ...next } : next);
     setConfigError('');
-    setForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
-    setGuestForm((current) => ({ ...current, categoryId: current.categoryId || next.categories?.[0]?.id || '' }));
     if (includeGuestTerms) setGuestTermsReady(true);
   }, []);
 
@@ -272,7 +270,7 @@ export default function UserInquiryPanel({ ctx }) {
 
   const resetOwnedForm = useCallback(() => {
     setEditingPublicId('');
-    setForm({ ...emptyForm(), categoryId: categories[0]?.id || '' });
+    setForm(emptyForm());
   }, [categories]);
 
   const showMemberCompose = () => {
@@ -409,7 +407,7 @@ export default function UserInquiryPanel({ ctx }) {
       });
       writeGuestAccess(access);
       setGuestAccess(access);
-      setGuestForm({ ...emptyGuestForm(), categoryId: categories[0]?.id || '' });
+      setGuestForm(emptyGuestForm());
       setGuestMode('verify');
       setGuestEntry('guest');
       setListLoaded(false);
@@ -461,7 +459,7 @@ export default function UserInquiryPanel({ ctx }) {
       <div>
         <h3 className="text-base font-bold text-slate-900">{editingPublicId ? '문의 수정' : '문의 작성'}</h3>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          {editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '문의 구분, 제목, 본문을 입력해 주세요.'}
+          {editingPublicId ? '관리자 답변이 등록되기 전 문의만 수정할 수 있습니다.' : '이용 중 궁금하신 점을 작성해주세요. 담당자 확인 후 답변드리겠습니다.'}
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]">

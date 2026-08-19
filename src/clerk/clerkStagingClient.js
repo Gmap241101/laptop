@@ -1370,20 +1370,33 @@ export const requestAdminSystemDataExport = async ({ clerk, apiBaseUrl, fetchImp
 };
 
 export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
-  const response = await fetchImpl(`${apiBaseUrl}/api/assets/catalog`, {
-    method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
-  });
-  const payload = await parseJsonResponse(response);
-  if (!response.ok) {
-    const error = new Error(`PostgreSQL asset catalog read failed with HTTP ${response.status}.`);
-    error.status = response.status;
-    error.code = payload?.error || null;
-    throw error;
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetchImpl(`${apiBaseUrl}/api/assets/catalog`, {
+        method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store',
+      });
+      const payload = await parseJsonResponse(response);
+      if (!response.ok) {
+        const error = new Error(`PostgreSQL asset catalog read failed with HTTP ${response.status}.`);
+        error.status = response.status;
+        error.code = payload?.error || 'asset_catalog_unavailable';
+        throw error;
+      }
+      if (payload?.assetCatalog?.source !== 'postgresql' || !Array.isArray(payload?.assetCatalog?.assets) || !Array.isArray(payload?.assetCatalog?.categories)) {
+        const error = new Error('Backend returned an invalid PostgreSQL asset catalog response.');
+        error.code = 'asset_catalog_payload_invalid';
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      lastError = error;
+      const retryable = Number(error?.status || 0) >= 500 || ['TypeError', 'AbortError'].includes(error?.name);
+      if (attempt >= 1 || !retryable) break;
+      await new Promise((resolve) => setTimeout(resolve, 180));
+    }
   }
-  if (payload?.assetCatalog?.source !== 'postgresql' || !Array.isArray(payload?.assetCatalog?.assets) || !Array.isArray(payload?.assetCatalog?.categories)) {
-    throw new Error('Backend returned an invalid PostgreSQL asset catalog response.');
-  }
-  return payload;
+  throw lastError || Object.assign(new Error('PostgreSQL asset catalog read failed.'), { code: 'asset_catalog_unavailable' });
 };
 
 export const requestAdminAssetBootstrap = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken }) => {

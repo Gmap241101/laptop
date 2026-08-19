@@ -2542,7 +2542,13 @@ export const createRequestHandler = ({
         const catalog = await assetService.getPublicCatalog();
         writeJson(response, 200, { ...basePayload, assetCatalog: sanitizeAssetCatalog(catalog) }, headers);
       } catch (error) {
-        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'asset_catalog_unavailable' }, headers);
+        const errorCode = error?.code || 'asset_catalog_postgresql_read_failed';
+        console.error('[assets] public PostgreSQL catalog read failed', {
+          requestId,
+          code: errorCode,
+          name: error?.name || '',
+        });
+        writeJson(response, error?.status || 503, { ...basePayload, error: errorCode }, headers);
       }
       return;
     }

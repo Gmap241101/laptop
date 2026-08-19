@@ -679,6 +679,7 @@ export default function useRentalDataSubscriptionController({
       setSplitRentalAvailability([]);
       setSplitSourceErrors((previous) => ({ ...previous, assets: '', availability: '' }));
       setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
+      setFirebaseReady(true);
       return undefined;
     }
 

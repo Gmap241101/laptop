@@ -12,8 +12,15 @@ const repositoryError = (code, message, details = {}) => {
 
 const dateText = (value) => {
   if (!value) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : '';
   return String(value).slice(0, 10);
+};
+
+const dateTimeValue = (value) => {
+  if (!value) return 0;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : 0;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const mapAsset = (row) => row ? {
@@ -41,39 +48,101 @@ const representativeReservation = (reservations, referenceDate) => {
     || null;
 };
 
-const readCatalog = async (queryable, referenceDate) => {
-  const [categoryResult, assetResult, reservationResult, syncResult] = await Promise.all([
-    queryable.query(`SELECT name FROM app_asset_categories ORDER BY sort_order, id`),
-    queryable.query(`SELECT asset.asset_id, category.name AS category_name,
-                            asset.asset_no, asset.asset_no_normalized, asset.serial_no,
-                            asset.model, asset.manufacture_date, asset.photo, asset.note,
-                            asset.base_status, asset.created_at, asset.updated_at
-                       FROM app_rental_assets asset
-                       JOIN app_asset_categories category ON category.id = asset.category_id
-                      ORDER BY category.sort_order, asset.asset_no_normalized, asset.asset_id`),
-    queryable.query(`SELECT request_id, laptop_id, start_date::text AS start_date,
-                            due_date::text AS due_date, status
-                       FROM app_rental_asset_reservation_guards
-                      WHERE active = TRUE
-                      ORDER BY laptop_id, start_date, request_id`),
-    queryable.query(`SELECT source_asset_count, source_category_count, source_hash, source_mode, synced_at
-                       FROM app_asset_catalog_status WHERE scope='main'`),
-  ]);
+const mapAvailabilityRows = (rows = []) => rows.map((row) => ({
+  id: row.request_id,
+  laptopId: row.laptop_id,
+  startDate: dateText(row.start_date),
+  dueDate: dateText(row.due_date),
+  status: row.status,
+}));
+
+const readReservationGuards = async (queryable) => {
+  const result = await queryable.query(`SELECT request_id, laptop_id, start_date::text AS start_date,
+                                               due_date::text AS due_date, status
+                                          FROM app_rental_asset_reservation_guards
+                                         WHERE active = TRUE
+                                         ORDER BY laptop_id, start_date, request_id`);
+  return mapAvailabilityRows(result.rows);
+};
+
+const readCanonicalReservations = async (queryable) => {
+  const result = await queryable.query(`SELECT request.request_id, item.laptop_id,
+                                               request.start_date::text AS start_date,
+                                               request.due_date::text AS due_date,
+                                               request.status
+                                          FROM app_rental_requests request
+                                          JOIN app_rental_request_items item ON item.rental_request_id = request.id
+                                         WHERE request.status IN ('신청중','대여중','보류')
+                                           AND item.laptop_id IS NOT NULL
+                                           AND length(trim(item.laptop_id)) > 0
+                                         ORDER BY item.laptop_id, request.start_date, request.request_id`);
+  return mapAvailabilityRows(result.rows);
+};
+
+const readAvailability = async (queryable) => {
+  try {
+    return { availability: await readReservationGuards(queryable), source: 'reservation-guards' };
+  } catch (guardError) {
+    try {
+      return { availability: await readCanonicalReservations(queryable), source: 'canonical-rental-requests' };
+    } catch (canonicalError) {
+      throw repositoryError('asset_catalog_availability_read_failed', 'Asset reservation availability could not be read.', {
+        guardErrorCode: guardError?.code || guardError?.name || '',
+        canonicalErrorCode: canonicalError?.code || canonicalError?.name || '',
+      });
+    }
+  }
+};
+
+const synthesizeSync = ({ categories = [], assets = [], categoryRows = [], availabilitySource = '' }) => {
+  const updatedAtCandidates = [
+    ...categoryRows.map((row) => dateTimeValue(row.updated_at)),
+    ...assets.map((asset) => dateTimeValue(asset.updatedAt || asset.createdAt)),
+  ].filter((value) => value > 0);
+  const latestMillis = updatedAtCandidates.length ? Math.max(...updatedAtCandidates) : Date.now();
+  return Object.freeze({
+    assetCount: assets.length,
+    categoryCount: categories.length,
+    sourceHash: '',
+    sourceMode: availabilitySource === 'canonical-rental-requests'
+      ? 'postgresql-canonical-fallback'
+      : 'postgresql-canonical',
+    syncedAt: new Date(latestMillis).toISOString(),
+  });
+};
+
+const readCatalogOnce = async (queryable, referenceDate) => {
+  let categoryResult;
+  let assetResult;
+  try {
+    [categoryResult, assetResult] = await Promise.all([
+      queryable.query(`SELECT name, updated_at FROM app_asset_categories ORDER BY sort_order, id`),
+      queryable.query(`SELECT asset.asset_id, category.name AS category_name,
+                              asset.asset_no, asset.asset_no_normalized, asset.serial_no,
+                              asset.model, asset.manufacture_date, asset.photo, asset.note,
+                              asset.base_status, asset.created_at, asset.updated_at
+                         FROM app_rental_assets asset
+                         JOIN app_asset_categories category ON category.id = asset.category_id
+                        ORDER BY category.sort_order, asset.asset_no_normalized, asset.asset_id`),
+    ]);
+  } catch (error) {
+    if (error?.code) throw error;
+    throw repositoryError('asset_catalog_core_read_failed', 'PostgreSQL asset catalog core data could not be read.', {
+      causeName: error?.name || '',
+    });
+  }
+
+  const categories = categoryResult.rows.map((row) => row.name);
+  const mappedAssets = assetResult.rows.map((row) => mapAsset(row)).filter(Boolean);
+  const { availability, source: availabilitySource } = await readAvailability(queryable);
+
   const reservationsByAsset = new Map();
-  const availability = reservationResult.rows.map((row) => ({
-    id: row.request_id,
-    laptopId: row.laptop_id,
-    startDate: dateText(row.start_date),
-    dueDate: dateText(row.due_date),
-    status: row.status,
-  }));
   availability.forEach((item) => {
     const list = reservationsByAsset.get(item.laptopId) || [];
     list.push(item);
     reservationsByAsset.set(item.laptopId, list);
   });
-  const assets = assetResult.rows.map((row) => {
-    const base = mapAsset(row);
+  const assets = mappedAssets.map((base) => {
     const reservations = reservationsByAsset.get(base.id) || [];
     const representative = representativeReservation(reservations, referenceDate);
     return Object.freeze({
@@ -83,19 +152,54 @@ const readCatalog = async (queryable, referenceDate) => {
       currentRequestId: representative?.id || null,
     });
   });
-  const sync = syncResult.rows[0] || null;
-  return Object.freeze({
-    categories: categoryResult.rows.map((row) => row.name),
-    assets,
-    availability,
-    sync: sync ? Object.freeze({
-      assetCount: Number(sync.source_asset_count || 0),
-      categoryCount: Number(sync.source_category_count || 0),
-      sourceHash: sync.source_hash || '',
-      sourceMode: sync.source_mode || '',
-      syncedAt: sync.synced_at || null,
-    }) : null,
-  });
+
+  let sync = null;
+  try {
+    const syncResult = await queryable.query(`SELECT source_asset_count, source_category_count, source_hash, source_mode, synced_at
+                                                FROM app_asset_catalog_status WHERE scope='main'`);
+    const row = syncResult.rows[0] || null;
+    if (row) {
+      sync = Object.freeze({
+        assetCount: Number(row.source_asset_count || 0),
+        categoryCount: Number(row.source_category_count || 0),
+        sourceHash: row.source_hash || '',
+        sourceMode: row.source_mode || 'postgresql-canonical',
+        syncedAt: row.synced_at || null,
+      });
+    }
+  } catch {
+    // Derived catalog metadata must never make the canonical asset catalog unavailable.
+  }
+
+  if (!sync) {
+    sync = synthesizeSync({
+      categories,
+      assets,
+      categoryRows: categoryResult.rows,
+      availabilitySource,
+    });
+  }
+
+  return Object.freeze({ categories, assets, availability, sync });
+};
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const readCatalog = async (queryable, referenceDate, { retry = false } = {}) => {
+  try {
+    return await readCatalogOnce(queryable, referenceDate);
+  } catch (error) {
+    if (!retry) throw error;
+    await wait(120);
+    try {
+      return await readCatalogOnce(queryable, referenceDate);
+    } catch (retryError) {
+      if (retryError?.code) throw retryError;
+      throw repositoryError('asset_catalog_postgresql_read_failed', 'PostgreSQL asset catalog could not be read.', {
+        causeName: retryError?.name || error?.name || '',
+      });
+    }
+  }
 };
 
 const ensureCategory = async (client, name) => {
@@ -139,7 +243,7 @@ export const createAssetRepository = (pool) => {
 
   return Object.freeze({
     async getCatalog(referenceDate) {
-      return readCatalog(pool, referenceDate);
+      return readCatalog(pool, referenceDate, { retry: true });
     },
 
     async createAuthoritative({ asset, referenceDate }) {

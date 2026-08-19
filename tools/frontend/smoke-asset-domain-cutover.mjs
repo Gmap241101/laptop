@@ -38,6 +38,7 @@ for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'g
 }
 assert.ok(subscription.includes('authoritativeAssetCategoriesRef'), 'asset catalog must preserve a PostgreSQL-only authoritative category ref contract');
 assert.ok(!subscription.includes('    splitPublicConfig?.assetCategories,\n    userTab,'), 'asset catalog effect must not depend on the category array it updates');
+assert.match(subscription, /if \(!shouldLoadUserCatalog && !shouldLoadAdminAssets\)[\s\S]*setFirebaseReady\(true\)/, 'non-asset user tabs such as request history must not remain blocked by asset catalog readiness');
 
 for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'"]) assert.ok(crud.includes(marker), marker);
 assert.ok(!crud.includes("throw new Error('firebase-admin-session-missing')"), 'Phase 34 PostgreSQL asset CRUD must not require a Firebase administrator session');
@@ -54,7 +55,7 @@ for (const forbidden of ['firebaseAuth', 'retiredLegacyDataCompat', 'appDataRefs
   assert.ok(!bulk.includes(forbidden), `bulk asset upload must not depend on ${forbidden}`);
 }
 for (const marker of ['getAssetCatalog', "assetMetricSource: 'postgresql'"]) assert.ok(dashboard.includes(marker), marker);
-for (const marker of ['requestAssetCatalog', 'bootstrapAdminAssets', 'createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', 'bulkCreateAdminAssets', 'saveAdminAssetCategories']) assert.ok(client.includes(marker), marker);
+for (const marker of ['requestAssetCatalog', "for (let attempt = 0; attempt < 2; attempt += 1)", "payload?.error || 'asset_catalog_unavailable'", 'bootstrapAdminAssets', 'createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', 'bulkCreateAdminAssets', 'saveAdminAssetCategories']) assert.ok(client.includes(marker), marker);
 assert.ok(hardRetirement.includes("mode: 'removed'") && hardRetirement.includes('requested: true'), 'Phase 34 hard retirement must be unconditional');
 assert.match(diagnostics, /Clerk Staging Test · Phase 34/);
 assert.match(diagnostics, /Asset source: postgresql/);
