@@ -195,7 +195,7 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="min-h-[260px] px-5 py-6">
+                        <div className="px-5 py-6">
                           <RichTextContent
                             html={selectedNoticePost.contentHtml}
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
@@ -206,14 +206,6 @@ export default function UserBoardPanel({ ctx }) {
 
                       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                         <table className="min-w-[680px] w-full border-collapse text-left">
-                          <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
-                            <tr>
-                              <th className="border-b border-slate-200 px-4 py-3 text-center">제목</th>
-                              <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록자</th>
-                              <th className="w-32 border-b border-slate-200 px-4 py-3 text-center">등록일</th>
-                              <th className="w-24 border-b border-slate-200 px-4 py-3 text-center">조회수</th>
-                            </tr>
-                          </thead>
                           <tbody>
                             {[
                               ['이전글', selectedNoticePost.navigation?.previous],
@@ -221,24 +213,24 @@ export default function UserBoardPanel({ ctx }) {
                             ].map(([label, item]) => (
                               <tr key={label} className="border-b border-slate-100 last:border-b-0">
                                 <td className="px-4 py-3">
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    <span className="w-12 shrink-0 text-[11px] font-bold text-slate-500">{label}</span>
-                                    {item ? (
+                                  {item ? (
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <span className="w-12 shrink-0 text-[11px] font-normal text-slate-500">{label}</span>
                                       <button
                                         type="button"
-                                        className="min-w-0 truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                                        className="min-w-0 truncate text-left text-sm font-normal text-slate-800 hover:text-orange-600 hover:underline"
                                         onClick={() => openNoticePost(item)}
                                       >
                                         {item.title}
                                       </button>
-                                    ) : (
-                                      <span className="text-xs text-slate-400">{label}이 없습니다.</span>
-                                    )}
-                                  </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs font-normal text-slate-400">{label}이 없습니다.</span>
+                                  )}
                                 </td>
-                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '관리자' : '-'}</td>
-                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? formatFirestoreDate(item.createdAt) : '-'}</td>
-                                <td className="px-4 py-3 text-center text-xs text-slate-500">{item ? Number(item.viewCount || 0) : '-'}</td>
+                                <td className="w-32 px-4 py-3 text-center text-xs text-slate-500">{item ? item.authorName || '관리자' : ''}</td>
+                                <td className="w-32 px-4 py-3 text-center text-xs text-slate-500">{item ? formatFirestoreDate(item.createdAt) : ''}</td>
+                                <td className="w-24 px-4 py-3 text-center text-xs text-slate-500">{item ? Number(item.viewCount || 0) : ''}</td>
                               </tr>
                             ))}
                           </tbody>

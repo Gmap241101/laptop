@@ -859,10 +859,15 @@ const boardSubscriptionSource = fs.readFileSync(new URL('../../src/features/boar
 const boardSelectorsSource = fs.readFileSync(new URL('../../src/features/boards/useBoardDerivedSelectors.js', import.meta.url), 'utf8');
 assert.match(userBoardPanelSource, /selectedNoticePost\.navigation\?\.previous/, 'notice detail must render the previous canonical notice row');
 assert.match(userBoardPanelSource, /selectedNoticePost\.navigation\?\.next/, 'notice detail must render the next canonical notice row');
-for (const marker of ['제목', '등록자', '등록일', '조회수']) assert.ok(userBoardPanelSource.includes(marker), `notice detail navigation header missing: ${marker}`);
+assert.match(userBoardPanelSource, /\{label\}이 없습니다\./, 'missing notice neighbor must render only the missing-title message');
+assert.doesNotMatch(userBoardPanelSource, /\{item \? item\.authorName \|\| '관리자' : '-'\}/, 'missing notice neighbor metadata must not render dash placeholders');
+assert.match(userBoardPanelSource, /text-sm font-normal text-slate-800 hover:text-orange-600/, 'notice previous/next titles must use normal font weight');
+assert.doesNotMatch(userBoardPanelSource, /min-h-\[260px\]/, 'short notice body must not reserve a fixed minimum height');
 const noticeNavigationIndex = userBoardPanelSource.indexOf("['이전글', selectedNoticePost.navigation?.previous]");
 const noticeDetailListButtonIndex = userBoardPanelSource.indexOf('onClick={closeNoticePost}', noticeNavigationIndex);
 assert.ok(noticeNavigationIndex >= 0 && noticeDetailListButtonIndex > noticeNavigationIndex, 'notice detail list button must render below previous/next navigation');
+const noticeNavigationBlock = userBoardPanelSource.slice(noticeNavigationIndex, noticeDetailListButtonIndex);
+assert.doesNotMatch(noticeNavigationBlock, /<thead[^>]*>/, 'notice previous/next navigation must not render a gray title header');
 assert.match(boardSubscriptionSource, /selectedNoticePostOverride\?\.id !== selectedNoticePostId/, 'notice detail must fetch PostgreSQL detail metadata even when the current page already contains the selected post');
 assert.match(boardSelectorsSource, /selectedNoticePostOverride\?\.id === selectedNoticePostId[\s\S]*selectedNoticePostOverride[\s\S]*noticePosts\.find/, 'notice detail selector must prefer the authoritative detail payload containing navigation metadata');
 
