@@ -556,7 +556,7 @@ export default function UserHomePanel({ ctx }) {
           </div>
 
           {hasPromotionBanners && (
-            <div className="grid h-full min-h-[300px] grid-cols-2 gap-2 sm:gap-3">
+            <div className="grid min-h-0 grid-cols-2 gap-2 sm:gap-3 lg:h-full lg:min-h-[300px]">
               {promotionSlots.map((banner, index) => (
                 banner ? (
                   <div key={banner.id} className={`${promotionConfig.aspectClass} min-h-0 overflow-hidden rounded-2xl bg-slate-100 shadow-sm`}>

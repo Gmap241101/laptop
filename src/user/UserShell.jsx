@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Laptop, LogIn, LogOut, UserCircle, UserPlus, X } from 'lucide-react';
+import { ChevronDown, Laptop, LogIn, LogOut, Menu, UserCircle, UserPlus, X } from 'lucide-react';
 
 import { Button } from '../components/CommonUI.jsx';
 import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
@@ -74,8 +74,31 @@ const UserShell = ({
   userPanelContextKey,
   userTab,
 }) => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isMobileCommunityOpen, setIsMobileCommunityOpen] = React.useState(true);
   const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
+
+  React.useEffect(() => {
+    if (!isMobileMenuOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMenuOpen]);
+
+  const runMobileNavigation = (action) => {
+    setIsMobileMenuOpen(false);
+    action();
+  };
   const shouldMountUserPopupLayer =
     Array.isArray(popupPosts) &&
     popupPosts.length > 0 &&
@@ -126,46 +149,58 @@ const UserShell = ({
 
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
           <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
-            <button
-              type="button"
-              onClick={goToAppHome}
-              className="flex min-w-0 shrink-0 items-center gap-3.5 text-left sm:gap-4"
-            >
-              {normalizedSiteSettings.logoMode === 'image' &&
-              normalizedSiteSettings.logoImageUrl ? (
-                <picture className="shrink-0">
-                  {normalizedSiteSettings.mobileLogoImageUrl ? (
-                    <source
-                      media="(max-width: 639px)"
-                      srcSet={normalizedSiteSettings.mobileLogoImageUrl}
+            <div className="flex w-full min-w-0 items-center justify-between gap-3 lg:w-auto">
+              <button
+                type="button"
+                onClick={goToAppHome}
+                className="flex min-w-0 shrink items-center gap-3.5 text-left sm:gap-4"
+              >
+                {normalizedSiteSettings.logoMode === 'image' &&
+                normalizedSiteSettings.logoImageUrl ? (
+                  <picture className="shrink-0">
+                    {normalizedSiteSettings.mobileLogoImageUrl ? (
+                      <source
+                        media="(max-width: 639px)"
+                        srcSet={normalizedSiteSettings.mobileLogoImageUrl}
+                      />
+                    ) : null}
+                    <img
+                      src={normalizedSiteSettings.logoImageUrl}
+                      alt={normalizedSiteSettings.logoAltText}
+                      className="h-11 max-w-[150px] object-contain sm:h-12"
                     />
+                  </picture>
+                ) : normalizedSiteSettings.logoMode === 'text' ? null : (
+                  <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
+                    <Laptop size={26} />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">
+                    {normalizedSiteSettings.siteName}
+                  </h1>
+                  {headerSubtitle ? (
+                    <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
+                      {headerSubtitle}
+                    </p>
                   ) : null}
-                  <img
-                    src={normalizedSiteSettings.logoImageUrl}
-                    alt={normalizedSiteSettings.logoAltText}
-                    className="h-11 max-w-[150px] object-contain sm:h-12"
-                  />
-                </picture>
-              ) : normalizedSiteSettings.logoMode === 'text' ? null : (
-                <div className="shrink-0 rounded-2xl mk-brand-gradient-tr p-2.5 text-white mk-brand-shadow-md sm:p-3">
-                  <Laptop size={26} />
                 </div>
-              )}
-              <div className="min-w-0">
-                <h1 className="break-keep text-[16px] font-bold leading-snug tracking-tight text-slate-900 sm:text-lg lg:text-[21px]">
-                  {normalizedSiteSettings.siteName}
-                </h1>
-                {headerSubtitle ? (
-                  <p className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
-                    {headerSubtitle}
-                  </p>
-                ) : null}
-              </div>
-            </button>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                aria-label="메뉴 열기"
+                aria-expanded={isMobileMenuOpen}
+              >
+                <Menu size={23} />
+              </button>
+            </div>
 
             <nav
               ref={communityMenuRef}
-              className="relative flex w-full flex-wrap items-center justify-end gap-5 sm:gap-8 lg:w-auto lg:gap-12 xl:gap-14"
+              className="relative hidden w-full flex-wrap items-center justify-end gap-5 lg:flex lg:w-auto lg:gap-12 xl:gap-14"
             >
               <button
                 type="button"
@@ -309,6 +344,166 @@ const UserShell = ({
             </nav>
           </div>
         </header>
+
+        <div
+          className={`fixed inset-0 z-[65] lg:hidden ${
+            isMobileMenuOpen ? 'visible pointer-events-auto' : 'invisible pointer-events-none'
+          }`}
+          aria-hidden={!isMobileMenuOpen}
+        >
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`absolute inset-0 bg-slate-950/45 transition-opacity duration-300 ${
+              isMobileMenuOpen ? 'opacity-100' : 'opacity-0'
+            }`}
+            aria-label="메뉴 닫기"
+            tabIndex={isMobileMenuOpen ? 0 : -1}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="모바일 메뉴"
+            className={`absolute inset-y-0 right-0 flex w-[min(86vw,360px)] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+              isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div className="text-base font-black text-slate-900">메뉴</div>
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100"
+                aria-label="메뉴 닫기"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="border-b border-slate-200 p-4">
+              {firebaseAuthUser ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {!currentAuthRoleErrorMessage ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => runMobileNavigation(goToUserMypage)}
+                      className="w-full justify-center px-3 py-2.5 text-xs"
+                    >
+                      <UserCircle size={15} />
+                      마이페이지
+                    </Button>
+                  ) : <div />}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => runMobileNavigation(logoutUser)}
+                    disabled={userAuthLoading || !firebaseAuthReady}
+                    className="w-full justify-center px-3 py-2.5 text-xs"
+                  >
+                    <LogOut size={15} />
+                    로그아웃
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => runMobileNavigation(goToUserSignup)}
+                    disabled={userAuthLoading || !firebaseAuthReady}
+                    className="w-full justify-center px-3 py-2.5 text-xs"
+                  >
+                    <UserPlus size={15} />
+                    회원가입
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => runMobileNavigation(goToUserLogin)}
+                    disabled={userAuthLoading || !firebaseAuthReady}
+                    className="w-full justify-center px-3 py-2.5 text-xs"
+                  >
+                    <LogIn size={15} />
+                    로그인
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <nav className="min-h-0 flex-1 overflow-y-auto p-3" aria-label="모바일 사용자 메뉴">
+              <button
+                type="button"
+                onClick={() => runMobileNavigation(() => goToProtectedUserTab('rental'))}
+                className={`block w-full rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
+                  userTab === 'rental' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                대여신청
+              </button>
+              <button
+                type="button"
+                onClick={() => runMobileNavigation(() => goToProtectedUserTab('history'))}
+                className={`mt-1 block w-full rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
+                  userTab === 'history' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                신청내역
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileCommunityOpen((prev) => !prev)}
+                className={`mt-1 flex w-full items-center justify-between rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
+                  ['notice', 'faq', 'inquiry'].includes(userTab)
+                    ? 'bg-orange-50 mk-brand-text'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+                aria-expanded={isMobileCommunityOpen}
+              >
+                <span>커뮤니티</span>
+                <ChevronDown size={17} className={`transition-transform ${isMobileCommunityOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isMobileCommunityOpen ? (
+                <div className="mt-1 space-y-1 border-l-2 border-orange-100 pl-3">
+                  <button
+                    type="button"
+                    onClick={() => runMobileNavigation(goToUserNotice)}
+                    onPointerEnter={prefetchUserNotice}
+                    onFocus={prefetchUserNotice}
+                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                      userTab === 'notice' ? 'bg-orange-50 mk-brand-text' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    공지사항
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runMobileNavigation(goToUserFaq)}
+                    onPointerEnter={prefetchUserFaq}
+                    onFocus={prefetchUserFaq}
+                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                      userTab === 'faq' ? 'bg-orange-50 mk-brand-text' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    FAQ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runMobileNavigation(goToUserInquiry)}
+                    onPointerEnter={() => prefetchUserInquiry(Boolean(firebaseAuthUser))}
+                    onFocus={() => prefetchUserInquiry(Boolean(firebaseAuthUser))}
+                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                      userTab === 'inquiry' ? 'bg-orange-50 mk-brand-text' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    문의하기
+                  </button>
+                </div>
+              ) : null}
+            </nav>
+          </aside>
+        </div>
 
         <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 py-8">
           {shouldShowStats ? (
