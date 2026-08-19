@@ -175,7 +175,7 @@ assert.match(userAuthPanelSource, /if \(!isLoginMode\) return;[\s\S]*preloadSign
 assert.equal(userTermsComplianceSource.includes('getUserTermsConsent'), false, 'ordinary protected-page entry must not fetch full consent states/log history just to decide whether reconsent is required');
 assert.equal(userTermsComplianceSource.includes('retiredLegacyDataCompat'), false, 'PostgreSQL terms compliance must not retain the retired compatibility watcher path');
 assert.match(userTermsComplianceSource, /getCachedSignupTermsPolicy\(\)/, 'terms compliance must reuse the preloaded lightweight policy cache');
-assert.match(userTermsComplianceSource, /preloadSignupTermContents\(effectivePolicy\.activeTerms\)/, 'reconsent gate must warm active term bodies in parallel with gate rendering');
+assert.match(userTermsComplianceSource, /preloadSignupTermContents\(policy\.activeTerms\)/, 'reconsent gate must warm active term bodies in parallel with gate rendering');
 assert.match(userTermsComplianceSource, /markConsentRevision/, 'successful reconsent must update the local compliance revision immediately instead of waiting for a profile reload');
 assert.match(userTermsConsentPanelSource, /loadData\(\{ includeLogs: false \}\)/, 'initial reconsent state read must omit historical consent logs');
 assert.match(userTermsConsentPanelSource, /getUserTermsConsent\(\{ includeLogs: true \}\)/, 'consent history must be loaded only when the user explicitly opens history');

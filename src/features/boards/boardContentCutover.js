@@ -4,7 +4,7 @@ const READ_SESSION_KEY = 'mk_board_content_postgres_read';
 const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
 const OBSERVATION_EVENT = 'rental:board-content-cutover';
 const REFRESH_EVENT = 'rental:board-content-refresh';
-const BOARD_READ_CACHE_TTL_MS = 60_000;
+const BOARD_READ_CACHE_TTL_MS = 5000;
 const boardReadCache = new Map();
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
@@ -186,11 +186,6 @@ export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, 
     },
   });
 };
-
-export const prefetchUserCommunityBoards = async () => Promise.allSettled([
-  requestNoticeBoard({ page: 1, useCache: true }),
-  requestFaqBoard({ page: 1, categoryId: 'all', useCache: true }),
-]);
 
 const getAdminTokens = async () => {
   const { clerkStagingClient } = await import('../../clerk/clerkStagingClient.js');

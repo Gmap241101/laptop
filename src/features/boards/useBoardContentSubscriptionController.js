@@ -35,7 +35,6 @@ import { richTextHtmlToText } from '../../utils/richTextCore.js';
 import useBoardProgressiveSearch from './useBoardProgressiveSearch.js';
 import {
   incrementNoticePostView,
-  prefetchUserCommunityBoards,
   publishBoardContentObservation,
   readBoardContentCutoverConfig,
   requestFaqBoard,
@@ -304,28 +303,6 @@ export default function useBoardContentSubscriptionController({
     setFaqPostgresFallback(false);
     setBoardRefreshVersion((current) => current + 1);
   }), []);
-
-  useEffect(() => {
-    if (!boardReadRequested || view !== 'user' || userTab !== 'home' || !noticePostsReady) return undefined;
-    let cancelled = false;
-    const prefetch = () => {
-      if (cancelled) return;
-      void prefetchUserCommunityBoards();
-    };
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-      const handle = window.requestIdleCallback(prefetch, { timeout: 1200 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback?.(handle);
-      };
-    }
-    if (typeof window === 'undefined') return undefined;
-    const timer = window.setTimeout(prefetch, 350);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [boardReadRequested, noticePostsReady, userTab, view]);
 
   const showToast = useCallback((message, type = 'success') => {
     triggerToastRef.current?.(message, type);

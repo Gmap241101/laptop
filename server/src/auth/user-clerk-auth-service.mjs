@@ -137,49 +137,24 @@ export const createUserClerkAuthService = ({
     return { source, clerkUser, appUser, account: await repository.findByFirebaseUid(source.uid) };
   };
 
-  const getCurrentFast = async (clerkUserId) => {
-    const id = trim(clerkUserId);
-    const [account, admin] = await Promise.all([
-      repository.findByClerkUserId(id),
-      accountLifecycleCompatibilityDisabled
-        ? adminIdentityRepository.findByClerkUserId(id)
-        : Promise.resolve(null),
-    ]);
-    if (admin && trim(admin.status) !== 'retired') {
-      throw serviceError('user_account_is_admin', 'Administrator accounts cannot use the general-user Clerk flow.', 403);
-    }
-    if (!account || !account.firebaseUid) {
-      throw serviceError('user_clerk_not_linked', 'Current Clerk user is not linked to a member account.', 403);
-    }
-    if (account.clerkAccountState === 'deleted' || account.memberStatus === 'retired') {
-      throw serviceError('user_account_retired', 'Retired accounts cannot sign in.', 403);
-    }
-    const primaryEmail = lower(account.memberEmail || account.firebaseEmail || account.primaryEmail);
-    return Object.freeze({
-      authority: 'clerk',
-      verification: 'local-jwt-postgresql',
-      account,
-      clerkUser: Object.freeze({
-        clerkUserId: id,
-        primaryEmail,
-        displayName: trim(account.memberName),
-      }),
-    });
-  };
-
   const getCurrent = async (clerkUserId) => {
-    const fast = await getCurrentFast(clerkUserId);
-    const clerkUser = await clerkClient.getUser(clerkUserId);
-    if (lower(clerkUser.primaryEmail) !== lower(fast.account.memberEmail || fast.account.firebaseEmail || fast.account.primaryEmail)) {
-      throw serviceError('user_clerk_email_mismatch', 'Clerk email does not match the linked member account.', 409);
+    if (accountLifecycleCompatibilityDisabled) {
+      const admin = await adminIdentityRepository.findByClerkUserId(trim(clerkUserId));
+      if (admin && trim(admin.status) !== 'retired') {
+        throw serviceError('user_account_is_admin', 'Administrator accounts cannot use the general-user Clerk flow.', 403);
+      }
     }
-    const verified = await repository.markVerifiedLogin({ firebaseUid: fast.account.firebaseUid });
-    return Object.freeze({ authority: 'clerk', verification: 'clerk-backend-postgresql', account: verified, clerkUser });
+    const account = await repository.findByClerkUserId(trim(clerkUserId));
+    if (!account || !account.firebaseUid) throw serviceError('user_clerk_not_linked', 'Current Clerk user is not linked to a member account.', 403);
+    if (account.clerkAccountState === 'deleted' || account.memberStatus === 'retired') throw serviceError('user_account_retired', 'Retired accounts cannot sign in.', 403);
+    const clerkUser = await clerkClient.getUser(clerkUserId);
+    if (lower(clerkUser.primaryEmail) !== lower(account.firebaseEmail || account.primaryEmail)) throw serviceError('user_clerk_email_mismatch', 'Clerk email does not match the linked member account.', 409);
+    const verified = await repository.markVerifiedLogin({ firebaseUid: account.firebaseUid });
+    return Object.freeze({ authority: 'clerk', account: verified, clerkUser });
   };
 
   return Object.freeze({
     getCurrent: ({ clerkUserId }) => getCurrent(clerkUserId),
-    getCurrentFast: ({ clerkUserId }) => getCurrentFast(clerkUserId),
 
     async createAdminManagedMember({ actorClerkUserId, input = {}, password }) {
       if (!userFirebaseAuthCompatibilityDisabled) {
