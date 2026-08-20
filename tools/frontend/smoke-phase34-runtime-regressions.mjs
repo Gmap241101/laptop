@@ -707,6 +707,9 @@ for (const panelState of ['responsivePanelOpen', 'tablePanelOpen', 'imagePanelOp
   assert.match(richTextEditorSource, new RegExp(`<EditorModal\\s+[\\s\\S]*?open=\\{${panelState}`), `${panelState} editor utility must render in a modal portal instead of an inline toolbar panel`);
 }
 assert.match(richTextEditorSource, /const handleEditorClick = \(event\) => \{[\s\S]*openImagePanel\(imageFigure\)[\s\S]*openTablePanel\(tableCell\)[\s\S]*openYouTubePanel\(youtubeWrapper\)[\s\S]*openHtml5VideoPanel\(html5Wrapper\)/, 'inserted image, table, YouTube, and HTML5 video objects must open their edit modal when clicked');
+assert.match(richTextEditorSource, /title="표 삽입·편집"[\s\S]*onClick=\{\(\) => openTablePanel\(\)\}/, 'table toolbar action must call openTablePanel without forwarding the React click event as a table-cell override');
+assert.match(richTextEditorSource, /const isCellOverride = Boolean\([\s\S]*typeof cellOverride\.nodeType === 'number'[\s\S]*editorRef\.current\?\.contains\(cellOverride\)/, 'table modal opener must accept only DOM nodes as explicit selected-cell overrides');
+assert.match(richTextEditorSource, /<textarea[\s\S]*wrap="soft"[\s\S]*overflow-x-hidden[\s\S]*whitespace-pre-wrap[\s\S]*\[overflow-wrap:anywhere\]/, 'source-mode HTML must soft-wrap pasted or generated one-line markup inside the editor instead of requiring horizontal scrolling');
 assert.match(richTextEditorSource, /editingImage[\s\S]*selectedImageRef[\s\S]*replaceWith\(replacement\)/, 'inserted images must support in-place modal editing after selection');
 assert.match(richTextEditorSource, /const ToolbarButton = \([^)]*tabIndex = -1/, 'rich text toolbar buttons must be skipped by ordinary Tab navigation');
 assert.equal((richTextEditorSource.match(/<select\s+tabIndex=\{-1\}/g) || []).length, 3, 'all primary rich-text toolbar select controls must be skipped by ordinary Tab navigation');

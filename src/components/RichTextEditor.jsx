@@ -830,7 +830,13 @@ export function RichTextEditor({
     setFontSizePanelOpen(false);
     setLineHeightPanelOpen(false);
     setTableError('');
-    const cell = cellOverride && editorRef.current?.contains(cellOverride)
+    const isCellOverride = Boolean(
+      cellOverride
+      && typeof cellOverride === 'object'
+      && typeof cellOverride.nodeType === 'number'
+      && editorRef.current?.contains(cellOverride)
+    );
+    const cell = isCellOverride
       ? cellOverride
       : resolveTableCellFromSavedRange();
     if (cell) {
@@ -1681,7 +1687,7 @@ export function RichTextEditor({
               event.preventDefault();
               saveSelection();
             }}
-            onClick={openTablePanel}
+            onClick={() => openTablePanel()}
             className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-bold transition ${tablePanelOpen ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             <Table2 size={15} />
@@ -2170,8 +2176,9 @@ export function RichTextEditor({
               }}
               disabled={disabled}
               spellCheck={false}
+              wrap="soft"
               aria-label={`${label} HTML 태그 편집`}
-              className="mk-rich-text-scroll w-full resize-none overflow-y-auto overscroll-contain bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              className="mk-rich-text-scroll w-full resize-none overflow-x-hidden overflow-y-auto overscroll-contain whitespace-pre-wrap break-words bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none [overflow-wrap:anywhere] disabled:cursor-not-allowed disabled:opacity-60"
               style={{ minHeight, maxHeight: resolvedMaxHeight }}
               placeholder="HTML 태그를 입력해 주세요. 저장 시 허용되지 않은 태그와 속성은 자동으로 제거됩니다."
             />
