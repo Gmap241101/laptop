@@ -426,12 +426,36 @@ export const createInquiryRepository = (pool) => {
       return this.getMemberInquiry({ memberUid: member.memberUid, publicId });
     },
 
-    async createGuestInquiry({ inquiryId, publicId, categoryId, title, bodyHtml, bodyText, author, passwordHash, consents }) {
+    async createGuestInquiry({ inquiryId, publicId, categoryId, title, bodyHtml, bodyText, author, passwordHash, rotateIdentityPassword = false, consents }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
         const category = await client.query(`SELECT category_id FROM app_inquiry_categories WHERE category_id=$1 AND deleted_at IS NULL`, [trim(categoryId)]);
         if (!category.rows[0]) throw repositoryError('inquiry_category_not_found', 'Inquiry category was not found.', 404);
+        if (rotateIdentityPassword) {
+          await client.query(
+            `DELETE FROM app_inquiry_guest_sessions s
+              WHERE EXISTS (
+                SELECT 1
+                  FROM app_inquiries i
+                 WHERE i.author_type='guest'
+                   AND LOWER(i.author_name)=LOWER($1)
+                   AND LOWER(i.author_email)=LOWER($2)
+                   AND i.author_phone=$3
+                   AND s.scope_public_ids ? i.public_id
+              )`,
+            [trim(author.name), lower(author.email), trim(author.phone)],
+          );
+          await client.query(
+            `UPDATE app_inquiries
+                SET guest_password_hash=$1
+              WHERE author_type='guest'
+                AND LOWER(author_name)=LOWER($2)
+                AND LOWER(author_email)=LOWER($3)
+                AND author_phone=$4`,
+            [String(passwordHash || ''), trim(author.name), lower(author.email), trim(author.phone)],
+          );
+        }
         await client.query(
           `INSERT INTO app_inquiries
              (inquiry_id,public_id,author_type,member_uid,category_id,title,body_html,body_text,

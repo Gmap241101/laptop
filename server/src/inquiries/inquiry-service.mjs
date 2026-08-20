@@ -333,10 +333,12 @@ export const createInquiryService = ({ repository }) => {
       if (password !== String(input?.passwordConfirm || '')) {
         throw serviceError('guest_inquiry_password_confirmation_mismatch', 'Guest inquiry password confirmation does not match.', 400);
       }
-      const identityCheck = await checkGuestIdentityPassword({ identity: author, password });
+      const currentPassword = validateGuestPasswordInput(input?.currentPassword || password);
+      const identityCheck = await checkGuestIdentityPassword({ identity: author, password: currentPassword });
       if (identityCheck.exists && !identityCheck.matched) {
         throw serviceError('guest_inquiry_identity_password_mismatch', 'Guest inquiry identity password does not match.', 409);
       }
+      const rotateIdentityPassword = identityCheck.exists && password !== currentPassword;
       const { terms } = await getSelectedGuestTerms(settings);
       const decisions = new Map((Array.isArray(input?.termDecisions) ? input.termDecisions : []).map((decision) => [
         `${trim(decision?.source)}:${trim(decision?.id)}`,
@@ -366,6 +368,7 @@ export const createInquiryService = ({ repository }) => {
           ...content,
           author,
           passwordHash,
+          rotateIdentityPassword,
           consents,
         });
         return Object.freeze({ ...created, passwordResetSupported: false });

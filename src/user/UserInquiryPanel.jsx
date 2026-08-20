@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
 
 import { Button, Card, CardContent, Input, Select } from '../components/CommonUI.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
@@ -113,6 +113,39 @@ const Field = ({ label, children }) => (
   </div>
 );
 
+const IdentityText = ({ label, value }) => (
+  <div className="min-w-0 border-b border-slate-100 pb-2">
+    <div className="text-xs font-semibold text-slate-500">{label}</div>
+    <div className="mt-1 break-words text-sm font-semibold text-slate-900">{value || '-'}</div>
+  </div>
+);
+
+const PasswordInput = ({ value, onChange, autoComplete = 'current-password', disabled = false }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete={autoComplete}
+        disabled={disabled}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 pr-11 text-sm outline-none transition mk-form-focus disabled:bg-slate-50 disabled:text-slate-500"
+      />
+      <button
+        type="button"
+        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 transition hover:text-slate-700 disabled:pointer-events-none disabled:opacity-50"
+        onClick={() => setVisible((current) => !current)}
+        disabled={disabled}
+        aria-label={visible ? '비밀번호 숨기기' : '비밀번호 보기'}
+        title={visible ? '비밀번호 숨기기' : '비밀번호 보기'}
+      >
+        {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+      </button>
+    </div>
+  );
+};
+
 export default function UserInquiryPanel({ ctx }) {
   const { hasFirebaseAuthSession, goToUserLogin, triggerToast } = ctx;
   const redirectingToLoginRef = useRef(false);
@@ -150,6 +183,7 @@ export default function UserInquiryPanel({ ctx }) {
   const [guestMode, setGuestMode] = useState('verify');
   const [guestForm, setGuestForm] = useState(emptyGuestForm);
   const [guestVerify, setGuestVerify] = useState({ name: '', email: '', phone: '', password: '' });
+  const [guestPreparedPassword, setGuestPreparedPassword] = useState('');
   const [guestAccess, setGuestAccess] = useState(readGuestAccess);
   const [guestVerifyLoading, setGuestVerifyLoading] = useState(false);
   const [guestPrepareLoading, setGuestPrepareLoading] = useState(false);
@@ -441,7 +475,13 @@ export default function UserInquiryPanel({ ctx }) {
       const termDecisions = guestTerms.map((term) => ({
         source: term.source, id: term.id, accepted: Boolean(guestForm.termDecisions?.[`${term.source}:${term.id}`]),
       }));
-      await inquiryApi.createGuest({ ...guestForm, bodyText, author: guestForm, termDecisions });
+      await inquiryApi.createGuest({
+        ...guestForm,
+        bodyText,
+        author: guestForm,
+        currentPassword: guestPreparedPassword,
+        termDecisions,
+      });
       const access = await inquiryApi.verifyGuest({
         name: guestForm.name,
         email: guestForm.email,
@@ -451,6 +491,7 @@ export default function UserInquiryPanel({ ctx }) {
       writeGuestAccess(access);
       setGuestAccess(access);
       setGuestForm(emptyGuestForm());
+      setGuestPreparedPassword('');
       setGuestMode('verify');
       setGuestEntry('guest');
       setListLoaded(false);
@@ -508,13 +549,14 @@ export default function UserInquiryPanel({ ctx }) {
       await inquiryApi.prepareGuestCreate(guestVerify);
       const nextConfig = await ensureGuestTerms();
       if (!nextConfig) return;
+      setGuestPreparedPassword(guestVerify.password);
       setGuestForm({
         ...emptyGuestForm(),
         name: guestVerify.name.trim(),
         email: guestVerify.email.trim(),
         phone: guestVerify.phone.trim(),
         password: guestVerify.password,
-        passwordConfirm: guestVerify.password,
+        passwordConfirm: '',
       });
       setGuestMode('create');
     } catch (error) {
@@ -768,20 +810,22 @@ export default function UserInquiryPanel({ ctx }) {
             <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
                 <h3 className="text-base font-bold text-slate-900">비회원 문의 등록</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">이메일과 연락처는 모두 필수입니다. 문의 확인 비밀번호는 재설정할 수 없으므로 분실하지 않도록 보관해 주세요.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">확인한 성명, 이메일, 연락처는 변경할 수 없습니다. 문의 확인 비밀번호는 아래 확인란에 다시 입력해 주세요. 새 비밀번호로 변경하려면 두 칸에 동일하게 입력해 주세요.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <IdentityText label="성명" value={guestForm.name} />
+                <IdentityText label="이메일" value={guestForm.email} />
+                <IdentityText label="연락처" value={guestForm.phone} />
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="성명"><Input value={guestForm.name} onChange={(name) => setGuestForm((current) => ({ ...current, name }))} /></Field>
                 <Field label="부서/팀"><Input value={guestForm.team} onChange={(team) => setGuestForm((current) => ({ ...current, team }))} /></Field>
-                <Field label="이메일"><Input type="email" value={guestForm.email} onChange={(email) => setGuestForm((current) => ({ ...current, email }))} /></Field>
-                <DomesticPhoneInput
-                  label="연락처"
-                  {...parseDomesticPhoneDraft(guestForm.phone)}
-                  onChange={(parts) => setGuestForm((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
-                  disabled={saving}
-                />
-                <Field label="문의 확인 비밀번호"><Input type="password" value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" /></Field>
-                <Field label="문의 확인 비밀번호 확인"><Input type="password" value={guestForm.passwordConfirm} onChange={(passwordConfirm) => setGuestForm((current) => ({ ...current, passwordConfirm }))} autoComplete="new-password" /></Field>
+                <div className="hidden md:block" />
+                <Field label="문의 확인 비밀번호">
+                  <PasswordInput value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" disabled={saving} />
+                </Field>
+                <Field label="문의 확인 비밀번호 확인">
+                  <PasswordInput value={guestForm.passwordConfirm} onChange={(passwordConfirm) => setGuestForm((current) => ({ ...current, passwordConfirm }))} autoComplete="new-password" disabled={saving} />
+                </Field>
               </div>
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,4fr)]">
                 <Field label="문의 구분">
@@ -803,7 +847,10 @@ export default function UserInquiryPanel({ ctx }) {
                         <div className="flex items-start gap-2">
                           <input type="checkbox" className="mt-1" checked={Boolean(guestForm.termDecisions?.[key])} onChange={(event) => setGuestForm((current) => ({ ...current, termDecisions: { ...current.termDecisions, [key]: event.target.checked } }))} />
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold text-slate-800">{term.required ? '[필수]' : '[선택]'} {term.title}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
+                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{term.required ? '필수' : '선택'}</span>
+                              <span>{term.title}</span>
+                            </div>
                             <RichTextContent html={term.contentHtml} text={term.contentText} className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-white p-3 text-xs leading-5 text-slate-600" />
                           </div>
                         </div>
@@ -828,7 +875,9 @@ export default function UserInquiryPanel({ ctx }) {
                 onChange={(parts) => setGuestVerify((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
                 disabled={guestVerifyLoading || guestPrepareLoading}
               />
-              <Field label="문의 확인 비밀번호"><Input type="password" value={guestVerify.password} onChange={(password) => setGuestVerify((current) => ({ ...current, password }))} /></Field>
+              <Field label="문의 확인 비밀번호">
+                <PasswordInput value={guestVerify.password} onChange={(password) => setGuestVerify((current) => ({ ...current, password }))} disabled={guestVerifyLoading || guestPrepareLoading} />
+              </Field>
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">비회원 문의 확인 비밀번호는 재설정할 수 없습니다. 비밀번호를 분실한 경우 기존 문의를 조회할 수 없습니다.</div>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" disabled={guestVerifyLoading || guestPrepareLoading} onClick={prepareGuestCreate}>{guestPrepareLoading ? '확인 중' : '문의 등록'}</Button>
