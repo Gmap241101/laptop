@@ -70,6 +70,9 @@ assert.doesNotMatch(userPanel, /\{term\.required \? '\[필수\]' : '\[선택\]'\
 assert.doesNotMatch(userPanel, />\s*처음으로\s*</);
 assert.doesNotMatch(userPanel, /variant=\{guestMode === 'create' \? 'primary' : 'outline'\}/);
 assert.doesNotMatch(userPanel, /variant=\{guestMode === 'verify' \? 'primary' : 'outline'\}/);
+assert.match(userPanel, /const startGuestCreateFromList = \(\) =>/);
+assert.match(userPanel, /onClick=\{startGuestCreateFromList\}>문의하기<\/Button>/);
+assert.match(userPanel, /인증 종료<\/Button>[\s\S]*문의하기<\/Button>/);
 
 // User inquiry must use the shared rich-text editor directly in the page instead of a create/edit modal textarea.
 assert.match(userPanel, /import\s*\{[^}]*RichTextEditor[^}]*\}\s*from\s*['"]\.\.\/components\/RichTextEditor\.jsx['"]/);
@@ -149,6 +152,14 @@ assert.doesNotMatch(adminPanel, /<th[^>]*>연락처<\/th>/);
 assert.match(adminPanel, /<span className="text-slate-400">이메일<\/span>/);
 assert.match(adminPanel, /<span className="text-slate-400">연락처<\/span>/);
 assert.match(adminPanel, /회원 UID/);
+assert.doesNotMatch(adminPanel, /min-w-\[1180px\]/, 'admin inquiry list must not force horizontal scrolling');
+assert.doesNotMatch(adminPanel, /<th[^>]*>관리<\/th>/, 'admin inquiry list must not include redundant management column');
+assert.doesNotMatch(adminPanel, />상세<\/Button>/, 'admin inquiry list title click is the only detail entry action');
+assert.match(adminPanel, /<table className="w-full table-fixed border-collapse text-left">/);
+const adminInquiryArticleEndIndex = adminPanel.indexOf('</article>', adminPanel.indexOf('{detail ?'));
+const adminInquiryActionsIndex = adminPanel.indexOf('>목록으로</Button>', adminInquiryArticleEndIndex);
+const adminInquiryAnswersIndex = adminPanel.indexOf('관리자 답변 이력', adminInquiryActionsIndex);
+assert.ok(adminInquiryArticleEndIndex >= 0 && adminInquiryActionsIndex > adminInquiryArticleEndIndex && adminInquiryAnswersIndex > adminInquiryActionsIndex, 'admin inquiry detail actions must render below inquiry body and above admin answers');
 
 assert.match(adminPanel, /import\s*\{[^}]*RichTextEditor[^}]*\}\s*from\s*['"]\.\.\/components\/RichTextEditor\.jsx['"]/);
 assert.doesNotMatch(adminPanel, /import\s+RichTextEditor\s+from\s*['"]\.\.\/components\/RichTextEditor\.jsx['"]/);

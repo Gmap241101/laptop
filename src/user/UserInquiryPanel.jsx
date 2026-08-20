@@ -576,6 +576,23 @@ export default function UserInquiryPanel({ ctx }) {
     setGuestMode('verify');
   };
 
+  const startGuestCreateFromList = () => {
+    writeGuestAccess(null);
+    setGuestAccess(null);
+    setItems([]);
+    setTotalCount(0);
+    setDetail(null);
+    setPage(1);
+    setListLoaded(false);
+    setEditingPublicId('');
+    setGuestEntry('guest');
+    if (hasGuestVerificationInput()) {
+      void prepareGuestCreate();
+    } else {
+      setGuestMode('verify');
+    }
+  };
+
   const listNumber = useMemo(() => {
     const map = new Map();
     items.forEach((item, index) => map.set(item.publicId, Math.max(1, totalCount - ((page - 1) * pageSize) - index)));
@@ -746,7 +763,12 @@ export default function UserInquiryPanel({ ctx }) {
         <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
         <PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage })} />
         <div className="flex flex-wrap gap-2 sm:justify-self-end">
-          {guest ? <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button> : <Button type="button" variant="primary" onClick={showMemberCompose}>문의 작성</Button>}
+          {guest ? (
+            <>
+              <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button>
+              <Button type="button" variant="primary" onClick={startGuestCreateFromList}>문의하기</Button>
+            </>
+          ) : <Button type="button" variant="primary" onClick={showMemberCompose}>문의 작성</Button>}
         </div>
       </div>
     </div>
