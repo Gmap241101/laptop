@@ -63,6 +63,8 @@ assert.match(userPanel, /currentPassword: guestPreparedPassword/);
 assert.match(userPanel, /<PasswordInput value=\{guestVerify\.password\}/);
 assert.match(userPanel, /<PasswordInput value=\{guestForm\.password\}/);
 assert.match(userPanel, /<PasswordInput value=\{guestForm\.passwordConfirm\}/);
+assert.match(userPanel, /문의 등록 및 확인 페이지에서 입력한 성명, 이메일, 연락처는 변경할 수 없습니다\. 문의 확인 비밀번호는 아래 확인란에 다시 입력하시고, 비밀번호 변경시 새 비밀번호를 두 칸에 동일하게 입력해 주세요\./);
+assert.match(userPanel, /<div className="grid gap-4 md:grid-cols-3">[\s\S]*?<Field label="부서\/팀">[\s\S]*?<Field label="문의 확인 비밀번호">[\s\S]*?<Field label="문의 확인 비밀번호 확인">/, 'guest inquiry compose must place team and both password fields in one equal 1:1:1 desktop row');
 assert.match(userPanel, /rounded-full border px-2 py-0\.5 text-\[10px\] font-bold/);
 assert.doesNotMatch(userPanel, /\{term\.required \? '\[필수\]' : '\[선택\]'\}/);
 assert.doesNotMatch(userPanel, />\s*처음으로\s*</);

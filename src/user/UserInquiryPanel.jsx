@@ -810,16 +810,15 @@ export default function UserInquiryPanel({ ctx }) {
             <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
                 <h3 className="text-base font-bold text-slate-900">비회원 문의 등록</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">확인한 성명, 이메일, 연락처는 변경할 수 없습니다. 문의 확인 비밀번호는 아래 확인란에 다시 입력해 주세요. 새 비밀번호로 변경하려면 두 칸에 동일하게 입력해 주세요.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">문의 등록 및 확인 페이지에서 입력한 성명, 이메일, 연락처는 변경할 수 없습니다. 문의 확인 비밀번호는 아래 확인란에 다시 입력하시고, 비밀번호 변경시 새 비밀번호를 두 칸에 동일하게 입력해 주세요.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
                 <IdentityText label="성명" value={guestForm.name} />
                 <IdentityText label="이메일" value={guestForm.email} />
                 <IdentityText label="연락처" value={guestForm.phone} />
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <Field label="부서/팀"><Input value={guestForm.team} onChange={(team) => setGuestForm((current) => ({ ...current, team }))} /></Field>
-                <div className="hidden md:block" />
                 <Field label="문의 확인 비밀번호">
                   <PasswordInput value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" disabled={saving} />
                 </Field>
