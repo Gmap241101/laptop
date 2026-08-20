@@ -9,6 +9,8 @@ const userWorkspace = read('src/user/UserWorkspace.jsx');
 const userPanel = read('src/user/UserInquiryPanel.jsx');
 const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
 const adminPanel = read('src/admin/AdminInquiryPanel.jsx');
+const adminInquiryCategoryDialog = read('src/admin/AdminInquiryCategoryDialog.jsx');
+const adminFaqCategoryDialog = read('src/admin/AdminFaqCategoryDialog.jsx');
 const api = read('src/features/inquiries/inquiryApi.js');
 const context = read('src/context/appContextSlices.js');
 const richTextEditor = read('src/components/RichTextEditor.jsx');
@@ -70,7 +72,7 @@ assert.doesNotMatch(userPanel, /\{term\.required \? '\[필수\]' : '\[선택\]'\
 assert.doesNotMatch(userPanel, />\s*처음으로\s*</);
 assert.doesNotMatch(userPanel, /variant=\{guestMode === 'create' \? 'primary' : 'outline'\}/);
 assert.doesNotMatch(userPanel, /variant=\{guestMode === 'verify' \? 'primary' : 'outline'\}/);
-assert.match(userPanel, /const startGuestCreateFromList = \(\) =>/);
+assert.match(userPanel, /const startGuestCreateFromList = async \(\) =>/);
 assert.match(userPanel, /onClick=\{startGuestCreateFromList\}>문의하기<\/Button>/);
 assert.match(userPanel, /인증 종료<\/Button>[\s\S]*문의하기<\/Button>/);
 
@@ -156,6 +158,28 @@ assert.doesNotMatch(adminPanel, /min-w-\[1180px\]/, 'admin inquiry list must not
 assert.doesNotMatch(adminPanel, /<th[^>]*>관리<\/th>/, 'admin inquiry list must not include redundant management column');
 assert.doesNotMatch(adminPanel, />상세<\/Button>/, 'admin inquiry list title click is the only detail entry action');
 assert.match(adminPanel, /<table className="w-full table-fixed border-collapse text-left">/);
+assert.match(adminPanel, /<AdminInquiryCategoryDialog/);
+assert.match(adminInquiryCategoryDialog, /문의 구분 관리/);
+assert.match(adminInquiryCategoryDialog, /문의 구분을 등록, 수정, 삭제합니다\./);
+for (const sharedCategoryDialogStyle of [
+  'fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4',
+  'w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl',
+  'text-base font-black text-slate-900',
+  'mt-1 text-[11px] leading-5 text-slate-500',
+  'min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-border-focus',
+  'max-h-[52vh] space-y-2 overflow-y-auto pr-1',
+  'rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-xs text-slate-700',
+  'rounded-lg px-1 py-1 hover:bg-blue-50 hover:text-blue-600',
+  'rounded-lg px-1 py-1 hover:bg-rose-50 hover:text-rose-600',
+  'flex justify-end border-t border-slate-100 pt-4',
+]) {
+  assert.ok(adminFaqCategoryDialog.includes(sharedCategoryDialogStyle), `FAQ category dialog reference style missing: ${sharedCategoryDialogStyle}`);
+  assert.ok(adminInquiryCategoryDialog.includes(sharedCategoryDialogStyle), `Inquiry category dialog must match FAQ category dialog style: ${sharedCategoryDialogStyle}`);
+}
+assert.match(adminInquiryCategoryDialog, /placeholder="새 문의 구분명"/);
+assert.match(adminInquiryCategoryDialog, /<Save size=\{13\} \/>\s*적용/);
+assert.match(adminInquiryCategoryDialog, /문의 \{Number\(category\.inquiryCount \|\| 0\)\}건/);
+assert.doesNotMatch(adminPanel, /maxWidth="max-w-2xl"/, 'inquiry category management must not use the oversized legacy modal width');
 const adminInquiryArticleEndIndex = adminPanel.indexOf('</article>', adminPanel.indexOf('{detail ?'));
 const adminInquiryActionsIndex = adminPanel.indexOf('>목록으로</Button>', adminInquiryArticleEndIndex);
 const adminInquiryAnswersIndex = adminPanel.indexOf('관리자 답변 이력', adminInquiryActionsIndex);

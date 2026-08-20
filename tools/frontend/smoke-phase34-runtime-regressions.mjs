@@ -866,7 +866,7 @@ assert.doesNotMatch(userBoardPanelSource, /\{item \? item\.authorName \|\| '관�
 assert.match(userBoardPanelSource, /text-sm font-normal text-slate-800 hover:text-orange-600/, 'notice previous/next titles must use normal font weight');
 assert.doesNotMatch(userBoardPanelSource, /min-h-\[260px\]/, 'short notice body must not reserve a fixed minimum height');
 const noticeNavigationIndex = userBoardPanelSource.indexOf("['이전글', selectedNoticePost.navigation?.previous]");
-const noticeDetailListButtonIndex = userBoardPanelSource.indexOf('onClick={closeNoticePost}', noticeNavigationIndex);
+const noticeDetailListButtonIndex = userBoardPanelSource.indexOf('onClick={handleCloseNoticePost}', noticeNavigationIndex);
 assert.ok(noticeNavigationIndex >= 0 && noticeDetailListButtonIndex > noticeNavigationIndex, 'notice detail list button must render below previous/next navigation');
 const noticeNavigationBlock = userBoardPanelSource.slice(noticeNavigationIndex, noticeDetailListButtonIndex);
 assert.doesNotMatch(noticeNavigationBlock, /<thead[^>]*>/, 'notice previous/next navigation must not render a gray title header');

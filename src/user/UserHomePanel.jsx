@@ -16,6 +16,7 @@ import {
   SITE_CONTENT_DOMAINS,
 } from '../features/content/siteContentCutover.js';
 import useSiteContentRefreshRevision from '../features/content/useSiteContentRefreshRevision.js';
+import { pushUserCommunityHistoryState } from '../routing/userCommunityHistory.js';
 import { getCachedUserHomeBootstrap } from './userHomeBootstrapService.js';
 
 const PROMOTION_LAYOUTS = {
@@ -390,6 +391,7 @@ export default function UserHomePanel({ ctx }) {
 
   const openHomeNotice = (post) => {
     goToUserNotice();
+    pushUserCommunityHistoryState({ tab: 'notice', view: 'detail', id: post?.id });
     openNoticePost(post);
   };
 

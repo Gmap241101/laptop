@@ -1,7 +1,14 @@
+import { useEffect } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import PaginationControls from '../components/PaginationControls.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
+import {
+  backUserCommunityHistoryState,
+  pushUserCommunityHistoryState,
+  readUserCommunityHistoryState,
+  replaceUserCommunityHistoryState,
+} from '../routing/userCommunityHistory.js';
 
 export default function UserBoardPanel({ ctx }) {
   const {
@@ -50,11 +57,74 @@ export default function UserBoardPanel({ ctx }) {
     setFaqSearchWithinCategory,
     setNoticePage,
     setUserNoticeQuery,
-    toggleFaqPost,
     userNoticeQuery,
     userTab,
   } = ctx;
 
+  useEffect(() => {
+    if (!['notice', 'faq'].includes(userTab) || typeof window === 'undefined') return undefined;
+
+    const current = readUserCommunityHistoryState();
+    if (!current || current.tab !== userTab) {
+      replaceUserCommunityHistoryState({ tab: userTab, view: 'list' });
+    }
+
+    const syncCommunityHistory = () => {
+      const target = readUserCommunityHistoryState();
+      if (!target || target.tab !== userTab) return;
+
+      if (userTab === 'notice') {
+        if (target.view === 'detail' && target.id) {
+          void openNoticePost({ id: target.id }, { recordView: false });
+        } else {
+          closeNoticePost();
+        }
+        return;
+      }
+
+      setExpandedFaqPostId(target.view === 'detail' ? target.id : '');
+    };
+
+    syncCommunityHistory();
+    window.addEventListener('popstate', syncCommunityHistory);
+    return () => window.removeEventListener('popstate', syncCommunityHistory);
+  }, [closeNoticePost, openNoticePost, setExpandedFaqPostId, userTab]);
+
+  const handleOpenNoticePost = (post) => {
+    if (!post?.id) return;
+    pushUserCommunityHistoryState({ tab: 'notice', view: 'detail', id: post.id });
+    void openNoticePost(post);
+  };
+
+  const handleCloseNoticePost = () => {
+    if (backUserCommunityHistoryState({ tab: 'notice', view: 'detail', id: selectedNoticePost?.id })) {
+      return;
+    }
+    closeNoticePost();
+    replaceUserCommunityHistoryState({ tab: 'notice', view: 'list' });
+  };
+
+  const handleFaqToggle = (postId) => {
+    const normalizedPostId = String(postId || '').trim();
+    if (!normalizedPostId) return;
+
+    if (expandedFaqPostId === normalizedPostId) {
+      if (backUserCommunityHistoryState({ tab: 'faq', view: 'detail', id: normalizedPostId })) {
+        return;
+      }
+      setExpandedFaqPostId('');
+      replaceUserCommunityHistoryState({ tab: 'faq', view: 'list' });
+      return;
+    }
+
+    pushUserCommunityHistoryState({ tab: 'faq', view: 'detail', id: normalizedPostId });
+    setExpandedFaqPostId(normalizedPostId);
+  };
+
+  const resetFaqHistoryToList = () => {
+    setExpandedFaqPostId('');
+    replaceUserCommunityHistoryState({ tab: 'faq', view: 'list' });
+  };
 
   const handleNotFoundBack = () => {
     if (typeof window === 'undefined') return;
@@ -220,7 +290,7 @@ export default function UserBoardPanel({ ctx }) {
                                       <button
                                         type="button"
                                         className="min-w-0 truncate text-left text-sm font-normal text-slate-800 hover:text-orange-600 hover:underline"
-                                        onClick={() => openNoticePost(item)}
+                                        onClick={() => handleOpenNoticePost(item)}
                                       >
                                         {item.title}
                                       </button>
@@ -246,7 +316,7 @@ export default function UserBoardPanel({ ctx }) {
                           type="button"
                           variant="outline"
                           className="shrink-0 px-4 py-2 text-xs"
-                          onClick={closeNoticePost}
+                          onClick={handleCloseNoticePost}
                         >
                           목록으로
                         </Button>
@@ -352,7 +422,7 @@ export default function UserBoardPanel({ ctx }) {
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          openNoticePost(
+                                          handleOpenNoticePost(
                                             item.post
                                           )
                                         }
@@ -430,7 +500,7 @@ export default function UserBoardPanel({ ctx }) {
                                 setActiveFaqCategoryId(
                                   category.id
                                 );
-                                setExpandedFaqPostId('');
+                                resetFaqHistoryToList();
                                 setFaqPage(1);
                               }}
                               className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
@@ -460,7 +530,7 @@ export default function UserBoardPanel({ ctx }) {
                             setFaqQuery(
                               event.target.value
                             );
-                            setExpandedFaqPostId('');
+                            resetFaqHistoryToList();
                             setFaqPage(1);
                           }}
                           placeholder="FAQ 제목 또는 본문 검색"
@@ -478,7 +548,7 @@ export default function UserBoardPanel({ ctx }) {
                             setFaqSearchWithinCategory(
                               event.target.checked
                             );
-                            setExpandedFaqPostId('');
+                            resetFaqHistoryToList();
                             setFaqPage(1);
                           }}
                           className="h-4 w-4 rounded border-slate-300 accent-orange-500"
@@ -526,7 +596,7 @@ export default function UserBoardPanel({ ctx }) {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    toggleFaqPost(
+                                    handleFaqToggle(
                                       post.id
                                     )
                                   }
@@ -637,7 +707,7 @@ export default function UserBoardPanel({ ctx }) {
                             totalPages={faqTotalPages}
                             onPageChange={(nextPage) => {
                               setFaqPage(nextPage);
-                              setExpandedFaqPostId('');
+                              resetFaqHistoryToList();
                             }}
                           />
                         )}

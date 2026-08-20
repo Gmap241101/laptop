@@ -8,6 +8,12 @@ import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 import {
+  backUserCommunityHistoryState,
+  pushUserCommunityHistoryState,
+  readUserCommunityHistoryState,
+  replaceUserCommunityHistoryState,
+} from '../routing/userCommunityHistory.js';
+import {
   DOMESTIC_PHONE_PREFIXES,
   buildDomesticPhoneNumber,
   isValidDomesticPhoneNumber,
@@ -255,6 +261,7 @@ export default function UserInquiryPanel({ ctx }) {
     setGuestEntry('intro');
     setGuestMode('verify');
     setEditingPublicId('');
+    replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'intro' });
   }, []);
 
   const loadList = useCallback(async ({ targetPage = page, access = guestAccess, search = memberSearchQuery } = {}) => {
@@ -350,20 +357,26 @@ export default function UserInquiryPanel({ ctx }) {
     setForm(emptyForm());
   }, [categories]);
 
-  const showMemberCompose = () => {
+  const showMemberCompose = ({ historyMode = 'push' } = {}) => {
     resetOwnedForm();
     setDetail(null);
     setMemberView('compose');
+    if (historyMode === 'push') {
+      pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose' });
+    }
   };
 
-  const showMemberList = async () => {
+  const showMemberList = async ({ historyMode = 'none' } = {}) => {
     setEditingPublicId('');
     setDetail(null);
     setMemberView('list');
+    if (historyMode === 'replace') {
+      replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
+    }
     if (!listLoaded) await loadList({ targetPage: 1 });
   };
 
-  const openDetail = async (publicId) => {
+  const openDetail = async (publicId, { historyMode = 'push' } = {}) => {
     setDetailLoading(true);
     try {
       const next = hasFirebaseAuthSession
@@ -371,6 +384,9 @@ export default function UserInquiryPanel({ ctx }) {
         : await inquiryApi.getGuest(publicId, guestAccess?.token);
       setDetail(next);
       if (hasFirebaseAuthSession) setMemberView('detail');
+      if (historyMode === 'push') {
+        pushUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: publicId });
+      }
     } catch (error) {
       notify('문의 상세를 불러오지 못했습니다.', 'error');
       if (!hasFirebaseAuthSession && error?.status === 401) clearGuestSession();
@@ -388,18 +404,25 @@ export default function UserInquiryPanel({ ctx }) {
       bodyHtml: detail.bodyHtml || detail.bodyText || '',
     });
     if (hasFirebaseAuthSession) setMemberView('compose');
+    pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose', id: detail.publicId });
   };
 
   const cancelOwnedEdit = () => {
+    const currentHistory = readUserCommunityHistoryState();
+    if (currentHistory?.tab === 'inquiry' && currentHistory.view === 'compose' && backUserCommunityHistoryState({ tab: 'inquiry', view: 'compose', id: currentHistory.id })) {
+      return;
+    }
     if (editingPublicId && detail) {
       setEditingPublicId('');
       if (hasFirebaseAuthSession) setMemberView('detail');
       return;
     }
-    if (hasFirebaseAuthSession) void showMemberList();
+    if (hasFirebaseAuthSession) void showMemberList({ historyMode: 'replace' });
   };
 
   const saveMemberOrGuestInquiry = async () => {
+    const wasEditing = Boolean(editingPublicId);
+    const editingId = editingPublicId;
     const bodyText = htmlToText(form.bodyHtml);
     if (!form.categoryId || !form.title.trim() || !bodyText) {
       notify('문의 구분, 제목, 본문을 모두 입력해 주세요.', 'error');
@@ -422,8 +445,12 @@ export default function UserInquiryPanel({ ctx }) {
       if (next) {
         setDetail(next);
         if (hasFirebaseAuthSession) setMemberView('detail');
+        if (wasEditing && backUserCommunityHistoryState({ tab: 'inquiry', view: 'compose', id: editingId })) {
+          return;
+        }
+        replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: next.publicId || editingId });
       } else if (hasFirebaseAuthSession) {
-        await showMemberList();
+        await showMemberList({ historyMode: 'replace' });
       }
     } catch (error) {
       const answered = error?.code === 'inquiry_answered_mutation_forbidden';
@@ -442,11 +469,15 @@ export default function UserInquiryPanel({ ctx }) {
       notify('문의가 삭제되었습니다.');
       setDetail(null);
       setListLoaded(false);
+      const returnedByHistory = backUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: detail.publicId });
       if (hasFirebaseAuthSession) {
         setMemberView('list');
         await loadList({ targetPage: 1 });
       } else {
         await loadList({ targetPage: 1, access: guestAccess });
+      }
+      if (!returnedByHistory) {
+        replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
       }
     } catch (error) {
       const answered = ['inquiry_answered_mutation_forbidden', 'inquiry_answered_delete_forbidden'].includes(error?.code);
@@ -455,6 +486,7 @@ export default function UserInquiryPanel({ ctx }) {
   };
 
   const createGuest = async () => {
+    const hadGuestAccess = Boolean(guestAccess?.token);
     const bodyText = htmlToText(guestForm.bodyHtml);
     if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !isValidDomesticPhoneNumber(parseDomesticPhoneDraft(guestForm.phone))
       || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || !bodyText) {
@@ -495,6 +527,12 @@ export default function UserInquiryPanel({ ctx }) {
       setGuestMode('verify');
       setGuestEntry('guest');
       setListLoaded(false);
+      const returnedToVerifiedList = hadGuestAccess
+        ? backUserCommunityHistoryState({ tab: 'inquiry', view: 'compose' })
+        : false;
+      if (!returnedToVerifiedList) {
+        replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
+      }
       notify('비회원 문의가 등록되었습니다. 현재 브라우저에서 바로 확인할 수 있습니다.');
       await loadList({ targetPage: 1, access });
     } catch (error) {
@@ -530,6 +568,7 @@ export default function UserInquiryPanel({ ctx }) {
       setGuestAccess(access);
       setDetail(null);
       setListLoaded(false);
+      replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
       await loadList({ targetPage: 1, access });
       notify('비회원 문의 확인 인증이 완료되었습니다.');
     } catch (error) {
@@ -559,6 +598,7 @@ export default function UserInquiryPanel({ ctx }) {
         passwordConfirm: '',
       });
       setGuestMode('create');
+      pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose' });
     } catch (error) {
       const message = error?.code === 'guest_inquiry_identity_password_mismatch'
         ? '기존 비회원 문의의 문의 확인 비밀번호와 일치하지 않습니다.'
@@ -574,23 +614,161 @@ export default function UserInquiryPanel({ ctx }) {
   const enterGuestFlow = async () => {
     setGuestEntry('guest');
     setGuestMode('verify');
+    replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'verify' });
   };
 
-  const startGuestCreateFromList = () => {
-    writeGuestAccess(null);
-    setGuestAccess(null);
-    setItems([]);
-    setTotalCount(0);
+  const startGuestCreateFromList = async () => {
     setDetail(null);
-    setPage(1);
-    setListLoaded(false);
     setEditingPublicId('');
     setGuestEntry('guest');
+
     if (hasGuestVerificationInput()) {
-      void prepareGuestCreate();
+      setGuestPrepareLoading(true);
+      try {
+        const nextConfig = await ensureGuestTerms();
+        if (!nextConfig) return;
+        setGuestPreparedPassword(guestVerify.password);
+        setGuestForm({
+          ...emptyGuestForm(),
+          name: guestVerify.name.trim(),
+          email: guestVerify.email.trim(),
+          phone: guestVerify.phone.trim(),
+          password: guestVerify.password,
+          passwordConfirm: '',
+        });
+        setGuestMode('create');
+        pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose' });
+      } finally {
+        setGuestPrepareLoading(false);
+      }
+      return;
+    }
+
+    const firstInquiryId = items[0]?.publicId;
+    if (!firstInquiryId || !guestAccess?.token) {
+      setGuestMode('verify');
+      replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'verify' });
+      return;
+    }
+
+    setGuestPrepareLoading(true);
+    try {
+      const [identityInquiry, nextConfig] = await Promise.all([
+        inquiryApi.getGuest(firstInquiryId, guestAccess.token),
+        ensureGuestTerms(),
+      ]);
+      if (!identityInquiry || !nextConfig) return;
+      setGuestPreparedPassword('');
+      setGuestForm({
+        ...emptyGuestForm(),
+        name: identityInquiry.authorName || '',
+        email: identityInquiry.authorEmail || '',
+        phone: identityInquiry.authorPhone || '',
+        password: '',
+        passwordConfirm: '',
+      });
+      setGuestMode('create');
+      pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose' });
+    } catch (error) {
+      if (['guest_inquiry_session_required', 'guest_inquiry_session_invalid'].includes(error?.code)) {
+        clearGuestSession();
+        return;
+      }
+      notify('비회원 문의 등록 화면을 준비하지 못했습니다.', 'error');
+    } finally {
+      setGuestPrepareLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const current = readUserCommunityHistoryState();
+    if (!current || current.tab !== 'inquiry') {
+      replaceUserCommunityHistoryState({
+        tab: 'inquiry',
+        view: hasFirebaseAuthSession || guestAccess?.token
+          ? 'list'
+          : guestEntry === 'guest'
+            ? 'verify'
+            : 'intro',
+      });
+    }
+
+    const syncInquiryHistory = () => {
+      const target = readUserCommunityHistoryState();
+      if (!target || target.tab !== 'inquiry') return;
+
+      if (target.view === 'detail' && target.id) {
+        setEditingPublicId('');
+        void openDetail(target.id, { historyMode: 'none' });
+        return;
+      }
+
+      if (target.view === 'compose') {
+        setDetail(null);
+        if (hasFirebaseAuthSession) {
+          setMemberView('compose');
+          if (target.id) setEditingPublicId(target.id);
+        } else {
+          setGuestEntry('guest');
+          setGuestMode('create');
+        }
+        return;
+      }
+
+      setDetail(null);
+      setEditingPublicId('');
+      if (hasFirebaseAuthSession) {
+        setMemberView('list');
+        if (!listLoaded) void loadList({ targetPage: 1 });
+        return;
+      }
+
+      if (target.view === 'list') {
+        setGuestMode('verify');
+        if (guestAccess?.token && !listLoaded) {
+          void loadList({ targetPage: 1, access: guestAccess });
+        }
+        return;
+      }
+
+      if (target.view === 'verify') {
+        setGuestEntry('guest');
+        setGuestMode('verify');
+        return;
+      }
+
+      if (target.view === 'intro') {
+        setGuestEntry('intro');
+        setGuestMode('verify');
+        return;
+      }
+
+      setGuestMode('verify');
+    };
+
+    syncInquiryHistory();
+    window.addEventListener('popstate', syncInquiryHistory);
+    return () => window.removeEventListener('popstate', syncInquiryHistory);
+  // openDetail intentionally stays outside dependencies so the popstate listener is not recreated on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestAccess?.token, guestEntry, hasFirebaseAuthSession, listLoaded]);
+
+  const returnToInquiryList = () => {
+    const current = readUserCommunityHistoryState();
+    if (current?.tab === 'inquiry' && current.view === 'detail' && backUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: current.id })) {
+      return;
+    }
+    setDetail(null);
+    setEditingPublicId('');
+    if (hasFirebaseAuthSession) {
+      setMemberView('list');
+      if (!listLoaded) void loadList({ targetPage: 1 });
     } else {
       setGuestMode('verify');
     }
+    replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
   };
 
   const listNumber = useMemo(() => {
@@ -705,14 +883,7 @@ export default function UserInquiryPanel({ ctx }) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
-              setDetail(null);
-              setEditingPublicId('');
-              if (hasFirebaseAuthSession) {
-                setMemberView('list');
-                if (!listLoaded) void loadList({ targetPage: 1 });
-              }
-            }}
+            onClick={returnToInquiryList}
           >
             <ArrowLeft size={14} /> 목록으로
           </Button>
@@ -824,7 +995,7 @@ export default function UserInquiryPanel({ ctx }) {
         </div>
       ) : null}
 
-      {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'guest' ? (
+      {!hasFirebaseAuthSession && config.allowGuest && guestEntry === 'guest' && (guestMode === 'create' || !guestAccess?.token) ? (
         <>
           {guestMode === 'create' && guestTermsLoading ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">비회원 문의 설정을 불러오는 중입니다.</div>
@@ -913,9 +1084,9 @@ export default function UserInquiryPanel({ ctx }) {
       {hasFirebaseAuthSession && memberView === 'detail' && detail && !editingPublicId ? renderDetail() : null}
       {hasFirebaseAuthSession && memberView === 'list' ? renderList() : null}
 
-      {!hasFirebaseAuthSession && guestAccess?.token && editingPublicId ? renderOwnedEditor() : null}
-      {!hasFirebaseAuthSession && guestAccess?.token && !editingPublicId && detail ? renderDetail() : null}
-      {!hasFirebaseAuthSession && guestAccess?.token && !editingPublicId && !detail ? renderList({ guest: true }) : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && editingPublicId ? renderOwnedEditor() : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && detail ? renderDetail() : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && !detail ? renderList({ guest: true }) : null}
     </div>
   );
 }

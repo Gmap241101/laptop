@@ -1332,10 +1332,12 @@ export default function useBoardContentSubscriptionController({
   }, [faqCategories, activeFaqCategoryId]);
 
   const openNoticePost = useCallback(
-    async (post) => {
+    async (post, { recordView = true } = {}) => {
       if (!post?.id) return;
 
       setSelectedNoticePostId(post.id);
+
+      if (!recordView) return;
 
       if (boardReadRequested && !noticePostgresFallback) {
         try {

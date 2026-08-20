@@ -6,6 +6,7 @@ import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 import PaginationControls from '../components/PaginationControls.jsx';
+import AdminInquiryCategoryDialog from './AdminInquiryCategoryDialog.jsx';
 
 const STATUS_LABELS = Object.freeze({ waiting: '답변대기', answered: '답변완료', additional: '추가답변' });
 const STATUS_CLASSES = Object.freeze({
@@ -73,8 +74,11 @@ export default function AdminInquiryPanel({ ctx }) {
   const [termOpen, setTermOpen] = useState(false);
   const [termForm, setTermForm] = useState({ id: '', title: '', bodyHtml: '', required: true, enabled: true });
   const [termSaving, setTermSaving] = useState(false);
-  const [categoryDraft, setCategoryDraft] = useState({ id: '', name: '' });
-  const [categorySaving, setCategorySaving] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState('');
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [categorySavingId, setCategorySavingId] = useState('');
+  const [categoryDeletingId, setCategoryDeletingId] = useState('');
   const [settingsDraft, setSettingsDraft] = useState({ allowGuest: false, postsPerPage: 10, guestTermBindings: [] });
   const [settingsSaving, setSettingsSaving] = useState(false);
 
@@ -236,33 +240,64 @@ export default function AdminInquiryPanel({ ctx }) {
 
   const isTermBound = (source, id) => (settingsDraft.guestTermBindings || []).some((binding) => binding.source === source && binding.id === id);
 
-  const saveCategory = async () => {
-    if (!trim(categoryDraft.name)) { notify('문의 구분명을 입력해 주세요.', 'error'); return; }
-    setCategorySaving(true);
+  const addCategory = async () => {
+    const name = trim(newCategoryName);
+    if (!name) { notify('문의 구분명을 입력해 주세요.', 'error'); return; }
+    setCategorySavingId('new');
     try {
-      await inquiryApi.saveCategory(categoryDraft);
-      setCategoryDraft({ id: '', name: '' });
+      await inquiryApi.saveCategory({ id: '', name });
+      setNewCategoryName('');
       const bundle = await loadSettings({ silent: true });
-      notify(categoryDraft.id ? '문의 구분이 수정되었습니다.' : '문의 구분이 등록되었습니다.');
+      notify('문의 구분이 등록되었습니다.');
       if (bundle) await loadList({ targetPage: 1, bundle });
     } catch (error) {
       notify(`문의 구분 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
     } finally {
-      setCategorySaving(false);
+      setCategorySavingId('');
+    }
+  };
+
+  const startEditCategory = (category) => {
+    setEditingCategoryId(category.id);
+    setEditingCategoryName(category.name || '');
+  };
+
+  const saveCategoryName = async (category) => {
+    const name = trim(editingCategoryName);
+    if (!name) { notify('문의 구분명을 입력해 주세요.', 'error'); return; }
+    setCategorySavingId(category.id);
+    try {
+      await inquiryApi.saveCategory({ id: category.id, name });
+      setEditingCategoryId('');
+      setEditingCategoryName('');
+      const bundle = await loadSettings({ silent: true });
+      notify('문의 구분이 수정되었습니다.');
+      if (bundle) await loadList({ targetPage: 1, bundle });
+    } catch (error) {
+      notify(`문의 구분 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
+    } finally {
+      setCategorySavingId('');
     }
   };
 
   const confirmDeleteCategory = (category) => {
     triggerConfirm('문의 구분 삭제', `'${category.name}' 문의 구분을 삭제하시겠습니까? 사용 중인 문의 구분은 삭제할 수 없습니다.`, async () => {
+      setCategoryDeletingId(category.id);
       try {
         await inquiryApi.deleteCategory(category.id);
         if (categoryId === category.id) setCategoryId('all');
+        if (editingCategoryId === category.id) {
+          setEditingCategoryId('');
+          setEditingCategoryName('');
+        }
         const bundle = await loadSettings({ silent: true });
         notify('문의 구분이 삭제되었습니다.');
         if (bundle) await loadList({ targetPage: 1, bundle });
       } catch (error) {
         const suffix = error?.code === 'inquiry_category_in_use' ? ` 현재 문의 ${Number(error?.payload?.inquiryCount || 0)}건에서 사용 중입니다.` : '';
         notify(`문의 구분 삭제에 실패했습니다.${suffix}${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
+      } finally {
+        setCategoryDeletingId('');
       }
     });
   };
@@ -352,7 +387,24 @@ export default function AdminInquiryPanel({ ctx }) {
 
       {answerOpen ? <ModalShell title={answerEditing ? '관리자 답변 수정' : '관리자 답변 등록'} description="동일 문의에 관리자 답변을 여러 번 등록할 수 있습니다." onClose={() => !answerSaving && setAnswerOpen(false)}><div className="p-5"><RichTextEditor label="답변 내용" value={answerHtml} onChange={setAnswerHtml} minHeight={320} disabled={answerSaving} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={answerSaving} onClick={() => setAnswerOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={answerSaving} onClick={saveAnswer}>{answerSaving ? '저장 중' : '답변 저장'}</Button></div></ModalShell> : null}
 
-      {categoryOpen ? <ModalShell title="문의 구분 관리" description="문의 작성 시 선택할 문의 구분을 등록·수정·삭제합니다." maxWidth="max-w-2xl" onClose={() => !categorySaving && setCategoryOpen(false)}><div className="space-y-4 p-5"><div className="flex gap-2"><Input value={categoryDraft.name} onChange={(name) => setCategoryDraft((c) => ({ ...c, name }))} placeholder="문의 구분명" onKeyDown={(e) => { if (e.key === 'Enter') void saveCategory(); }} /><Button type="button" variant="primary" disabled={categorySaving} onClick={saveCategory}>{categoryDraft.id ? '수정 적용' : '등록'}</Button>{categoryDraft.id ? <Button type="button" variant="outline" onClick={() => setCategoryDraft({ id: '', name: '' })}>취소</Button> : null}</div><div className="divide-y divide-slate-100 rounded-xl border border-slate-200">{categories.map((category) => <div key={category.id} className="flex items-center justify-between gap-3 px-4 py-3"><div><div className="text-sm font-semibold text-slate-800">{category.name}</div><div className="mt-1 text-[11px] text-slate-500">문의 {Number(category.inquiryCount || 0)}건</div></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setCategoryDraft({ id: category.id, name: category.name })}><Edit3 size={13} /> 수정</Button><Button type="button" variant="dangerOutline" onClick={() => confirmDeleteCategory(category)}><Trash2 size={13} /> 삭제</Button></div></div>)}</div></div></ModalShell> : null}
+      <AdminInquiryCategoryDialog
+        open={categoryOpen}
+        Button={Button}
+        categories={categories}
+        categoryDeletingId={categoryDeletingId}
+        categorySavingId={categorySavingId}
+        newCategoryName={newCategoryName}
+        editingCategoryId={editingCategoryId}
+        editingCategoryName={editingCategoryName}
+        addCategory={addCategory}
+        confirmDeleteCategory={confirmDeleteCategory}
+        saveCategoryName={saveCategoryName}
+        setEditingCategoryId={setEditingCategoryId}
+        setEditingCategoryName={setEditingCategoryName}
+        setNewCategoryName={setNewCategoryName}
+        startEditCategory={startEditCategory}
+        onClose={() => setCategoryOpen(false)}
+      />
 
       {settingsOpen ? <ModalShell title="문의하기 설정" description="문의 가능 대상, 비회원 적용 약관, 페이지당 목록 표시 수를 설정합니다." maxWidth="max-w-4xl" onClose={() => !settingsSaving && setSettingsOpen(false)}><div className="space-y-6 p-5"><div><div className="text-sm font-bold text-slate-900">문의 가능 대상</div><div className="mt-3 flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="radio" name="inquiryAudience" checked={!settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: false }))} /> 회원만 문의 가능</label><label className="flex items-center gap-2"><input type="radio" name="inquiryAudience" checked={settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: true }))} /> 회원 + 비회원 문의 가능</label></div></div><Field label="페이지당 목록 표시 수"><Select value={settingsDraft.postsPerPage} onChange={(value) => setSettingsDraft((c) => ({ ...c, postsPerPage: Number(value) }))}>{PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}개</option>)}</Select></Field><div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-bold text-slate-900">비회원 문의 적용 약관</div><p className="mt-1 text-xs text-slate-500">회원가입 약관과 문의 전용 약관을 복수 선택할 수 있습니다.</p></div><Button type="button" variant="outline" onClick={() => openTermEditor()}><Plus size={14} /> 문의 전용 약관 등록</Button></div>{signupTerms.length ? <div className="rounded-xl border border-slate-200 p-4"><div className="mb-3 text-xs font-bold text-slate-700">기존 회원가입 약관</div><div className="space-y-2">{signupTerms.map((term) => <label key={`signup:${term.id}`} className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={isTermBound('signup', term.id)} onChange={(e) => toggleTermBinding('signup', term.id, e.target.checked)} /><span><strong>{term.required ? '[필수]' : '[선택]'} {term.title}</strong> <span className="text-slate-400">revision {term.revision}</span></span></label>)}</div></div> : null}<div className="rounded-xl border border-slate-200 p-4"><div className="mb-3 text-xs font-bold text-slate-700">문의 전용 약관</div>{inquiryTerms.length ? <div className="space-y-3">{inquiryTerms.map((term) => <div key={`inquiry:${term.id}`} className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-slate-50 p-3"><label className="flex min-w-0 flex-1 items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" disabled={term.enabled === false} checked={isTermBound('inquiry', term.id)} onChange={(e) => toggleTermBinding('inquiry', term.id, e.target.checked)} /><span><strong>{term.required ? '[필수]' : '[선택]'} {term.title}</strong> <span className="text-slate-400">revision {term.revision}{term.enabled === false ? ' · 사용 안 함' : ''}</span></span></label><div className="flex gap-1.5"><Button type="button" variant="outline" onClick={() => openTermEditor(term)}>수정</Button><Button type="button" variant="dangerOutline" onClick={() => confirmDeleteTerm(term)}>삭제</Button></div></div>)}</div> : <div className="text-xs text-slate-400">등록된 문의 전용 약관이 없습니다.</div>}</div></div></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={settingsSaving} onClick={() => setSettingsOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={settingsSaving} onClick={saveSettings}>{settingsSaving ? '저장 중' : '설정 저장'}</Button></div></ModalShell> : null}
 
