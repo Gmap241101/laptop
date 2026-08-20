@@ -97,11 +97,8 @@ export default function UserBoardPanel({ ctx }) {
   };
 
   const handleCloseNoticePost = () => {
-    if (backUserCommunityHistoryState({ tab: 'notice', view: 'detail', id: selectedNoticePost?.id })) {
-      return;
-    }
     closeNoticePost();
-    replaceUserCommunityHistoryState({ tab: 'notice', view: 'list' });
+    pushUserCommunityHistoryState({ tab: 'notice', view: 'list' });
   };
 
   const handleFaqToggle = (postId) => {

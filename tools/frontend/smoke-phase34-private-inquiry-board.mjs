@@ -75,6 +75,14 @@ assert.doesNotMatch(userPanel, /variant=\{guestMode === 'verify' \? 'primary' : 
 assert.match(userPanel, /const startGuestCreateFromList = async \(\) =>/);
 assert.match(userPanel, /onClick=\{startGuestCreateFromList\}>문의하기<\/Button>/);
 assert.match(userPanel, /인증 종료<\/Button>[\s\S]*문의하기<\/Button>/);
+assert.match(userPanel, /const cancelGuestCreate = \(\) =>/);
+assert.match(userPanel, /onClick=\{cancelGuestCreate\}>취소<\/Button>[\s\S]*onClick=\{createGuest\}>\{saving \? '등록 중' : '문의 등록'\}<\/Button>/, 'guest inquiry compose must provide cancel next to submit');
+const guestCancelStart = userPanel.indexOf('const cancelGuestCreate = () =>');
+const guestCancelEnd = userPanel.indexOf('const startGuestCreateFromList = async () =>', guestCancelStart);
+const guestCancelBlock = userPanel.slice(guestCancelStart, guestCancelEnd);
+assert.match(guestCancelBlock, /backUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'compose'/, 'guest compose cancel must return through inquiry internal history');
+assert.match(guestCancelBlock, /guestAccess\?\.token[\s\S]*view: 'list'/, 'authenticated guest compose cancel must fall back to the verified inquiry list');
+assert.doesNotMatch(guestCancelBlock, /writeGuestAccess\(null\)|setGuestAccess\(null\)|clearGuestSession\(/, 'guest compose cancel must preserve guest authentication');
 
 // User inquiry must use the shared rich-text editor directly in the page instead of a create/edit modal textarea.
 assert.match(userPanel, /import\s*\{[^}]*RichTextEditor[^}]*\}\s*from\s*['"]\.\.\/components\/RichTextEditor\.jsx['"]/);

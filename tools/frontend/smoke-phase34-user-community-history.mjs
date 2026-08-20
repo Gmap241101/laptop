@@ -21,7 +21,8 @@ for (const marker of [
 
 assert.match(boardPanel, /window\.addEventListener\('popstate', syncCommunityHistory\)/);
 assert.match(boardPanel, /pushUserCommunityHistoryState\(\{ tab: 'notice', view: 'detail', id: post\.id \}\)/);
-assert.match(boardPanel, /backUserCommunityHistoryState\(\{ tab: 'notice', view: 'detail'/);
+assert.match(boardPanel, /const handleCloseNoticePost = \(\) => \{[\s\S]*closeNoticePost\(\);[\s\S]*pushUserCommunityHistoryState\(\{ tab: 'notice', view: 'list' \}\)/, 'notice list button must navigate directly to the list instead of stepping backward through viewed posts');
+assert.doesNotMatch(boardPanel.match(/const handleCloseNoticePost = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '', /backUserCommunityHistoryState|window\.history\.back/, 'notice list button must not behave as browser Back');
 assert.match(boardPanel, /pushUserCommunityHistoryState\(\{ tab: 'faq', view: 'detail', id: normalizedPostId \}\)/);
 assert.match(boardPanel, /setExpandedFaqPostId\(target\.view === 'detail' \? target\.id : ''\)/);
 assert.match(boardPanel, /openNoticePost\(\{ id: target\.id \}, \{ recordView: false \}\)/);
@@ -33,7 +34,8 @@ assert.match(inquiryPanel, /window\.addEventListener\('popstate', syncInquiryHis
 assert.match(inquiryPanel, /pushUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'compose'/);
 assert.match(inquiryPanel, /pushUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'detail', id: publicId \}\)/);
 assert.match(inquiryPanel, /replaceUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'list' \}\)/);
-assert.match(inquiryPanel, /backUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'detail'/);
+assert.match(inquiryPanel, /const returnToInquiryList = \(\) => \{[\s\S]*pushUserCommunityHistoryState\(\{ tab: 'inquiry', view: 'list' \}\)/, 'inquiry list button must navigate directly to the list instead of stepping backward through viewed inquiries');
+assert.doesNotMatch(inquiryPanel.match(/const returnToInquiryList = \(\) => \{[\s\S]*?\n  \};/)?.[0] || '', /backUserCommunityHistoryState|window\.history\.back/, 'inquiry list button must not behave as browser Back');
 assert.match(inquiryPanel, /const startGuestCreateFromList = async \(\) =>/);
 const guestCreateStart = inquiryPanel.indexOf('const startGuestCreateFromList = async () =>');
 const guestCreateEnd = inquiryPanel.indexOf('const listNumber = useMemo', guestCreateStart);

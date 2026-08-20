@@ -617,6 +617,26 @@ export default function UserInquiryPanel({ ctx }) {
     replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'verify' });
   };
 
+  const cancelGuestCreate = () => {
+    setGuestForm(emptyGuestForm());
+    setGuestPreparedPassword('');
+
+    const currentHistory = readUserCommunityHistoryState();
+    if (currentHistory?.tab === 'inquiry' && currentHistory.view === 'compose' && backUserCommunityHistoryState({ tab: 'inquiry', view: 'compose', id: currentHistory.id })) {
+      return;
+    }
+
+    setDetail(null);
+    setEditingPublicId('');
+    setGuestMode('verify');
+    if (guestAccess?.token) {
+      if (!listLoaded) void loadList({ targetPage: 1, access: guestAccess });
+      replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
+      return;
+    }
+    replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'verify' });
+  };
+
   const startGuestCreateFromList = async () => {
     setDetail(null);
     setEditingPublicId('');
@@ -756,10 +776,6 @@ export default function UserInquiryPanel({ ctx }) {
   }, [guestAccess?.token, guestEntry, hasFirebaseAuthSession, listLoaded]);
 
   const returnToInquiryList = () => {
-    const current = readUserCommunityHistoryState();
-    if (current?.tab === 'inquiry' && current.view === 'detail' && backUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: current.id })) {
-      return;
-    }
     setDetail(null);
     setEditingPublicId('');
     if (hasFirebaseAuthSession) {
@@ -768,7 +784,7 @@ export default function UserInquiryPanel({ ctx }) {
     } else {
       setGuestMode('verify');
     }
-    replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
+    pushUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
   };
 
   const listNumber = useMemo(() => {
@@ -1051,7 +1067,10 @@ export default function UserInquiryPanel({ ctx }) {
                   })}
                 </div>
               ) : null}
-              <div className="flex justify-end"><Button type="button" variant="primary" disabled={saving} onClick={createGuest}>{saving ? '등록 중' : '문의 등록'}</Button></div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                <Button type="button" variant="outline" disabled={saving} onClick={cancelGuestCreate}>취소</Button>
+                <Button type="button" variant="primary" disabled={saving} onClick={createGuest}>{saving ? '등록 중' : '문의 등록'}</Button>
+              </div>
             </div>
           ) : (
             <div className="mx-auto w-full max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
