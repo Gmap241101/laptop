@@ -10,12 +10,36 @@ const ALLOWED_TAGS = new Set([
   'U',
   'S',
   'STRIKE',
+  'DEL',
+  'INS',
+  'MARK',
+  'SMALL',
+  'BIG',
+  'SUB',
+  'SUP',
+  'CODE',
+  'PRE',
+  'KBD',
+  'SAMP',
+  'VAR',
+  'CITE',
+  'Q',
+  'ABBR',
+  'TT',
+  'CENTER',
+  'FONT',
   'H1',
   'H2',
   'H3',
+  'H4',
+  'H5',
+  'H6',
   'UL',
   'OL',
   'LI',
+  'DL',
+  'DT',
+  'DD',
   'BLOCKQUOTE',
   'A',
   'IMG',
@@ -27,8 +51,12 @@ const ALLOWED_TAGS = new Set([
   'DIV',
   'SPAN',
   'TABLE',
+  'CAPTION',
+  'COLGROUP',
+  'COL',
   'THEAD',
   'TBODY',
+  'TFOOT',
   'TR',
   'TH',
   'TD',
@@ -57,18 +85,41 @@ const SAFE_STYLE_PROPERTIES = new Set([
   'background-color',
   'font-weight',
   'font-style',
+  'font-family',
+  'font-variant',
+  'font-size',
+  'line-height',
+  'letter-spacing',
+  'word-spacing',
+  'text-indent',
+  'text-transform',
   'text-decoration',
+  'text-decoration-line',
+  'text-decoration-style',
+  'text-decoration-color',
+  'vertical-align',
+  'white-space',
+  'list-style-type',
   'width',
   'max-width',
   'height',
   'margin-left',
   'margin-right',
+  'margin-top',
+  'margin-bottom',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
   'display',
   'border-collapse',
-  'aspect-ratio',
   'border',
-  'font-size',
-  'line-height',
+  'border-width',
+  'border-style',
+  'border-color',
+  'border-radius',
+  'aspect-ratio',
 ]);
 
 
@@ -78,7 +129,7 @@ export const MIN_FONT_SIZE_PX = 8;
 export const MAX_FONT_SIZE_PX = 72;
 export const MIN_LINE_HEIGHT = 0.8;
 export const MAX_LINE_HEIGHT = 3;
-const RICH_TEXT_BLOCK_SELECTOR = 'p,h1,h2,h3,li,blockquote,td,th,div';
+const RICH_TEXT_BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,pre,caption,td,th,div';
 
 const normalizeFontSizeCssValue = (value = '') => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -371,6 +422,76 @@ const buildHtml5VideoHtml = (value = '', title = '일반 동영상', options = {
   return `<div data-video-provider="html5"><video ${attributes.join(' ')} style="display: block; width: 100%; max-width: 100%; height: auto; border: 0;"></video></div><p><br></p>`;
 };
 
+const LEGACY_FONT_SIZE_PX = Object.freeze({
+  '1': '10px',
+  '2': '13px',
+  '3': '16px',
+  '4': '18px',
+  '5': '24px',
+  '6': '32px',
+  '7': '48px',
+});
+
+const isSafeSpacingValue = (value = '', { allowNegative = false, maxPx = 160, maxRelative = 12 } = {}) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === '0') return true;
+  const matched = normalized.match(/^(-?\d+(?:\.\d+)?)(px|rem|em|%)$/);
+  if (!matched) return false;
+  const amount = Number(matched[1]);
+  if (!Number.isFinite(amount) || (!allowNegative && amount < 0)) return false;
+  const absoluteAmount = Math.abs(amount);
+  if (matched[2] === 'px') return absoluteAmount <= maxPx;
+  if (matched[2] === '%') return absoluteAmount <= 100;
+  return absoluteAmount <= maxRelative;
+};
+
+const isSafeFontFamily = (value = '') => {
+  const normalized = String(value || '').trim();
+  return Boolean(
+    normalized &&
+    normalized.length <= 180 &&
+    !/[<>`{}]/.test(normalized) &&
+    !/url\s*\(|expression\s*\(|javascript:/i.test(normalized)
+  );
+};
+
+const appendSafeInlineStyle = (element, property, value) => {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return;
+  const existing = element.getAttribute('style') || '';
+  element.setAttribute('style', `${existing}${existing.trim() ? '; ' : ''}${property}: ${normalizedValue}`);
+};
+
+const normalizeLegacyPresentationAttributes = (element) => {
+  if (!element?.getAttribute) return;
+
+  if (element.tagName === 'FONT') {
+    const color = element.getAttribute('color');
+    const face = element.getAttribute('face');
+    const size = element.getAttribute('size');
+    if (color) appendSafeInlineStyle(element, 'color', color);
+    if (face) appendSafeInlineStyle(element, 'font-family', face);
+    if (size && LEGACY_FONT_SIZE_PX[String(size).trim()]) {
+      appendSafeInlineStyle(element, 'font-size', LEGACY_FONT_SIZE_PX[String(size).trim()]);
+    }
+  }
+
+  const backgroundColor = element.getAttribute('bgcolor');
+  if (backgroundColor) appendSafeInlineStyle(element, 'background-color', backgroundColor);
+
+  const align = String(element.getAttribute('align') || '').trim().toLowerCase();
+  if (['left', 'center', 'right', 'justify'].includes(align)) {
+    appendSafeInlineStyle(element, 'text-align', align);
+  }
+
+  const verticalAlign = String(element.getAttribute('valign') || '').trim().toLowerCase();
+  if (['top', 'middle', 'bottom', 'baseline'].includes(verticalAlign)) {
+    appendSafeInlineStyle(element, 'vertical-align', verticalAlign);
+  }
+
+  if (element.hasAttribute('nowrap')) appendSafeInlineStyle(element, 'white-space', 'nowrap');
+};
+
 const sanitizeStyle = (styleText = '') =>
   String(styleText || '')
     .split(';')
@@ -395,6 +516,25 @@ const sanitizeStyle = (styleText = '') =>
         const safeLineHeight = normalizeLineHeightCssValue(value);
         return safeLineHeight ? `line-height: ${safeLineHeight}` : '';
       }
+
+      if (property === 'font-family') {
+        return isSafeFontFamily(value) ? `font-family: ${value}` : '';
+      }
+
+      if (property === 'font-variant' && !/^(normal|small-caps)$/i.test(value)) return '';
+      if (property === 'text-transform' && !/^(none|capitalize|uppercase|lowercase)$/i.test(value)) return '';
+      if (property === 'white-space' && !/^(normal|nowrap|pre|pre-wrap|pre-line|break-spaces)$/i.test(value)) return '';
+      if (property === 'list-style-type' && !/^(disc|circle|square|decimal|decimal-leading-zero|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$/i.test(value)) return '';
+      if (property === 'text-decoration-line' && !/^(none|underline|overline|line-through)(\s+(underline|overline|line-through))*$/i.test(value)) return '';
+      if (property === 'text-decoration-style' && !/^(solid|double|dotted|dashed|wavy)$/i.test(value)) return '';
+      if (property === 'vertical-align' && !/^(baseline|sub|super|text-top|text-bottom|middle|top|bottom)$/i.test(value) && !isSafeSpacingValue(value, { allowNegative: true, maxPx: 48, maxRelative: 4 })) return '';
+      if ((property === 'letter-spacing' || property === 'word-spacing') && value.toLowerCase() !== 'normal' && !isSafeSpacingValue(value, { allowNegative: true, maxPx: 32, maxRelative: 4 })) return '';
+      if (property === 'text-indent' && !isSafeSpacingValue(value, { allowNegative: true, maxPx: 160, maxRelative: 8 })) return '';
+
+      if (['margin-top', 'margin-bottom', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left'].includes(property) && !isSafeSpacingValue(value, { maxPx: 160, maxRelative: 8 })) return '';
+      if (property === 'border-width' && !/^(thin|medium|thick)$/i.test(value) && !isSafeSpacingValue(value, { maxPx: 12, maxRelative: 1 })) return '';
+      if (property === 'border-style' && !/^(none|hidden|solid|double|dotted|dashed)$/i.test(value)) return '';
+      if (property === 'border-radius' && !isSafeSpacingValue(value, { maxPx: 80, maxRelative: 8 })) return '';
 
       if (
         (property === 'width' || property === 'max-width' || property === 'height') &&
@@ -432,6 +572,8 @@ const sanitizeStyle = (styleText = '') =>
     .join('; ');
 
 const sanitizeElementAttributes = (element) => {
+  normalizeLegacyPresentationAttributes(element);
+
   if (element.tagName === 'IMG') {
     const imageSrc = element.getAttribute('src') || '';
     if (!isSafeHttpUrl(imageSrc)) return false;
@@ -474,7 +616,9 @@ const sanitizeElementAttributes = (element) => {
       return;
     }
 
-    if (element.tagName === 'A') {
+    if (name === 'title' && ['ABBR', 'Q', 'CITE', 'DEL', 'INS', 'MARK', 'CODE'].includes(element.tagName)) {
+      keep = true;
+    } else if (element.tagName === 'A') {
       keep = ['href', 'target', 'rel', 'title'].includes(name);
       if (name === 'href' && !isSafeLinkUrl(value)) keep = false;
     } else if (element.tagName === 'IMG') {
@@ -648,7 +792,7 @@ export const richTextHtmlToText = (html = '') => {
   });
 
   container
-    .querySelectorAll('p, h1, h2, h3, li, blockquote, figcaption, tr, hr')
+    .querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, dt, dd, blockquote, pre, figcaption, caption, tr, hr')
     .forEach((block) => {
       block.insertAdjacentText('afterend', '\n');
     });

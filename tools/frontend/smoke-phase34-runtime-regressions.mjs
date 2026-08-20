@@ -683,6 +683,24 @@ assert.equal(signupTermsManagerSource.includes('replacePolicyContentDomainInPost
 assert.match(richTextEditorSource, /const resolvedMaxHeight = maxHeight \?\? minHeight;/, 'rich text editor must constrain the visual/source editor to an internal scroll height');
 assert.equal((richTextEditorSource.match(/maxHeight: resolvedMaxHeight/g) || []).length, 2, 'both source-mode and visual rich-text bodies must use the same internal max height');
 assert.match(richTextEditorSource, /mk-rich-text-scroll[^"]*overflow-y-auto/, 'rich text editor bodies must scroll internally instead of growing the surrounding modal');
+const richTextCoreSource = fs.readFileSync(new URL('../../src/utils/richTextCore.js', import.meta.url), 'utf8');
+for (const tag of ['FONT', 'MARK', 'SMALL', 'BIG', 'SUB', 'SUP', 'CODE', 'PRE', 'KBD', 'SAMP', 'VAR', 'CITE', 'Q', 'ABBR', 'TT', 'CENTER', 'H4', 'H5', 'H6', 'DL', 'DT', 'DD', 'CAPTION', 'COLGROUP', 'COL', 'TFOOT']) {
+  assert.ok(richTextCoreSource.includes(`'${tag}'`), `rich text sanitizer must preserve safe presentation/semantic tag ${tag}`);
+}
+for (const styleProperty of ['color', 'background-color', 'font-family', 'font-variant', 'letter-spacing', 'word-spacing', 'text-indent', 'text-transform', 'vertical-align', 'white-space', 'list-style-type', 'border-radius']) {
+  assert.ok(richTextCoreSource.includes(`'${styleProperty}'`), `rich text sanitizer must preserve safe style property ${styleProperty}`);
+}
+assert.match(richTextCoreSource, /normalizeLegacyPresentationAttributes\(element\)/, 'rich text sanitizer must normalize legacy presentational attributes before stripping unsupported attributes');
+assert.match(richTextCoreSource, /element\.tagName === 'FONT'[\s\S]*appendSafeInlineStyle\(element, 'color', color\)/, 'legacy font color markup must be normalized into a persisted safe style');
+assert.match(richTextCoreSource, /getAttribute\('bgcolor'\)[\s\S]*appendSafeInlineStyle\(element, 'background-color'/, 'legacy background-color markup must be normalized into a persisted safe style');
+assert.match(richTextEditorSource, /const applyColorCommand = \(command, colorValue\) => \{[\s\S]*restoreSelection\(\)[\s\S]*styleWithCSS[\s\S]*execCommand\(command/, 'text/background color commands must save CSS-backed color markup against the restored editor selection');
+assert.match(richTextEditorSource, /applyColorCommand\('foreColor', event\.target\.value\)/, 'text color control must use the persistent CSS color command');
+assert.match(richTextEditorSource, /applyColorCommand\('hiliteColor', event\.target\.value\)/, 'background color control must use the persistent CSS color command');
+assert.match(richTextEditorSource, /const ToolbarButton = \([^)]*tabIndex = -1/, 'rich text toolbar buttons must be skipped by ordinary Tab navigation');
+assert.equal((richTextEditorSource.match(/<select\s+tabIndex=\{-1\}/g) || []).length, 3, 'all primary rich-text toolbar select controls must be skipped by ordinary Tab navigation');
+assert.match(richTextEditorSource, /contentEditable=\{!disabled\}[\s\S]*tabIndex=\{disabled \? -1 : 0\}/, 'visual rich-text body must be the first normal Tab stop inside the editor');
+assert.match(richTextEditorSource, /<textarea\s+tabIndex=\{0\}/, 'source-mode body must remain directly keyboard focusable');
+assert.match(richTextEditorSource, /event\.altKey && event\.key === 'F10'[\s\S]*focusFirstToolbarControl/, 'keyboard users must retain an explicit shortcut for entering the skipped rich-text toolbar');
 for (const [name, source] of [['admin', adminDialogsSource], ['user', userDialogsSource], ['compatibility', appDialogsSource]]) {
   assert.match(source, /fixed top-6 right-6 z-\[220\]/, `${name} toast must render above every modal/backdrop layer`);
   assert.match(source, /confirmModal && \([\s\S]*?fixed inset-0 z-\[200\]/, `${name} confirm dialog must render above editor popup layers while remaining below toast`);

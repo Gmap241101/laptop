@@ -49,11 +49,12 @@ import {
   sanitizeRichTextHtml,
 } from '../utils/richTextCore.js';
 
-const ToolbarButton = ({ active = false, children, title, ...props }) => (
+const ToolbarButton = ({ active = false, children, title, tabIndex = -1, ...props }) => (
   <button
     type="button"
     title={title}
     aria-label={title}
+    tabIndex={tabIndex}
     className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-slate-600 transition ${
       active
         ? 'border-orange-300 bg-orange-50 text-orange-700'
@@ -288,6 +289,7 @@ export function RichTextEditor({
 }) {
   const resolvedMaxHeight = maxHeight ?? minHeight;
   const editorRef = useRef(null);
+  const toolbarRef = useRef(null);
   const savedRangeRef = useRef(null);
   const lastEmittedHtmlRef = useRef('');
   const selectedYouTubeRef = useRef(null);
@@ -357,6 +359,31 @@ export function RichTextEditor({
     focusEditor();
     document.execCommand(command, false, commandValue);
     emitChange();
+  };
+
+  const applyColorCommand = (command, colorValue) => {
+    if (disabled || sourceMode) return;
+    focusEditor();
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, true);
+    const applied = document.execCommand(command, false, colorValue);
+    if (!applied && command === 'hiliteColor') document.execCommand('backColor', false, colorValue);
+    document.execCommand('styleWithCSS', false, false);
+    emitChange();
+    saveSelection();
+  };
+
+  const focusFirstToolbarControl = () => {
+    const toolbar = toolbarRef.current;
+    const firstControl = toolbar?.querySelector?.('select:not(:disabled), button:not(:disabled), input:not(:disabled)');
+    firstControl?.focus?.();
+  };
+
+  const handleEditorKeyDown = (event) => {
+    if (event.altKey && event.key === 'F10') {
+      event.preventDefault();
+      focusFirstToolbarControl();
+    }
   };
 
   const getElementFromNode = (node) => {
@@ -1335,8 +1362,9 @@ export function RichTextEditor({
       <div className="text-xs font-semibold text-slate-600">{label}</div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white mk-form-ring-focus-within">
-        <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 p-2">
+        <div ref={toolbarRef} role="toolbar" aria-label={`${label} 편집 도구`} className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-slate-50 p-2">
           <select
+            tabIndex={-1}
             title="문단 형식"
             aria-label="문단 형식"
             disabled={disabled || sourceMode}
@@ -1354,6 +1382,7 @@ export function RichTextEditor({
           </select>
 
           <select
+            tabIndex={-1}
             title="글자 크기"
             aria-label="글자 크기"
             disabled={disabled || sourceMode}
@@ -1379,6 +1408,7 @@ export function RichTextEditor({
           </select>
 
           <select
+            tabIndex={-1}
             title="줄간격"
             aria-label="줄간격"
             disabled={disabled || sourceMode}
@@ -1413,15 +1443,11 @@ export function RichTextEditor({
           <ToolbarButton title="취소선" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('strikeThrough')}><Strikethrough size={15} /></ToolbarButton>
           <label title="글자색" aria-label="글자색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
             <Palette size={15} />
-            <input type="color" disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => runCommand('foreColor', event.target.value)} />
+            <input type="color" tabIndex={-1} disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => applyColorCommand('foreColor', event.target.value)} />
           </label>
           <label title="배경색" aria-label="배경색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
             <Highlighter size={15} />
-            <input type="color" disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => {
-              focusEditor();
-              document.execCommand('hiliteColor', false, event.target.value) || document.execCommand('backColor', false, event.target.value);
-              emitChange();
-            }} />
+            <input type="color" tabIndex={-1} disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => applyColorCommand('hiliteColor', event.target.value)} />
           </label>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="글머리표" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertUnorderedList')}><List size={15} /></ToolbarButton>
@@ -1441,6 +1467,7 @@ export function RichTextEditor({
             </>
           )}
           <button
+            tabIndex={-1}
             type="button"
             title="모바일 반응형 조판"
             aria-label="모바일 반응형 조판"
@@ -1456,6 +1483,7 @@ export function RichTextEditor({
             반응형
           </button>
           <button
+            tabIndex={-1}
             type="button"
             title="표 삽입·편집"
             aria-label="표 삽입·편집"
@@ -1474,6 +1502,7 @@ export function RichTextEditor({
           <ToolbarButton title="서식 제거" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={clearAllFormatting}><Eraser size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <button
+            tabIndex={-1}
             type="button"
             title={sourceMode ? '편집기 보기' : '태그보기'}
             aria-label={sourceMode ? '편집기 보기' : '태그보기'}
@@ -1874,6 +1903,7 @@ export function RichTextEditor({
         <div className="relative">
           {sourceMode ? (
             <textarea
+              tabIndex={0}
               value={sourceValue}
               onChange={(event) => {
                 const nextValue = event.target.value;
@@ -1896,10 +1926,12 @@ export function RichTextEditor({
               <div
                 ref={editorRef}
                 contentEditable={!disabled}
+                tabIndex={disabled ? -1 : 0}
                 suppressContentEditableWarning
                 onInput={emitChange}
                 onBlur={emitChange}
                 onPaste={handlePaste}
+                onKeyDown={handleEditorKeyDown}
                 onKeyUp={saveSelection}
                 onMouseUp={saveSelection}
                 onClick={handleEditorClick}
