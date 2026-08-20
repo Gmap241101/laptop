@@ -565,23 +565,25 @@ export const createInquiryRepository = (pool) => {
       }
     },
 
-    async findGuestCandidates({ name, method, identifier }) {
-      const byEmail = method === 'email';
+    async findGuestIdentity({ name, email, phone }) {
       const result = await pool.query(
-        `SELECT inquiry_id,public_id,guest_password_hash
+        `SELECT
+           (ARRAY_AGG(guest_password_hash ORDER BY created_at ASC,inquiry_id ASC))[1] AS guest_password_hash,
+           COALESCE(JSONB_AGG(public_id ORDER BY created_at DESC,inquiry_id DESC),'[]'::jsonb) AS public_ids
            FROM app_inquiries
           WHERE author_type='guest' AND deleted_at IS NULL
             AND LOWER(author_name)=LOWER($1)
-            AND ${byEmail ? 'LOWER(author_email)=LOWER($2)' : 'author_phone=$2'}
-          ORDER BY created_at DESC,inquiry_id DESC
-          LIMIT 50`,
-        [trim(name), byEmail ? lower(identifier) : trim(identifier)],
+            AND LOWER(author_email)=LOWER($2)
+            AND author_phone=$3`,
+        [trim(name), lower(email), trim(phone)],
       );
-      return Object.freeze(result.rows.map((row) => Object.freeze({
-        inquiryId: row.inquiry_id || '',
-        publicId: row.public_id || '',
+      const row = result.rows[0] || {};
+      const publicIds = safeJsonArray(row.public_ids).map((id) => trim(id)).filter(Boolean);
+      return Object.freeze({
+        exists: publicIds.length > 0,
+        publicIds: Object.freeze(publicIds),
         passwordHash: row.guest_password_hash || '',
-      })));
+      });
     },
 
     async createGuestSession({ tokenHash, publicIds, expiresAt }) {

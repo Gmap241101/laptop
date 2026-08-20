@@ -33,6 +33,12 @@ assert.equal(requests.length, 3);
 assert.ok(requests.every((item) => item.options.headers.Authorization === 'Bearer clerk-member-policy-smoke'));
 assert.equal(Buffer.byteLength(requests[0].options.body, 'utf8') < 2048, true, 'signup policy request must stay small and must not carry the full terms domain');
 
+const memberPolicySource = fs.readFileSync(new URL('../../src/utils/memberPolicy.js', import.meta.url), 'utf8');
+assert.match(memberPolicySource, /DOMESTIC_PHONE_PREFIXES[\s\S]*'010'[\s\S]*'070'/, 'current domestic phone prefixes must retain 010 and 070');
+for (const retiredPrefix of ['011', '016', '017', '018', '019']) {
+  assert.equal(memberPolicySource.includes(`  '${retiredPrefix}',`), false, `retired mobile prefix must not remain selectable: ${retiredPrefix}`);
+}
+
 const auditSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectoryAuditActions.js', import.meta.url), 'utf8');
 assert.equal(auditSource.includes('retiredLegacyDataCompat'), false);
 assert.equal(/\bgetDocs\b|\bsetDoc\b|\bwriteBatch\b|commitFirestoreOperations|firebaseAuth\.currentUser/.test(auditSource), false);

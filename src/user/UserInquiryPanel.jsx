@@ -3,9 +3,11 @@ import { ArrowLeft, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
 
 import { Button, Card, CardContent, Input, Select } from '../components/CommonUI.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
+import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
+import { buildDomesticPhoneNumber, isValidDomesticPhoneNumber, parseDomesticPhoneNumber } from '../utils/memberPolicy.js';
 
 const GUEST_ACCESS_SESSION_KEY = 'mk_laptop_guest_inquiry_access';
 const PAGE_SIZE_FALLBACK = 10;
@@ -130,11 +132,12 @@ export default function UserInquiryPanel({ ctx }) {
   const [saving, setSaving] = useState(false);
 
   const [guestEntry, setGuestEntry] = useState('intro');
-  const [guestMode, setGuestMode] = useState('create');
+  const [guestMode, setGuestMode] = useState('verify');
   const [guestForm, setGuestForm] = useState(emptyGuestForm);
-  const [guestVerify, setGuestVerify] = useState({ name: '', method: 'email', identifier: '', password: '' });
+  const [guestVerify, setGuestVerify] = useState({ name: '', email: '', phone: '', password: '' });
   const [guestAccess, setGuestAccess] = useState(readGuestAccess);
   const [guestVerifyLoading, setGuestVerifyLoading] = useState(false);
+  const [guestPrepareLoading, setGuestPrepareLoading] = useState(false);
 
   const pageSize = Number(listPageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -201,7 +204,7 @@ export default function UserInquiryPanel({ ctx }) {
     setPage(1);
     setListLoaded(false);
     setGuestEntry('intro');
-    setGuestMode('create');
+    setGuestMode('verify');
     setEditingPublicId('');
   }, []);
 
@@ -404,7 +407,7 @@ export default function UserInquiryPanel({ ctx }) {
 
   const createGuest = async () => {
     const bodyText = htmlToText(guestForm.bodyHtml);
-    if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !guestForm.phone.trim()
+    if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !isValidDomesticPhoneNumber(parseDomesticPhoneNumber(guestForm.phone))
       || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || !bodyText) {
       notify('비회원 문의 필수 입력 항목을 모두 입력해 주세요.', 'error');
       return;
@@ -426,8 +429,8 @@ export default function UserInquiryPanel({ ctx }) {
       await inquiryApi.createGuest({ ...guestForm, bodyText, author: guestForm, termDecisions });
       const access = await inquiryApi.verifyGuest({
         name: guestForm.name,
-        method: 'email',
-        identifier: guestForm.email,
+        email: guestForm.email,
+        phone: guestForm.phone,
         password: guestForm.password,
       });
       writeGuestAccess(access);
@@ -441,16 +444,29 @@ export default function UserInquiryPanel({ ctx }) {
     } catch (error) {
       const message = error?.code === 'guest_inquiry_disabled'
         ? '현재 비회원 문의를 접수하지 않습니다.'
-        : error?.code === 'guest_inquiry_required_terms_missing'
-          ? '필수 약관에 모두 동의해 주세요.'
-          : `비회원 문의 등록에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`;
+        : error?.code === 'guest_inquiry_identity_password_mismatch'
+          ? '기존 비회원 문의의 문의 확인 비밀번호와 일치하지 않습니다.'
+          : error?.code === 'guest_inquiry_required_terms_missing'
+            ? '필수 약관에 모두 동의해 주세요.'
+            : `비회원 문의 등록에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`;
       notify(message, 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const hasGuestVerificationInput = () => Boolean(
+    guestVerify.name.trim()
+    && guestVerify.email.trim()
+    && isValidDomesticPhoneNumber(parseDomesticPhoneNumber(guestVerify.phone))
+    && guestVerify.password
+  );
+
   const verifyGuest = async () => {
+    if (!hasGuestVerificationInput()) {
+      notify('성명, 이메일, 연락처, 문의 확인 비밀번호를 모두 입력해 주세요.', 'error');
+      return;
+    }
     setGuestVerifyLoading(true);
     try {
       const access = await inquiryApi.verifyGuest(guestVerify);
@@ -467,10 +483,40 @@ export default function UserInquiryPanel({ ctx }) {
     }
   };
 
+  const prepareGuestCreate = async () => {
+    if (!hasGuestVerificationInput()) {
+      notify('성명, 이메일, 연락처, 문의 확인 비밀번호를 모두 입력해 주세요.', 'error');
+      return;
+    }
+    setGuestPrepareLoading(true);
+    try {
+      await inquiryApi.prepareGuestCreate(guestVerify);
+      const nextConfig = await ensureGuestTerms();
+      if (!nextConfig) return;
+      setGuestForm({
+        ...emptyGuestForm(),
+        name: guestVerify.name.trim(),
+        email: guestVerify.email.trim(),
+        phone: guestVerify.phone.trim(),
+        password: guestVerify.password,
+        passwordConfirm: guestVerify.password,
+      });
+      setGuestMode('create');
+    } catch (error) {
+      const message = error?.code === 'guest_inquiry_identity_password_mismatch'
+        ? '기존 비회원 문의의 문의 확인 비밀번호와 일치하지 않습니다.'
+        : error?.code === 'guest_inquiry_disabled'
+          ? '현재 비회원 문의를 접수하지 않습니다.'
+          : '비회원 문의 작성 정보를 확인하지 못했습니다.';
+      notify(message, 'error');
+    } finally {
+      setGuestPrepareLoading(false);
+    }
+  };
+
   const enterGuestFlow = async () => {
     setGuestEntry('guest');
-    setGuestMode('create');
-    await ensureGuestTerms();
+    setGuestMode('verify');
   };
 
   const listNumber = useMemo(() => {
@@ -693,20 +739,14 @@ export default function UserInquiryPanel({ ctx }) {
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="text-base font-bold text-slate-900">비회원 문의 및 조회</div>
-            <p className="mt-2 text-xs leading-6 text-slate-500">비회원 문의를 새로 작성하거나, 기존 비회원 문의를 성명·이메일 또는 연락처·문의 확인 비밀번호로 확인할 수 있습니다.</p>
-            <Button type="button" variant="outline" className="mt-5" onClick={() => void enterGuestFlow()}>비회원 문의 및 조회</Button>
+            <p className="mt-2 text-xs leading-6 text-slate-500">성명·이메일·연락처·문의 확인 비밀번호로 기존 문의를 확인할 수 있으며, 같은 화면에서 새 문의 작성을 시작할 수 있습니다.</p>
+            <Button type="button" variant="outline" className="mt-5" onClick={() => void enterGuestFlow()}>비회원 문의 확인</Button>
           </div>
         </div>
       ) : null}
 
       {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'guest' ? (
         <>
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
-            <Button type="button" variant={guestMode === 'create' ? 'primary' : 'outline'} onClick={() => setGuestMode('create')}>비회원 문의 작성</Button>
-            <Button type="button" variant={guestMode === 'verify' ? 'primary' : 'outline'} onClick={() => setGuestMode('verify')}>비회원 문의 확인</Button>
-            <Button type="button" variant="ghost" onClick={() => setGuestEntry('intro')}>처음으로</Button>
-          </div>
-
           {guestMode === 'create' && guestTermsLoading ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">비회원 문의 설정을 불러오는 중입니다.</div>
           ) : guestMode === 'create' ? (
@@ -719,7 +759,12 @@ export default function UserInquiryPanel({ ctx }) {
                 <Field label="성명"><Input value={guestForm.name} onChange={(name) => setGuestForm((current) => ({ ...current, name }))} /></Field>
                 <Field label="부서/팀"><Input value={guestForm.team} onChange={(team) => setGuestForm((current) => ({ ...current, team }))} /></Field>
                 <Field label="이메일"><Input type="email" value={guestForm.email} onChange={(email) => setGuestForm((current) => ({ ...current, email }))} /></Field>
-                <Field label="연락처"><Input value={guestForm.phone} onChange={(phone) => setGuestForm((current) => ({ ...current, phone }))} placeholder="010-0000-0000" /></Field>
+                <DomesticPhoneInput
+                  label="연락처"
+                  {...parseDomesticPhoneNumber(guestForm.phone)}
+                  onChange={(parts) => setGuestForm((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
+                  disabled={saving}
+                />
                 <Field label="문의 확인 비밀번호"><Input type="password" value={guestForm.password} onChange={(password) => setGuestForm((current) => ({ ...current, password }))} autoComplete="new-password" /></Field>
                 <Field label="문의 확인 비밀번호 확인"><Input type="password" value={guestForm.passwordConfirm} onChange={(passwordConfirm) => setGuestForm((current) => ({ ...current, passwordConfirm }))} autoComplete="new-password" /></Field>
               </div>
@@ -755,23 +800,25 @@ export default function UserInquiryPanel({ ctx }) {
               <div className="flex justify-end"><Button type="button" variant="primary" disabled={saving} onClick={createGuest}>{saving ? '등록 중' : '문의 등록'}</Button></div>
             </div>
           ) : (
-            <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mx-auto w-full max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
-                <h3 className="text-base font-bold text-slate-900">비회원 문의 확인</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">작성 시 입력한 성명, 이메일 또는 연락처, 문의 확인 비밀번호가 모두 일치해야 합니다.</p>
+                <h3 className="text-base font-bold text-slate-900">비회원 문의 등록 및 확인</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">작성 시 입력한 성명, 이메일, 연락처, 문의 확인 비밀번호가 모두 일치해야 합니다.</p>
               </div>
               <Field label="성명"><Input value={guestVerify.name} onChange={(name) => setGuestVerify((current) => ({ ...current, name }))} /></Field>
-              <div>
-                <div className="mb-2 text-[11px] font-semibold text-slate-600">조회 방법</div>
-                <div className="flex gap-5 text-sm">
-                  <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="email" checked={guestVerify.method === 'email'} onChange={() => setGuestVerify((current) => ({ ...current, method: 'email', identifier: '' }))} /> 이메일</label>
-                  <label className="flex items-center gap-2"><input type="radio" name="guestInquiryLookupMethod" value="phone" checked={guestVerify.method === 'phone'} onChange={() => setGuestVerify((current) => ({ ...current, method: 'phone', identifier: '' }))} /> 연락처</label>
-                </div>
-              </div>
-              <Field label={guestVerify.method === 'phone' ? '연락처' : '이메일'}><Input value={guestVerify.identifier} onChange={(identifier) => setGuestVerify((current) => ({ ...current, identifier }))} /></Field>
+              <Field label="이메일"><Input type="email" value={guestVerify.email} onChange={(email) => setGuestVerify((current) => ({ ...current, email }))} /></Field>
+              <DomesticPhoneInput
+                label="연락처"
+                {...parseDomesticPhoneNumber(guestVerify.phone)}
+                onChange={(parts) => setGuestVerify((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
+                disabled={guestVerifyLoading || guestPrepareLoading}
+              />
               <Field label="문의 확인 비밀번호"><Input type="password" value={guestVerify.password} onChange={(password) => setGuestVerify((current) => ({ ...current, password }))} /></Field>
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">비회원 문의 확인 비밀번호는 재설정할 수 없습니다. 비밀번호를 분실한 경우 기존 문의를 조회할 수 없습니다.</div>
-              <div className="flex justify-end"><Button type="button" variant="primary" disabled={guestVerifyLoading} onClick={verifyGuest}>{guestVerifyLoading ? '확인 중' : '문의 확인'}</Button></div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" disabled={guestVerifyLoading || guestPrepareLoading} onClick={prepareGuestCreate}>{guestPrepareLoading ? '확인 중' : '문의 작성'}</Button>
+                <Button type="button" variant="primary" disabled={guestVerifyLoading || guestPrepareLoading} onClick={verifyGuest}>{guestVerifyLoading ? '확인 중' : '문의 확인'}</Button>
+              </div>
             </div>
           )}
         </>

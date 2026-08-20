@@ -71,7 +71,14 @@ const repository = {
     const row = { publicId: input.publicId, authorType: 'guest', memberUid: null, categoryId: input.categoryId, title: input.title, bodyHtml: input.bodyHtml, bodyText: input.bodyText, authorName: input.author.name, authorEmail: input.author.email, authorTeam: input.author.team, authorPhone: input.author.phone, passwordHash: input.passwordHash, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false, consents: input.consents };
     state.inquiries.push(row); return toDetail(row);
   },
-  async findGuestCandidates({ name, method, identifier }) { return state.inquiries.filter((i) => !i.deleted && i.authorType === 'guest' && i.authorName.toLowerCase() === String(name).toLowerCase() && (method === 'email' ? i.authorEmail.toLowerCase() === String(identifier).toLowerCase() : i.authorPhone === identifier)).map((i) => ({ publicId: i.publicId, passwordHash: i.passwordHash })); },
+  async findGuestIdentity({ name, email, phone }) {
+    const matches = state.inquiries.filter((i) => !i.deleted && i.authorType === 'guest' && i.authorName.toLowerCase() === String(name).toLowerCase() && i.authorEmail.toLowerCase() === String(email).toLowerCase() && i.authorPhone === phone);
+    return {
+      exists: matches.length > 0,
+      publicIds: matches.map((i) => i.publicId),
+      passwordHash: matches[0]?.passwordHash || '',
+    };
+  },
   async createGuestSession({ tokenHash, publicIds, expiresAt }) { state.sessions.set(tokenHash, { publicIds: clone(publicIds), expiresAt }); return { expiresAt }; },
   async getGuestSession(tokenHash) { return state.sessions.get(tokenHash) || null; },
   async revokeGuestSession(tokenHash) { state.sessions.delete(tokenHash); },
@@ -131,20 +138,24 @@ await assert.rejects(() => service.getMember({ clerkUserId:'clerkA', publicId:me
 await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'필수 약관 미동의', bodyText:'내용', termDecisions:[] } }), (error) => error.code === 'guest_inquiry_required_terms_missing');
 
 const guestA = await service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'비회원 A', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
+const guestA2 = await service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'비회원 A2', bodyText:'내용2', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
 const guestB = await service.createGuest({ input:{ name:'김철수', team:'인사팀', email:'kim@example.com', phone:'01099998888', password:'Different!23', passwordConfirm:'Different!23', categoryId:'rental', title:'비회원 B', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
 
-const guestEmailAccess = await service.verifyGuestAccess({ input:{ name:'홍길동', method:'email', identifier:'hong@example.com', password:'StrongPass!23' } });
-assert.equal((await service.listGuest({ token:guestEmailAccess.token })).items.length, 1);
-assert.equal((await service.getGuest({ token:guestEmailAccess.token, publicId:guestA.publicId })).publicId, guestA.publicId);
-await assert.rejects(() => service.getGuest({ token:guestEmailAccess.token, publicId:guestB.publicId }), (error) => error.code === 'inquiry_not_found');
+assert.deepEqual(await service.prepareGuestCreate({ input:{ name:'새사용자', email:'new@example.com', phone:'01011112222', password:'NewPass!23' } }), { allowed:true, identityExists:false });
+assert.deepEqual(await service.prepareGuestCreate({ input:{ name:'홍길동', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23' } }), { allowed:true, identityExists:true });
+await assert.rejects(() => service.prepareGuestCreate({ input:{ name:'홍길동', email:'hong@example.com', phone:'01012345678', password:'BrandNew!25' } }), (error) => error.code === 'guest_inquiry_identity_password_mismatch' && error.status === 409);
+await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'BrandNew!25', passwordConfirm:'BrandNew!25', categoryId:'rental', title:'비밀번호 불일치 차단', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } }), (error) => error.code === 'guest_inquiry_identity_password_mismatch' && error.status === 409);
 
-const guestPhoneAccess = await service.verifyGuestAccess({ input:{ name:'홍길동', method:'phone', identifier:'01012345678', password:'StrongPass!23' } });
-assert.ok(guestPhoneAccess.token);
+const guestAccess = await service.verifyGuestAccess({ input:{ name:'홍길동', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23' } });
+assert.equal((await service.listGuest({ token:guestAccess.token })).items.length, 2);
+assert.equal((await service.getGuest({ token:guestAccess.token, publicId:guestA.publicId })).publicId, guestA.publicId);
+assert.equal((await service.getGuest({ token:guestAccess.token, publicId:guestA2.publicId })).publicId, guestA2.publicId);
+await assert.rejects(() => service.getGuest({ token:guestAccess.token, publicId:guestB.publicId }), (error) => error.code === 'inquiry_not_found');
 for (const input of [
-  { name:'틀린이름', method:'email', identifier:'hong@example.com', password:'StrongPass!23' },
-  { name:'홍길동', method:'email', identifier:'wrong@example.com', password:'StrongPass!23' },
-  { name:'홍길동', method:'phone', identifier:'01000000000', password:'StrongPass!23' },
-  { name:'홍길동', method:'email', identifier:'hong@example.com', password:'WrongPass!23' },
+  { name:'틀린이름', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23' },
+  { name:'홍길동', email:'wrong@example.com', phone:'01012345678', password:'StrongPass!23' },
+  { name:'홍길동', email:'hong@example.com', phone:'01000000000', password:'StrongPass!23' },
+  { name:'홍길동', email:'hong@example.com', phone:'01012345678', password:'WrongPass!23' },
 ]) {
   await assert.rejects(() => service.verifyGuestAccess({ input }), (error) => error.code === 'guest_inquiry_verification_failed' && error.status === 404);
 }
@@ -173,6 +184,7 @@ assert.equal((await service.deleteAdmin({ admin, publicId:adminDeleteTarget.publ
 
 const repositorySource = readFileSync('server/src/inquiries/inquiry-repository.mjs','utf8');
 const serviceSource = readFileSync('server/src/inquiries/inquiry-service.mjs','utf8');
+const appSource = readFileSync('server/src/app.mjs','utf8');
 const migrationSource = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql','utf8');
 assert.match(repositorySource, /i\.public_id=\$1\s+AND\s+i\.member_uid=\$2\s+AND\s+i\.author_type='member'/);
 assert.match(repositorySource, /LOWER\(i\.title\) LIKE \$2 OR LOWER\(i\.body_text\) LIKE \$2/);
@@ -183,6 +195,13 @@ assert.match(repositorySource, /LAG\(i\.public_id\) OVER \(ORDER BY i\.created_a
 assert.match(repositorySource, /LEAD\(i\.public_id\) OVER \(ORDER BY i\.created_at DESC,i\.inquiry_id DESC\)/);
 assert.match(repositorySource, /i\.member_uid=\$1 AND i\.author_type='member' AND i\.deleted_at IS NULL/);
 assert.match(repositorySource, /i\.public_id=ANY\(\$1::text\[\]\) AND i\.author_type='guest' AND i\.deleted_at IS NULL/);
+assert.match(repositorySource, /LOWER\(author_email\)=LOWER\(\$2\)/);
+assert.match(repositorySource, /author_phone=\$3/);
+assert.match(serviceSource, /guest_inquiry_identity_password_mismatch/);
+assert.match(serviceSource, /const publicIds = identityCheck\.publicIds/);
+assert.match(repositorySource, /ARRAY_AGG\(guest_password_hash ORDER BY created_at ASC,inquiry_id ASC\)/);
+assert.doesNotMatch(serviceSource, /findGuestCandidates|candidates\.slice|for \(const candidate/);
+assert.match(appSource, /url\.pathname === '\/api\/inquiries\/guest\/prepare'/);
 assert.match(repositorySource, /navigation: Object\.freeze\(\{/);
 assert.match(repositorySource, /SET deleted_at=NOW\(\),deleted_by=/);
 assert.doesNotMatch(serviceSource, /from\s+['"][^'"]*(?:firebase|firestore)|\b(?:getDocs|collection|onSnapshot)\s*\(/i);

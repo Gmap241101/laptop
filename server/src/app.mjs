@@ -1558,6 +1558,17 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/inquiries/guest/prepare') {
+      try {
+        const body = await readJsonBody(request, { maxBytes: 32 * 1024 });
+        const preparation = await inquiryService.prepareGuestCreate({ input: body || {} });
+        writeJson(response, 200, { ...basePayload, guestInquiryPreparation: preparation }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'guest_inquiry_prepare_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/inquiries/guest/verify') {
       try {
         const body = await readJsonBody(request, { maxBytes: 32 * 1024 });

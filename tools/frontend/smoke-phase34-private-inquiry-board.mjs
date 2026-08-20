@@ -23,8 +23,8 @@ assert.match(userWorkspace, /UserInquiryPanel/);
 assert.match(context, /inquiry:\s*contextKeys\('goToUserLogin hasFirebaseAuthSession triggerToast'\)/);
 
 for (const marker of [
-  '회원 로그인', '비회원 문의 및 조회', '비회원 문의 작성', '비회원 문의 확인',
-  '문의 확인 비밀번호', '문의 확인 비밀번호 확인', '조회 방법', '이메일', '연락처',
+  '회원 로그인', '비회원 문의 및 조회', '비회원 문의 작성', '비회원 문의 등록 및 확인',
+  '문의 확인 비밀번호', '문의 확인 비밀번호 확인', '이메일', '연락처',
   '비회원 문의 확인 비밀번호는 재설정할 수 없습니다.', '답변대기', '답변완료', '추가답변',
   '관리자 답변', '문의 등록', '문의 수정', '문의 작성', '문의내역 검색',
   'mk_laptop_guest_inquiry_access', 'window.sessionStorage', 'RichTextEditor',
@@ -32,6 +32,15 @@ for (const marker of [
 assert.doesNotMatch(userPanel, /localStorage/);
 assert.match(userPanel, /Number\(detail\.answerCount \|\| 0\) === 0/);
 assert.doesNotMatch(userPanel, /setActiveFaqCategoryId|카테고리 탭/);
+assert.doesNotMatch(userPanel, /guestInquiryLookupMethod|조회 방법|guestVerify\.method|guestVerify\.identifier/);
+assert.match(userPanel, /useState\('verify'\)/);
+assert.match(userPanel, /<DomesticPhoneInput[\s\S]*guestVerify\.phone/);
+assert.match(userPanel, /onClick=\{prepareGuestCreate\}>\{guestPrepareLoading \? '확인 중' : '문의 작성'\}/);
+assert.match(userPanel, /onClick=\{verifyGuest\}>\{guestVerifyLoading \? '확인 중' : '문의 확인'\}/);
+assert.match(userPanel, /guest_inquiry_identity_password_mismatch/);
+assert.doesNotMatch(userPanel, />\s*처음으로\s*</);
+assert.doesNotMatch(userPanel, /variant=\{guestMode === 'create' \? 'primary' : 'outline'\}/);
+assert.doesNotMatch(userPanel, /variant=\{guestMode === 'verify' \? 'primary' : 'outline'\}/);
 
 // User inquiry must use the shared rich-text editor directly in the page instead of a create/edit modal textarea.
 assert.match(userPanel, /import\s*\{[^}]*RichTextEditor[^}]*\}\s*from\s*['"]\.\.\/components\/RichTextEditor\.jsx['"]/);
@@ -74,6 +83,7 @@ assert.match(api, /includeCategories: includeCategories \? '' : '0'/);
 assert.match(api, /async listMember\(\{ search = '', page = 1, pageSize \} = \{\}\)/);
 assert.match(api, /queryString\(\{ search, page, pageSize \}\)/);
 assert.match(api, /async listGuest\(\{ token, page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /async prepareGuestCreate\(input\)/);
 
 // Inquiry uses the same public-board hero/header shell as notices.
 assert.match(userPanel, /bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white/);
@@ -117,7 +127,7 @@ assert.match(richTextEditor, /export\s+function\s+RichTextEditor\s*\(/);
 
 for (const endpoint of [
   '/api/inquiries/config', '/api/inquiries/member', '/api/inquiries/guest',
-  '/api/inquiries/guest/verify', '/api/admin/inquiries', '/api/admin/inquiries/settings',
+  '/api/inquiries/guest/prepare', '/api/inquiries/guest/verify', '/api/admin/inquiries', '/api/admin/inquiries/settings',
   '/api/admin/inquiries/categories', '/api/admin/inquiries/terms',
 ]) assert.ok(api.includes(endpoint), `Inquiry API endpoint missing: ${endpoint}`);
 assert.match(api, /Authorization = `Guest \$\{normalizedGuestToken\}`/);

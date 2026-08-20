@@ -63,16 +63,21 @@ const validateInquiryContent = (input = {}) => {
   return Object.freeze({ categoryId, title, bodyHtml, bodyText });
 };
 
-const validateGuestAuthor = (input = {}) => {
+const validateGuestIdentity = (input = {}) => {
   const name = trim(input.name).replace(/\s+/g, ' ');
-  const team = trim(input.team).replace(/\s+/g, ' ');
   const email = lower(input.email);
   const phone = normalizePhone(input.phone);
   if (name.length < 2 || name.length > 50) throw serviceError('guest_inquiry_name_invalid', 'Guest inquiry name is invalid.', 400);
-  if (!team || team.length > 100) throw serviceError('guest_inquiry_team_invalid', 'Guest inquiry team is required.', 400);
   if (!validateEmail(email)) throw serviceError('guest_inquiry_email_invalid', 'Guest inquiry email is invalid.', 400);
   if (!validatePhone(phone)) throw serviceError('guest_inquiry_phone_invalid', 'Guest inquiry phone is invalid.', 400);
-  return Object.freeze({ name, team, email, phone });
+  return Object.freeze({ name, email, phone });
+};
+
+const validateGuestAuthor = (input = {}) => {
+  const identity = validateGuestIdentity(input);
+  const team = trim(input.team).replace(/\s+/g, ' ');
+  if (!team || team.length > 100) throw serviceError('guest_inquiry_team_invalid', 'Guest inquiry team is required.', 400);
+  return Object.freeze({ ...identity, team });
 };
 
 const validateGuestPasswordInput = (password) => {
@@ -219,6 +224,19 @@ export const createInquiryService = ({ repository }) => {
     return session;
   };
 
+  const checkGuestIdentityPassword = async ({ identity, password }) => {
+    const identityRecord = await repository.findGuestIdentity(identity);
+    if (!identityRecord?.exists) {
+      return Object.freeze({ exists: false, publicIds: Object.freeze([]), matched: false });
+    }
+    const matched = await verifyGuestInquiryPassword(password, identityRecord.passwordHash);
+    return Object.freeze({
+      exists: true,
+      publicIds: identityRecord.publicIds,
+      matched,
+    });
+  };
+
   return Object.freeze({
     async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
       const [settings, categories, catalog] = await Promise.all([
@@ -294,6 +312,18 @@ export const createInquiryService = ({ repository }) => {
       }
     },
 
+    async prepareGuestCreate({ input }) {
+      const settings = await repository.getSettings();
+      if (!settings.allowGuest) throw serviceError('guest_inquiry_disabled', 'Guest inquiries are disabled.', 403);
+      const identity = validateGuestIdentity(input);
+      const password = validateGuestPasswordInput(input?.password);
+      const identityCheck = await checkGuestIdentityPassword({ identity, password });
+      if (identityCheck.exists && !identityCheck.matched) {
+        throw serviceError('guest_inquiry_identity_password_mismatch', 'Guest inquiry identity password does not match.', 409);
+      }
+      return Object.freeze({ allowed: true, identityExists: identityCheck.exists });
+    },
+
     async createGuest({ input }) {
       const settings = await repository.getSettings();
       if (!settings.allowGuest) throw serviceError('guest_inquiry_disabled', 'Guest inquiries are disabled.', 403);
@@ -302,6 +332,10 @@ export const createInquiryService = ({ repository }) => {
       const password = validateGuestPasswordInput(input?.password);
       if (password !== String(input?.passwordConfirm || '')) {
         throw serviceError('guest_inquiry_password_confirmation_mismatch', 'Guest inquiry password confirmation does not match.', 400);
+      }
+      const identityCheck = await checkGuestIdentityPassword({ identity: author, password });
+      if (identityCheck.exists && !identityCheck.matched) {
+        throw serviceError('guest_inquiry_identity_password_mismatch', 'Guest inquiry identity password does not match.', 409);
       }
       const { terms } = await getSelectedGuestTerms(settings);
       const decisions = new Map((Array.isArray(input?.termDecisions) ? input.termDecisions : []).map((decision) => [
@@ -341,30 +375,29 @@ export const createInquiryService = ({ repository }) => {
     },
 
     async verifyGuestAccess({ input }) {
-      const name = trim(input?.name);
-      const method = trim(input?.method).toLowerCase();
-      const identifier = method === 'phone' ? normalizePhone(input?.identifier) : lower(input?.identifier);
       const password = String(input?.password || '');
-      if (!name || !['email', 'phone'].includes(method) || !identifier || !password) {
+      let identity;
+      try {
+        identity = validateGuestIdentity(input);
+      } catch {
         throw serviceError('guest_inquiry_verification_failed', 'Guest inquiry verification failed.', 404);
       }
-      const candidates = await repository.findGuestCandidates({ name, method, identifier });
-      const matched = [];
-      if (candidates.length === 0) {
+      if (!password) {
+        throw serviceError('guest_inquiry_verification_failed', 'Guest inquiry verification failed.', 404);
+      }
+      const identityCheck = await checkGuestIdentityPassword({ identity, password });
+      if (!identityCheck.exists) {
         const dummy = await hashGuestInquiryPassword('guest-inquiry-dummy-password');
         await verifyGuestInquiryPassword(password, dummy);
-      } else {
-        for (const candidate of candidates.slice(0, 20)) {
-          if (await verifyGuestInquiryPassword(password, candidate.passwordHash)) matched.push(candidate.publicId);
-        }
       }
-      if (matched.length === 0) {
+      if (!identityCheck.matched) {
         throw serviceError('guest_inquiry_verification_failed', 'Guest inquiry verification failed.', 404);
       }
+      const publicIds = identityCheck.publicIds;
       const token = randomBytes(32).toString('base64url');
       const expiresAt = new Date(Date.now() + GUEST_SESSION_TTL_MS);
-      await repository.createGuestSession({ tokenHash: sha256(token), publicIds: matched, expiresAt });
-      return Object.freeze({ token, expiresAt: expiresAt.toISOString(), count: matched.length });
+      await repository.createGuestSession({ tokenHash: sha256(token), publicIds, expiresAt });
+      return Object.freeze({ token, expiresAt: expiresAt.toISOString(), count: publicIds.length });
     },
 
     async listGuest({ token, page, pageSize }) {

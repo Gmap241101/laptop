@@ -196,6 +196,11 @@ export const inquiryApi = Object.freeze({
     return payload.inquiry || null;
   },
 
+  async prepareGuestCreate(input) {
+    const payload = await requestJson({ path: '/api/inquiries/guest/prepare', method: 'POST', body: input });
+    return payload.guestInquiryPreparation || { allowed: false, identityExists: false };
+  },
+
   async verifyGuest(input) {
     const payload = await requestJson({ path: '/api/inquiries/guest/verify', method: 'POST', body: input });
     return payload.guestInquiryAccess || null;
