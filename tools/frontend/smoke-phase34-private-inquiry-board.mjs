@@ -33,6 +33,14 @@ for (const marker of [
 ]) assert.ok(userPanel.includes(marker), `User inquiry marker missing: ${marker}`);
 assert.doesNotMatch(userPanel, /localStorage/);
 assert.match(userPanel, /Number\(detail\.answerCount \|\| 0\) === 0/);
+assert.match(userPanel, />답변 \{Number\(detail\.answerCount \|\| 0\)\}건<\/h4>/);
+assert.match(userPanel, /index === 0 \? '답변입니다\.' : `\$\{index\}번째 추가답변입니다\.`/);
+assert.match(userPanel, /아직 등록된 답변이 없습니다\./);
+const userAnswerSectionStart = userPanel.indexOf('<div className="space-y-3">\n          <h4 className="text-sm font-bold text-slate-900">답변 ');
+const userAnswerSectionEnd = userPanel.indexOf('<div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">', userAnswerSectionStart);
+assert.ok(userAnswerSectionStart >= 0 && userAnswerSectionEnd > userAnswerSectionStart, 'user inquiry answer section must exist');
+const userAnswerSection = userPanel.slice(userAnswerSectionStart, userAnswerSectionEnd);
+assert.doesNotMatch(userAnswerSection, /관리자/, 'user inquiry answer presentation must not use administrator wording');
 assert.doesNotMatch(userPanel, /setActiveFaqCategoryId|카테고리 탭/);
 assert.doesNotMatch(userPanel, /guestInquiryLookupMethod|조회 방법|guestVerify\.method|guestVerify\.identifier/);
 assert.match(userPanel, /로그인하시면 기존 문의를 확인하거나 새 문의를 작성할 수 있습니다\./);

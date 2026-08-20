@@ -847,16 +847,16 @@ export default function UserInquiryPanel({ ctx }) {
         </article>
 
         <div className="space-y-3">
-          <h4 className="text-sm font-bold text-slate-900">관리자 답변 {Number(detail.answerCount || 0)}건</h4>
+          <h4 className="text-sm font-bold text-slate-900">답변 {Number(detail.answerCount || 0)}건</h4>
           {Array.isArray(detail.answers) && detail.answers.length > 0 ? detail.answers.map((answer, index) => (
             <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <div className="text-sm font-bold text-slate-900">관리자 답변 {index + 1}</div>
-                <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName || '관리자'} · {formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
+                <div className="text-sm font-bold text-slate-900">{index === 0 ? '답변입니다.' : `${index}번째 추가답변입니다.`}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName ? `${answer.adminDisplayName} · ` : ''}{formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
               </div>
               <div className="px-5 py-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div>
             </article>
-          )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 관리자 답변이 없습니다.</div>}
+          )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 답변이 없습니다.</div>}
         </div>
 
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
