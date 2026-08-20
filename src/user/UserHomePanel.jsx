@@ -16,6 +16,7 @@ import {
   SITE_CONTENT_DOMAINS,
 } from '../features/content/siteContentCutover.js';
 import useSiteContentRefreshRevision from '../features/content/useSiteContentRefreshRevision.js';
+import { getCachedUserHomeBootstrap } from './userHomeBootstrapService.js';
 
 const PROMOTION_LAYOUTS = {
   '2x1': { rows: 1, slots: 2, aspectClass: 'aspect-square' },
@@ -171,7 +172,9 @@ export default function UserHomePanel({ ctx }) {
     siteSettings,
   } = ctx;
 
-  const [initialHomeState] = useState(() => parseHomeContent(getCachedSiteContentDomain(SITE_CONTENT_DOMAINS.HOME)));
+  const [initialHomeState] = useState(() => parseHomeContent(
+    getCachedSiteContentDomain(SITE_CONTENT_DOMAINS.HOME) || getCachedUserHomeBootstrap()?.home
+  ));
   const [banners, setBanners] = useState(() => initialHomeState.banners);
   const [bannersReady, setBannersReady] = useState(() => initialHomeState.ready);
   const [bannerLoadError, setBannerLoadError] = useState('');
@@ -425,7 +428,13 @@ export default function UserHomePanel({ ctx }) {
         }}
         aria-label="메인 비주얼"
       >
-        {heroBanners.length === 0 ? (
+        {!bannersReady ? (
+          <div
+            className="aspect-[4/3] bg-slate-900 sm:aspect-[16/7] lg:aspect-[3/1]"
+            aria-busy="true"
+            aria-label="메인 비주얼 준비 중"
+          />
+        ) : heroBanners.length === 0 ? (
           siteSettings?.defaultHeroEnabled === false ? (
             <div className="flex aspect-[4/3] items-center justify-center bg-slate-900 px-6 text-center text-sm font-semibold text-slate-300 sm:aspect-[16/7] lg:aspect-[3/1]">
               {siteSettings?.siteName || '기기 대여 시스템'}

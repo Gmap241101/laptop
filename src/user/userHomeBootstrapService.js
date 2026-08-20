@@ -39,12 +39,12 @@ const getBootstrapPresentationAssets = (bootstrap) => {
   return { heroUrl, logoUrl };
 };
 
-const warmImage = (url, { waitForDecode = false, timeoutMs = 0 } = {}) => {
+const warmImage = (url, { waitForDecode = false, timeoutMs = 0, fetchPriority = 'auto' } = {}) => {
   const source = String(url || '').trim();
   if (!source || typeof Image === 'undefined') return Promise.resolve();
   preconnectOrigin(source);
   const image = new Image();
-  image.fetchPriority = 'high';
+  image.fetchPriority = fetchPriority;
   image.decoding = 'async';
   const loaded = new Promise((resolve) => {
     image.onload = resolve;
@@ -111,8 +111,13 @@ export const preconnectUserHomeAuthority = () => {
 
 export const preloadCriticalUserHomeAssets = async (bootstrap, { timeoutMs = 1200 } = {}) => {
   const { heroUrl, logoUrl } = getBootstrapPresentationAssets(bootstrap);
-  void warmImage(logoUrl);
-  await warmImage(heroUrl, { waitForDecode: true, timeoutMs });
+  const heroWarmup = warmImage(heroUrl, {
+    waitForDecode: true,
+    timeoutMs,
+    fetchPriority: 'high',
+  });
+  void warmImage(logoUrl, { fetchPriority: 'auto' });
+  await heroWarmup;
 };
 
 export const getCachedUserHomeBootstrap = () => {

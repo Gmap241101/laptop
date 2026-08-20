@@ -1,5 +1,5 @@
 import { clearAdminRouteIntent, getRouteStateFromPath, PROTECTED_USER_TABS } from './routing/appRoutes.js';
-import { preconnectUserHomeAuthority, preloadUserHomeBootstrap } from './user/userHomeBootstrapService.js';
+import { preloadCriticalUserHomeAssets, preconnectUserHomeAuthority, preloadUserHomeBootstrap } from './user/userHomeBootstrapService.js';
 
 clearAdminRouteIntent();
 
@@ -7,7 +7,9 @@ const initialRoute = getRouteStateFromPath();
 preconnectUserHomeAuthority();
 
 if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
-  void preloadUserHomeBootstrap().catch(() => {});
+  void preloadUserHomeBootstrap()
+    .then((bootstrap) => preloadCriticalUserHomeAssets(bootstrap))
+    .catch(() => {});
 } else if (initialRoute.view === 'user' && initialRoute.userTab === 'signup') {
   void import('./features/terms/termsService.js')
     .then(({ preloadSignupTermsPolicy }) => preloadSignupTermsPolicy())

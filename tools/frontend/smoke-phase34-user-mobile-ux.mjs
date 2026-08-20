@@ -57,5 +57,15 @@ assert.ok(
   popupLayer.includes('min-w-0 flex-1 rounded-lg'),
   'mobile popup dismiss-duration select must receive flexible readable width',
 );
+assert.match(
+  popupLayer,
+  /space-y-2 sm:hidden[\s\S]*flex min-w-0 items-center gap-2[\s\S]*이전 팝업[\s\S]*다시 보지 않기[\s\S]*팝업 다시 보지 않기 기간/,
+  'mobile popup first footer row must keep navigation, do-not-show checkbox, and duration select together',
+);
+assert.match(
+  popupLayer,
+  /flex items-center justify-end gap-2[\s\S]*모두 닫기[\s\S]*>\s*닫기\s*</,
+  'mobile popup second footer row must contain only close-all and close actions',
+);
 
 console.log('[phase34-user-mobile-ux-frontend-smoke] PASS');
