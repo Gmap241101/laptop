@@ -407,9 +407,11 @@ assert.match(userHomeBootstrapServiceSource, /\/api\/user\/home-bootstrap/, 'use
 assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.SITE_SETTINGS/, 'home bootstrap must seed the site-settings in-flight cache');
 assert.match(userHomeBootstrapServiceSource, /primeSiteContentDomainPromise\(SITE_CONTENT_DOMAINS\.HOME/, 'home bootstrap must seed the home in-flight cache');
 assert.equal(userMainSource.includes('renderAppRoot'), false, 'user entrypoint must no longer fall back to the shared App/AppShell recovery runtime');
-assert.match(renderUserRootSource, /React\.lazy\(async \(\) => \{[\s\S]*import\('\.\.\/UserApp\.jsx'\)/, 'full UserApp must remain a lazy chunk while home bootstrap/critical assets are prepared');
-assert.match(renderUserRootSource, /fallback=\{homeFallback\}/, 'user root must paint the lightweight real home shell while the full UserApp chunk loads');
-assert.match(userHomeBootstrapScreenSource, /preloadUserHomeBootstrap/, 'lightweight home shell must consume the same in-flight home bootstrap request');
+assert.match(renderUserRootSource, /React\.lazy\(async \(\) => \{[\s\S]*import\('\.\.\/UserApp\.jsx'\)/, 'full UserApp must remain a lazy chunk while home bootstrap/critical assets are prepared in parallel');
+assert.equal(renderUserRootSource.includes('await preloadUserHomeBootstrap()'), false, 'home bootstrap and critical image decode must not block UserApp lazy resolution');
+assert.match(renderUserRootSource, /void preloadUserHomeBootstrap\(\)[\s\S]*preloadCriticalUserHomeAssets/, 'home bootstrap and critical assets should continue warming in the background');
+assert.match(renderUserRootSource, /<React\.Suspense fallback=\{null\}>[\s\S]*<UserApp runtimeSurface="user" \/>/, 'user root must render the real user runtime without an intermediate home placeholder surface');
+assert.equal(renderUserRootSource.includes('UserHomeBootstrapScreen'), false, 'the obsolete intermediate bootstrap screen must not be mounted by the user root');
 assert.equal(renderUserRootSource.includes("import UserApp from '../UserApp.jsx'"), false, 'user root must not statically import the full UserApp graph');
 assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'isolated user root must retain a top-level render error boundary');
 assert.match(adminMainSource, /renderAdminRoot/, 'administrator entrypoint must mount the dedicated administrator root');

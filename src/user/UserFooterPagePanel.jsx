@@ -142,13 +142,13 @@ export default function UserFooterPagePanel({ ctx }) {
   }
 
   return (
-    <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+    <Card className="flex flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-6 py-5">
         <h2 className="break-words text-xl font-bold text-slate-950">
           {selectedFooterPage.title}
         </h2>
       </div>
-      <CardContent className="min-h-[320px] px-6 py-7">
+      <CardContent className="min-h-[320px] flex-1 px-6 py-7">
         <RichTextContent
           html={selectedFooterPage.contentHtml}
           text={selectedFooterPage.contentText || selectedFooterPage.content}

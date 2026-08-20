@@ -2,7 +2,6 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { getRouteStateFromPath } from '../routing/appRoutes.js';
-import UserHomeBootstrapScreen from '../user/UserHomeBootstrapScreen.jsx';
 import UserRuntimeErrorBoundary from '../user/UserRuntimeErrorBoundary.jsx';
 import { preloadCriticalUserHomeAssets, preloadUserHomeBootstrap } from '../user/userHomeBootstrapService.js';
 import '../index.css';
@@ -11,7 +10,7 @@ const UserApp = React.lazy(async () => {
   const modulePromise = import('../UserApp.jsx');
   const initialRoute = getRouteStateFromPath();
   if (initialRoute.view === 'user' && initialRoute.userTab === 'home') {
-    await preloadUserHomeBootstrap()
+    void preloadUserHomeBootstrap()
       .then((bootstrap) => preloadCriticalUserHomeAssets(bootstrap))
       .catch(() => {});
   }
@@ -26,18 +25,13 @@ const shouldShowClerkDiagnostics = () => {
 
 export const renderUserRoot = () => {
   const root = createRoot(document.getElementById('root'));
-  const initialRoute = getRouteStateFromPath();
-  const homeFallback = initialRoute.view === 'user' && initialRoute.userTab === 'home'
-    ? <UserHomeBootstrapScreen />
-    : null;
-
   root.render(
     <React.StrictMode>
       <UserRuntimeErrorBoundary
         resetKey="user-root"
         onRecover={() => window.location.assign('/')}
       >
-        <React.Suspense fallback={homeFallback}>
+        <React.Suspense fallback={null}>
           <UserApp runtimeSurface="user" />
         </React.Suspense>
       </UserRuntimeErrorBoundary>

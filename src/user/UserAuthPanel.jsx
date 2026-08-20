@@ -233,7 +233,7 @@ export default function UserAuthPanel({ ctx }) {
 
   return (
     <>
-    <Card className="mx-auto max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
+    <Card className="mx-auto w-full max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
