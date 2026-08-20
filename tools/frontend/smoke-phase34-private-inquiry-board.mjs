@@ -23,7 +23,7 @@ assert.match(userWorkspace, /UserInquiryPanel/);
 assert.match(context, /inquiry:\s*contextKeys\('goToUserLogin hasFirebaseAuthSession triggerToast'\)/);
 
 for (const marker of [
-  '회원 로그인', '비회원 문의 및 조회', '비회원 문의 작성', '비회원 문의 등록 및 확인',
+  '회원 문의', '비회원 문의', '비회원 문의 등록', '비회원 문의 등록 및 확인',
   '문의 확인 비밀번호', '문의 확인 비밀번호 확인', '이메일', '연락처',
   '비회원 문의 확인 비밀번호는 재설정할 수 없습니다.', '답변대기', '답변완료', '추가답변',
   '관리자 답변', '문의 등록', '문의 수정', '문의 작성', '문의내역 검색',
@@ -33,9 +33,18 @@ assert.doesNotMatch(userPanel, /localStorage/);
 assert.match(userPanel, /Number\(detail\.answerCount \|\| 0\) === 0/);
 assert.doesNotMatch(userPanel, /setActiveFaqCategoryId|카테고리 탭/);
 assert.doesNotMatch(userPanel, /guestInquiryLookupMethod|조회 방법|guestVerify\.method|guestVerify\.identifier/);
+assert.match(userPanel, /로그인하시면 기존 문의를 확인하거나 새 문의를 작성할 수 있습니다\./);
+assert.match(userPanel, /성명, 이메일, 연락처, 비밀번호를 입력하시면 기존 문의를 확인하거나 새 문의를 작성할 수 있습니다\./);
+assert.match(userPanel, /성명, 이메일, 연락처, 문의 확인 비밀번호를 입력해 기존 문의를 확인하거나 새 문의를 등록할 수 있습니다\./);
+assert.match(userPanel, />비회원 문의 등록 및 확인<\/Button>/);
+assert.match(userPanel, /const parseDomesticPhoneDraft = \(value\) =>/);
+assert.match(userPanel, /normalizePhoneMiddleDigits\(rawMiddle\)/);
+assert.match(userPanel, /normalizePhoneDigits\(rawLast, 4\)/);
+assert.doesNotMatch(userPanel, /parseDomesticPhoneNumber\(guest(?:Form|Verify)\.phone\)/);
 assert.match(userPanel, /useState\('verify'\)/);
-assert.match(userPanel, /<DomesticPhoneInput[\s\S]*guestVerify\.phone/);
-assert.match(userPanel, /onClick=\{prepareGuestCreate\}>\{guestPrepareLoading \? '확인 중' : '문의 작성'\}/);
+assert.match(userPanel, /parseDomesticPhoneDraft/);
+assert.match(userPanel, /<DomesticPhoneInput[\s\S]*parseDomesticPhoneDraft\(guestVerify\.phone\)/);
+assert.match(userPanel, /onClick=\{prepareGuestCreate\}>\{guestPrepareLoading \? '확인 중' : '문의 등록'\}/);
 assert.match(userPanel, /onClick=\{verifyGuest\}>\{guestVerifyLoading \? '확인 중' : '문의 확인'\}/);
 assert.match(userPanel, /guest_inquiry_identity_password_mismatch/);
 assert.doesNotMatch(userPanel, />\s*처음으로\s*</);

@@ -7,7 +7,13 @@ import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
-import { buildDomesticPhoneNumber, isValidDomesticPhoneNumber, parseDomesticPhoneNumber } from '../utils/memberPolicy.js';
+import {
+  DOMESTIC_PHONE_PREFIXES,
+  buildDomesticPhoneNumber,
+  isValidDomesticPhoneNumber,
+  normalizePhoneDigits,
+  normalizePhoneMiddleDigits,
+} from '../utils/memberPolicy.js';
 
 const GUEST_ACCESS_SESSION_KEY = 'mk_laptop_guest_inquiry_access';
 const PAGE_SIZE_FALLBACK = 10;
@@ -25,6 +31,15 @@ const STATUS_CLASSES = Object.freeze({
 });
 
 const trim = (value) => String(value ?? '').trim();
+
+const parseDomesticPhoneDraft = (value) => {
+  const [rawPrefix = '', rawMiddle = '', rawLast = ''] = String(value || '').trim().split('-', 3);
+  return {
+    prefix: DOMESTIC_PHONE_PREFIXES.includes(rawPrefix) ? rawPrefix : '010',
+    middle: normalizePhoneMiddleDigits(rawMiddle),
+    last: normalizePhoneDigits(rawLast, 4),
+  };
+};
 
 const htmlToText = (html) => {
   const source = String(html || '');
@@ -407,7 +422,7 @@ export default function UserInquiryPanel({ ctx }) {
 
   const createGuest = async () => {
     const bodyText = htmlToText(guestForm.bodyHtml);
-    if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !isValidDomesticPhoneNumber(parseDomesticPhoneNumber(guestForm.phone))
+    if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !isValidDomesticPhoneNumber(parseDomesticPhoneDraft(guestForm.phone))
       || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || !bodyText) {
       notify('비회원 문의 필수 입력 항목을 모두 입력해 주세요.', 'error');
       return;
@@ -458,7 +473,7 @@ export default function UserInquiryPanel({ ctx }) {
   const hasGuestVerificationInput = () => Boolean(
     guestVerify.name.trim()
     && guestVerify.email.trim()
-    && isValidDomesticPhoneNumber(parseDomesticPhoneNumber(guestVerify.phone))
+    && isValidDomesticPhoneNumber(parseDomesticPhoneDraft(guestVerify.phone))
     && guestVerify.password
   );
 
@@ -507,7 +522,7 @@ export default function UserInquiryPanel({ ctx }) {
         ? '기존 비회원 문의의 문의 확인 비밀번호와 일치하지 않습니다.'
         : error?.code === 'guest_inquiry_disabled'
           ? '현재 비회원 문의를 접수하지 않습니다.'
-          : '비회원 문의 작성 정보를 확인하지 못했습니다.';
+          : '비회원 문의 등록 정보를 확인하지 못했습니다.';
       notify(message, 'error');
     } finally {
       setGuestPrepareLoading(false);
@@ -733,14 +748,14 @@ export default function UserInquiryPanel({ ctx }) {
       {!hasFirebaseAuthSession && config.allowGuest && !guestAccess?.token && guestEntry === 'intro' ? (
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-base font-bold text-slate-900">회원 로그인</div>
-            <p className="mt-2 text-xs leading-6 text-slate-500">회원 문의는 로그인 후 개인정보를 다시 입력하지 않고 바로 작성할 수 있으며, 본인의 문의 내역을 확인할 수 있습니다.</p>
-            <Button type="button" variant="primary" className="mt-5" onClick={goToUserLogin}>회원 로그인</Button>
+            <div className="text-base font-bold text-slate-900">회원 문의</div>
+            <p className="mt-2 text-xs leading-6 text-slate-500">로그인하시면 기존 문의를 확인하거나 새 문의를 작성할 수 있습니다.</p>
+            <Button type="button" variant="primary" className="mt-5" onClick={goToUserLogin}>로그인</Button>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-base font-bold text-slate-900">비회원 문의 및 조회</div>
-            <p className="mt-2 text-xs leading-6 text-slate-500">성명·이메일·연락처·문의 확인 비밀번호로 기존 문의를 확인할 수 있으며, 같은 화면에서 새 문의 작성을 시작할 수 있습니다.</p>
-            <Button type="button" variant="outline" className="mt-5" onClick={() => void enterGuestFlow()}>비회원 문의 확인</Button>
+            <div className="text-base font-bold text-slate-900">비회원 문의</div>
+            <p className="mt-2 text-xs leading-6 text-slate-500">성명, 이메일, 연락처, 비밀번호를 입력하시면 기존 문의를 확인하거나 새 문의를 작성할 수 있습니다.</p>
+            <Button type="button" variant="outline" className="mt-5" onClick={() => void enterGuestFlow()}>비회원 문의 등록 및 확인</Button>
           </div>
         </div>
       ) : null}
@@ -752,7 +767,7 @@ export default function UserInquiryPanel({ ctx }) {
           ) : guestMode === 'create' ? (
             <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
-                <h3 className="text-base font-bold text-slate-900">비회원 문의 작성</h3>
+                <h3 className="text-base font-bold text-slate-900">비회원 문의 등록</h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">이메일과 연락처는 모두 필수입니다. 문의 확인 비밀번호는 재설정할 수 없으므로 분실하지 않도록 보관해 주세요.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
@@ -761,7 +776,7 @@ export default function UserInquiryPanel({ ctx }) {
                 <Field label="이메일"><Input type="email" value={guestForm.email} onChange={(email) => setGuestForm((current) => ({ ...current, email }))} /></Field>
                 <DomesticPhoneInput
                   label="연락처"
-                  {...parseDomesticPhoneNumber(guestForm.phone)}
+                  {...parseDomesticPhoneDraft(guestForm.phone)}
                   onChange={(parts) => setGuestForm((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
                   disabled={saving}
                 />
@@ -803,20 +818,20 @@ export default function UserInquiryPanel({ ctx }) {
             <div className="mx-auto w-full max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div>
                 <h3 className="text-base font-bold text-slate-900">비회원 문의 등록 및 확인</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">작성 시 입력한 성명, 이메일, 연락처, 문의 확인 비밀번호가 모두 일치해야 합니다.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">성명, 이메일, 연락처, 문의 확인 비밀번호를 입력해 기존 문의를 확인하거나 새 문의를 등록할 수 있습니다.</p>
               </div>
               <Field label="성명"><Input value={guestVerify.name} onChange={(name) => setGuestVerify((current) => ({ ...current, name }))} /></Field>
               <Field label="이메일"><Input type="email" value={guestVerify.email} onChange={(email) => setGuestVerify((current) => ({ ...current, email }))} /></Field>
               <DomesticPhoneInput
                 label="연락처"
-                {...parseDomesticPhoneNumber(guestVerify.phone)}
+                {...parseDomesticPhoneDraft(guestVerify.phone)}
                 onChange={(parts) => setGuestVerify((current) => ({ ...current, phone: buildDomesticPhoneNumber(parts) }))}
                 disabled={guestVerifyLoading || guestPrepareLoading}
               />
               <Field label="문의 확인 비밀번호"><Input type="password" value={guestVerify.password} onChange={(password) => setGuestVerify((current) => ({ ...current, password }))} /></Field>
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">비회원 문의 확인 비밀번호는 재설정할 수 없습니다. 비밀번호를 분실한 경우 기존 문의를 조회할 수 없습니다.</div>
               <div className="flex flex-wrap justify-end gap-2">
-                <Button type="button" variant="outline" disabled={guestVerifyLoading || guestPrepareLoading} onClick={prepareGuestCreate}>{guestPrepareLoading ? '확인 중' : '문의 작성'}</Button>
+                <Button type="button" variant="outline" disabled={guestVerifyLoading || guestPrepareLoading} onClick={prepareGuestCreate}>{guestPrepareLoading ? '확인 중' : '문의 등록'}</Button>
                 <Button type="button" variant="primary" disabled={guestVerifyLoading || guestPrepareLoading} onClick={verifyGuest}>{guestVerifyLoading ? '확인 중' : '문의 확인'}</Button>
               </div>
             </div>
