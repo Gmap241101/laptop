@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import ModalPortal from '../components/ModalPortal.jsx';
+import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 
 const RichTextEditor = lazy(() =>
   import('../components/RichTextEditor.jsx').then((module) => ({
@@ -295,6 +296,12 @@ export default function AdminDialogs({ ctx }) {
                 disabled={faqPostSaving}
               />
 
+              <SecureAttachmentEditor
+                value={faqPostForm.attachments || []}
+                onChange={(attachments) => setFaqPostForm((prev) => ({ ...prev, attachments }))}
+                disabled={faqPostSaving}
+              />
+
               <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
                   type="checkbox"
@@ -410,6 +417,12 @@ export default function AdminDialogs({ ctx }) {
                 }
                 placeholder="공지사항 내용을 입력해 주세요."
                 minHeight={280}
+                disabled={noticePostSaving}
+              />
+
+              <SecureAttachmentEditor
+                value={noticePostForm.attachments || []}
+                onChange={(attachments) => setNoticePostForm((prev) => ({ ...prev, attachments }))}
                 disabled={noticePostSaving}
               />
 

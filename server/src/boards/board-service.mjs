@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeSecureAttachmentInputs } from '../attachments/attachment-service.mjs';
 
 const trim = (value) => String(value ?? '').trim();
 const normalizePageSize = (value, fallback = 10) => {
@@ -37,6 +38,9 @@ const normalizePostInput = (boardType, input, { id, isEditing, actorClerkUserId 
     authorName: trim(input?.authorName),
     isEditing: Boolean(isEditing),
     actorClerkUserId: trim(actorClerkUserId),
+    attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
+      ? normalizeSecureAttachmentInputs(input?.attachments)
+      : null,
   });
 };
 

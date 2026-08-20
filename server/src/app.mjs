@@ -371,6 +371,11 @@ export const createRequestHandler = ({
     async saveInquiryTerm() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
     async deleteInquiryTerm() { const error = new Error('Inquiry service is not configured.'); error.code = 'inquiry_service_not_configured'; throw error; },
   },
+  secureAttachmentService = {
+    async getDownloadRecord() { const error = new Error('Secure attachment service is not configured.'); error.code = 'secure_attachment_not_configured'; throw error; },
+    async streamDownload() { const error = new Error('Secure attachment service is not configured.'); error.code = 'secure_attachment_not_configured'; throw error; },
+  },
+
 }) => {
   if (typeof databaseCheck !== 'function') {
     throw new TypeError('databaseCheck must be a function.');
@@ -516,6 +521,11 @@ export const createRequestHandler = ({
     || typeof inquiryService.addAnswer !== 'function'
     || typeof inquiryService.saveAdminSettings !== 'function') {
     throw new TypeError('inquiryService Phase 34 private inquiry methods are required.');
+  }
+  if (!secureAttachmentService
+    || typeof secureAttachmentService.getDownloadRecord !== 'function'
+    || typeof secureAttachmentService.streamDownload !== 'function') {
+    throw new TypeError('secureAttachmentService Phase 34 methods are required.');
   }
 
 
@@ -702,6 +712,51 @@ export const createRequestHandler = ({
     }
 
     const url = new URL(request.url || '/', 'http://localhost');
+
+    const secureAttachmentMatch = url.pathname.match(/^\/api\/attachments\/([^/]+)\/download$/);
+    if (request.method === 'GET' && secureAttachmentMatch) {
+      try {
+        const record = await secureAttachmentService.getDownloadRecord(decodeURIComponent(secureAttachmentMatch[1]));
+        if (!record.publicAccess) {
+          let authorized = false;
+          const guestToken = readGuestInquiryToken(request);
+          if (guestToken && record.inquiryPublicId) {
+            try {
+              await inquiryService.getGuest({ token: guestToken, publicId: record.inquiryPublicId });
+              authorized = true;
+            } catch {
+              authorized = false;
+            }
+          } else {
+            const auth = await authenticate(request, response, headers, requestId);
+            if (!auth) return;
+            if (record.inquiryPublicId) {
+              try {
+                await inquiryService.getMember({ clerkUserId: auth.userId, publicId: record.inquiryPublicId });
+                authorized = true;
+              } catch {
+                try {
+                  const adminAuth = await adminClerkAuthService.getCurrent({ clerkUserId: auth.userId });
+                  await inquiryService.getAdmin({ admin: adminAuth?.admin, publicId: record.inquiryPublicId });
+                  authorized = true;
+                } catch {
+                  authorized = false;
+                }
+              }
+            }
+          }
+          if (!authorized) {
+            writeJson(response, 404, { ...basePayload, error: 'attachment_not_found' }, headers);
+            return;
+          }
+        }
+        await secureAttachmentService.streamDownload({ record, response, headers });
+      } catch (error) {
+        if (!response.headersSent) writeJson(response, error?.status || 502, { ...basePayload, error: error?.code || 'attachment_download_failed' }, headers);
+        else if (!response.destroyed) response.destroy();
+      }
+      return;
+    }
 
     if (request.method === 'GET' && url.pathname === '/') {
       writeJson(

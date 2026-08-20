@@ -38,6 +38,8 @@ import { createBoardRepository } from './boards/board-repository.mjs';
 import { createBoardService } from './boards/board-service.mjs';
 import { createInquiryRepository } from './inquiries/inquiry-repository.mjs';
 import { createInquiryService } from './inquiries/inquiry-service.mjs';
+import { createSecureAttachmentRepository } from './attachments/attachment-repository.mjs';
+import { createSecureAttachmentService } from './attachments/attachment-service.mjs';
 import { createSystemConfigRepository } from './settings/system-config-repository.mjs';
 import { createSystemConfigService } from './settings/system-config-service.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
@@ -86,9 +88,11 @@ const systemDataRepository = createSystemDataRepository(pool);
 const systemDataService = createSystemDataService({ repository: systemDataRepository });
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
 const assetRepository = createAssetRepository(pool);
-const boardRepository = createBoardRepository(pool);
+const secureAttachmentRepository = createSecureAttachmentRepository(pool);
+const secureAttachmentService = createSecureAttachmentService({ repository: secureAttachmentRepository });
+const boardRepository = createBoardRepository(pool, { attachmentRepository: secureAttachmentRepository });
 const boardService = createBoardService({ repository: boardRepository });
-const inquiryRepository = createInquiryRepository(pool);
+const inquiryRepository = createInquiryRepository(pool, { attachmentRepository: secureAttachmentRepository });
 const inquiryService = createInquiryService({ repository: inquiryRepository });
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
@@ -183,6 +187,7 @@ const server = createServer(
     siteContentService,
     boardService,
     inquiryService,
+    secureAttachmentService,
     memberAuthorityRepository,
     systemConfigService,
     clerkDeviceTrustService,

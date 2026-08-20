@@ -33,6 +33,7 @@ const phase34MemberLifecycleFinalization = readFileSync('server/migrations/031_p
 const phase34RejoinApprovalConsolidation = readFileSync('server/migrations/032_phase34_rejoin_approval_consolidation.sql', 'utf8');
 const phase34AdminMemberDirectoryOverride = readFileSync('server/migrations/033_phase34_admin_member_directory_override.sql', 'utf8');
 const phase34PrivateInquiryBoard = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql', 'utf8');
+const phase34SecureExternalAttachments = readFileSync('server/migrations/035_phase34_secure_external_attachments.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -573,4 +574,28 @@ if (/retention_until|retentionUntil|auto(?:matic)?[_ -]?purge|CREATE\s+(?:OR\s+R
   throw new Error('Migration 034 must not implement inquiry retention timers or automatic purge scheduling.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations and 034 PostgreSQL private inquiry board, are type-safe)');
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_secure_attachments',
+  "CHECK (owner_type IN ('notice','faq','inquiry','inquiry_answer'))",
+  'target_url TEXT NOT NULL',
+  'deleted_at TIMESTAMPTZ',
+  'app_secure_attachments_owner_active_idx',
+  "'phase34_secure_external_attachments'",
+  "'storage', 'external-url-server-only'",
+  "'clientExposure', 'opaque-attachment-id-only'",
+  "'downloadMode', 'server-proxy-no-redirect'",
+  "'ssrfProtection', 'https-public-network-only'",
+]) {
+  if (!phase34SecureExternalAttachments.includes(marker)) {
+    throw new Error(`Migration 035 secure external attachment marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34SecureExternalAttachments)) {
+  throw new Error('Migration 035 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+if (/(BYTEA|BLOB|large_object)/i.test(phase34SecureExternalAttachments)) {
+  throw new Error('Migration 035 must store external attachment references only, not file bytes.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, and 035 secure external attachments, are type-safe)');

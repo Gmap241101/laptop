@@ -6,6 +6,8 @@ import PaginationControls from '../components/PaginationControls.jsx';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
+import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 import {
   backUserCommunityHistoryState,
@@ -76,10 +78,10 @@ const formatDate = (value) => {
   }).format(date);
 };
 
-const emptyForm = () => ({ categoryId: '', title: '', bodyHtml: '' });
+const emptyForm = () => ({ categoryId: '', title: '', bodyHtml: '', attachments: [] });
 const emptyGuestForm = () => ({
   name: '', team: '', email: '', phone: '', password: '', passwordConfirm: '',
-  categoryId: '', title: '', bodyHtml: '', termDecisions: {},
+  categoryId: '', title: '', bodyHtml: '', attachments: [], termDecisions: {},
 });
 
 const readGuestAccess = () => {
@@ -402,6 +404,9 @@ export default function UserInquiryPanel({ ctx }) {
       categoryId: detail.categoryId || '',
       title: detail.title || '',
       bodyHtml: detail.bodyHtml || detail.bodyText || '',
+      attachments: Array.isArray(detail.attachments)
+        ? detail.attachments.map((attachment) => ({ ...attachment, targetUrl: '' }))
+        : [],
     });
     if (hasFirebaseAuthSession) setMemberView('compose');
     pushUserCommunityHistoryState({ tab: 'inquiry', view: 'compose', id: detail.publicId });
@@ -819,6 +824,11 @@ export default function UserInquiryPanel({ ctx }) {
         minHeight={320}
         disabled={saving}
       />
+      <SecureAttachmentEditor
+        value={form.attachments || []}
+        onChange={(attachments) => setForm((current) => ({ ...current, attachments }))}
+        disabled={saving}
+      />
       <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
         {hasFirebaseAuthSession ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : editingPublicId ? <Button type="button" variant="outline" disabled={saving} onClick={cancelOwnedEdit}>취소</Button> : null}
         <Button type="button" variant="primary" disabled={saving} onClick={saveMemberOrGuestInquiry}>{saving ? '저장 중' : editingPublicId ? '문의 수정' : '문의 등록'}</Button>
@@ -843,7 +853,14 @@ export default function UserInquiryPanel({ ctx }) {
               <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
             </div>
           </div>
-          <div className="flex-1 px-5 py-6"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+          <div className="flex-1 space-y-6 px-5 py-6">
+            <RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" />
+            <SecureAttachmentList
+              attachments={detail.attachments}
+              authMode={hasFirebaseAuthSession ? 'clerk' : 'guest'}
+              guestToken={guestAccess?.token || ''}
+            />
+          </div>
         </article>
 
         <div className="space-y-3">
@@ -854,7 +871,14 @@ export default function UserInquiryPanel({ ctx }) {
                 <div className="text-sm font-bold text-slate-900">{index === 0 ? '답변입니다.' : `${index}번째 추가답변입니다.`}</div>
                 <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName ? `${answer.adminDisplayName} · ` : ''}{formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
               </div>
-              <div className="px-5 py-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+              <div className="space-y-5 px-5 py-5">
+                <RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" />
+                <SecureAttachmentList
+                  attachments={answer.attachments}
+                  authMode={hasFirebaseAuthSession ? 'clerk' : 'guest'}
+                  guestToken={guestAccess?.token || ''}
+                />
+              </div>
             </article>
           )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 답변이 없습니다.</div>}
         </div>
@@ -1044,6 +1068,11 @@ export default function UserInquiryPanel({ ctx }) {
                 <Field label="제목"><Input value={guestForm.title} onChange={(title) => setGuestForm((current) => ({ ...current, title }))} maxLength={200} /></Field>
               </div>
               <RichTextEditor label="문의 본문" value={guestForm.bodyHtml} onChange={(bodyHtml) => setGuestForm((current) => ({ ...current, bodyHtml }))} minHeight={320} disabled={saving} />
+              <SecureAttachmentEditor
+                value={guestForm.attachments || []}
+                onChange={(attachments) => setGuestForm((current) => ({ ...current, attachments }))}
+                disabled={saving}
+              />
 
               {guestTerms.length > 0 ? (
                 <div className="space-y-3">

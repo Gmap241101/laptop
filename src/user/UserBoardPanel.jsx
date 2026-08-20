@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 
 import PaginationControls from '../components/PaginationControls.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
+import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import {
   backUserCommunityHistoryState,
   pushUserCommunityHistoryState,
@@ -269,6 +270,7 @@ export default function UserBoardPanel({ ctx }) {
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
                             className="text-sm leading-7 text-slate-700"
                           />
+                          <SecureAttachmentList attachments={selectedNoticePost.attachments} />
                         </div>
                       </article>
 
@@ -681,11 +683,14 @@ export default function UserBoardPanel({ ctx }) {
                                             A.
                                           </span>
 
-                                          <RichTextContent
-                                            html={post.contentHtml}
-                                            text={post.contentText || post.content}
-                                            className="min-w-0 flex-1 text-sm leading-7 text-slate-700"
-                                          />
+                                          <div className="min-w-0 flex-1">
+                                            <RichTextContent
+                                              html={post.contentHtml}
+                                              text={post.contentText || post.content}
+                                              className="text-sm leading-7 text-slate-700"
+                                            />
+                                            <SecureAttachmentList attachments={post.attachments} />
+                                          </div>
                                         </div>
 
                                         <div aria-hidden="true" />

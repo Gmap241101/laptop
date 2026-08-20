@@ -28,6 +28,7 @@ const createDefaultNoticePostForm = () => ({
   title: '',
   contentHtml: '',
   isPinned: false,
+  attachments: [],
 });
 
 const createDefaultFaqPostForm = () => ({
@@ -35,6 +36,7 @@ const createDefaultFaqPostForm = () => ({
   title: '',
   contentHtml: '',
   isPinned: false,
+  attachments: [],
 });
 
 export const useNoticePostAdminState = () => {
@@ -126,6 +128,7 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(post?.isPinned),
+      attachments: (Array.isArray(post?.attachments) ? post.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
     };
 
     setNoticePostDialog({
@@ -229,6 +232,7 @@ export default function useAdminBoardPostController({
           contentHtml,
           contentFormat: 'rich-html-v1',
           isPinned: Boolean(noticePostForm.isPinned),
+          attachments: noticePostForm.attachments || [],
           authorUid: editingPost?.authorUid || auditActor.uid,
           authorName: editingPost?.authorName || auditActor.name,
         });
@@ -355,6 +359,7 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(post?.isPinned),
+      attachments: (Array.isArray(post?.attachments) ? post.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
     };
 
     setFaqPostDialog({
@@ -462,6 +467,7 @@ export default function useAdminBoardPostController({
           contentHtml,
           contentFormat: 'rich-html-v1',
           isPinned: Boolean(faqPostForm.isPinned),
+          attachments: faqPostForm.attachments || [],
           authorUid: editingPost?.authorUid || auditActor.uid,
           authorName: editingPost?.authorName || auditActor.name,
         });

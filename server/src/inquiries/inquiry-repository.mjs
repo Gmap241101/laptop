@@ -64,6 +64,7 @@ const mapAnswer = (row) => row ? Object.freeze({
   adminDisplayName: row.admin_display_name || '',
   createdAt: row.created_at || null,
   updatedAt: row.updated_at || null,
+  attachments: Object.freeze(Array.isArray(row.attachments) ? row.attachments : []),
 }) : null;
 
 const mapInquiryDetail = (row, answers = [], consents = [], navigation = {}) => row ? Object.freeze({
@@ -73,6 +74,7 @@ const mapInquiryDetail = (row, answers = [], consents = [], navigation = {}) => 
   authorEmail: row.author_email || '',
   authorTeam: row.author_team || '',
   authorPhone: row.author_phone || '',
+  attachments: Object.freeze(Array.isArray(row.attachments) ? row.attachments : []),
   answers: Object.freeze(answers.map(mapAnswer).filter(Boolean)),
   guestConsents: Object.freeze(consents.map((consent) => Object.freeze({
     source: consent.term_source || '',
@@ -119,8 +121,9 @@ const INQUIRY_WITH_STATUS_SELECT = `
     ) a ON TRUE
 `;
 
-export const createInquiryRepository = (pool) => {
+export const createInquiryRepository = (pool, { attachmentRepository = null } = {}) => {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('A PostgreSQL pool is required.');
+  if (!attachmentRepository) throw new TypeError('Secure attachment repository is required.');
 
   const getSettings = async (client = pool) => {
     const result = await client.query(SETTINGS_SELECT);
@@ -141,7 +144,8 @@ export const createInquiryRepository = (pool) => {
         ORDER BY created_at, answer_id`,
       [trim(inquiryId)],
     );
-    return result.rows;
+    const mapped = await attachmentRepository.listForOwners('inquiry_answer', result.rows.map((row) => row.answer_id), client);
+    return result.rows.map((row) => ({ ...row, attachments: mapped.get(row.answer_id) || [] }));
   };
 
   const listConsents = async (client, inquiryId) => {
@@ -411,22 +415,33 @@ export const createInquiryRepository = (pool) => {
       });
     },
 
-    async createMemberInquiry({ inquiryId, publicId, member, categoryId, title, bodyHtml, bodyText }) {
-      const result = await pool.query(
-        `INSERT INTO app_inquiries
-           (inquiry_id,public_id,author_type,member_uid,category_id,title,body_html,body_text,
-            author_name,author_email,author_team,author_phone,guest_password_hash,created_at,updated_at)
-         SELECT $1,$2,'member',$3,c.category_id,$4,$5,$6,$7,$8,$9,$10,NULL,NOW(),NOW()
-           FROM app_inquiry_categories c
-          WHERE c.category_id=$11 AND c.deleted_at IS NULL
-         RETURNING inquiry_id,public_id`,
-        [trim(inquiryId), trim(publicId), trim(member.memberUid), trim(title), String(bodyHtml || ''), String(bodyText || ''), trim(member.name), lower(member.email), trim(member.team), trim(member.phone), trim(categoryId)],
-      );
-      if (!result.rows[0]) throw repositoryError('inquiry_category_not_found', 'Inquiry category was not found.', 404);
-      return this.getMemberInquiry({ memberUid: member.memberUid, publicId });
+    async createMemberInquiry({ inquiryId, publicId, member, categoryId, title, bodyHtml, bodyText, attachments = null }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query(
+          `INSERT INTO app_inquiries
+             (inquiry_id,public_id,author_type,member_uid,category_id,title,body_html,body_text,
+              author_name,author_email,author_team,author_phone,guest_password_hash,created_at,updated_at)
+           SELECT $1,$2,'member',$3,c.category_id,$4,$5,$6,$7,$8,$9,$10,NULL,NOW(),NOW()
+             FROM app_inquiry_categories c
+            WHERE c.category_id=$11 AND c.deleted_at IS NULL
+           RETURNING inquiry_id,public_id`,
+          [trim(inquiryId), trim(publicId), trim(member.memberUid), trim(title), String(bodyHtml || ''), String(bodyText || ''), trim(member.name), lower(member.email), trim(member.team), trim(member.phone), trim(categoryId)],
+        );
+        if (!result.rows[0]) throw repositoryError('inquiry_category_not_found', 'Inquiry category was not found.', 404);
+        if (Array.isArray(attachments)) {
+          await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: trim(inquiryId), attachments, createdBy: trim(member.memberUid) });
+        }
+        await client.query('COMMIT');
+        return this.getMemberInquiry({ memberUid: member.memberUid, publicId });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
     },
 
-    async createGuestInquiry({ inquiryId, publicId, categoryId, title, bodyHtml, bodyText, author, passwordHash, rotateIdentityPassword = false, consents }) {
+    async createGuestInquiry({ inquiryId, publicId, categoryId, title, bodyHtml, bodyText, author, passwordHash, rotateIdentityPassword = false, consents, attachments = null }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -470,6 +485,9 @@ export const createInquiryRepository = (pool) => {
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())`,
             [trim(consent.id), trim(inquiryId), trim(consent.source), trim(consent.termId), Math.max(1, Number(consent.revision || 1)), trim(consent.versionId), Boolean(consent.required), trim(consent.title), trim(consent.contentHash)],
           );
+        }
+        if (Array.isArray(attachments)) {
+          await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: trim(inquiryId), attachments, createdBy: trim(author.email) });
         }
         await client.query('COMMIT');
         return Object.freeze({ publicId: trim(publicId) });
@@ -526,14 +544,15 @@ export const createInquiryRepository = (pool) => {
     async getMemberInquiry({ memberUid, publicId }) {
       const row = await getInquiryRow(pool, `i.public_id=$1 AND i.member_uid=$2 AND i.author_type='member' AND i.deleted_at IS NULL`, [trim(publicId), trim(memberUid)]);
       if (!row) return null;
-      const [answers, navigation] = await Promise.all([
+      const [answers, attachments, navigation] = await Promise.all([
         listActiveAnswers(pool, row.inquiry_id),
+        attachmentRepository.listForOwner('inquiry', row.inquiry_id),
         getInquiryNavigation(pool, { ownerType: 'member', memberUid, publicId }),
       ]);
-      return mapInquiryDetail(row, answers, [], navigation);
+      return mapInquiryDetail({ ...row, attachments }, answers, [], navigation);
     },
 
-    async updateOwnedInquiry({ ownerType, memberUid = '', publicId, categoryId, title, bodyHtml, bodyText }) {
+    async updateOwnedInquiry({ ownerType, memberUid = '', publicId, categoryId, title, bodyHtml, bodyText, attachments = null }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -551,6 +570,9 @@ export const createInquiryRepository = (pool) => {
             WHERE inquiry_id=$1`,
           [row.inquiry_id, trim(categoryId), trim(title), String(bodyHtml || ''), String(bodyText || '')],
         );
+        if (Array.isArray(attachments)) {
+          await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: row.inquiry_id, attachments, createdBy: trim(memberUid) || ownerType });
+        }
         await client.query('COMMIT');
         return ownerType === 'member'
           ? this.getMemberInquiry({ memberUid, publicId })
@@ -579,6 +601,7 @@ export const createInquiryRepository = (pool) => {
             WHERE inquiry_id=$1`,
           [row.inquiry_id, trim(deletedBy), ownerType],
         );
+        await attachmentRepository.deleteOwnerAttachments(client, 'inquiry', row.inquiry_id);
         await client.query('COMMIT');
         return Object.freeze({ publicId: trim(publicId), deleted: true });
       } catch (error) {
@@ -671,12 +694,13 @@ export const createInquiryRepository = (pool) => {
       if (!ids.includes(trim(publicId))) return null;
       const row = await getInquiryRow(pool, `i.public_id=$1 AND i.author_type='guest' AND i.deleted_at IS NULL`, [trim(publicId)]);
       if (!row) return null;
-      const [answers, consents, navigation] = await Promise.all([
+      const [answers, consents, attachments, navigation] = await Promise.all([
         listActiveAnswers(pool, row.inquiry_id),
         listConsents(pool, row.inquiry_id),
+        attachmentRepository.listForOwner('inquiry', row.inquiry_id),
         getInquiryNavigation(pool, { ownerType: 'guest', publicIds: ids, publicId }),
       ]);
-      return mapInquiryDetail(row, answers, consents, navigation);
+      return mapInquiryDetail({ ...row, attachments }, answers, consents, navigation);
     },
 
     async listAdminInquiries({ search = '', status = 'all', categoryId = 'all', page = 1, pageSize = 10 }) {
@@ -725,14 +749,15 @@ export const createInquiryRepository = (pool) => {
     async getAdminInquiry(publicId) {
       const row = await getInquiryRow(pool, `i.public_id=$1 AND i.deleted_at IS NULL`, [trim(publicId)]);
       if (!row) return null;
-      const [answers, consents] = await Promise.all([
+      const [answers, consents, attachments] = await Promise.all([
         listActiveAnswers(pool, row.inquiry_id),
         listConsents(pool, row.inquiry_id),
+        attachmentRepository.listForOwner('inquiry', row.inquiry_id),
       ]);
-      return mapInquiryDetail(row, answers, consents);
+      return mapInquiryDetail({ ...row, attachments }, answers, consents);
     },
 
-    async addAnswer({ answerId, publicId, bodyHtml, bodyText, adminIdentityId, adminDisplayName }) {
+    async addAnswer({ answerId, publicId, bodyHtml, bodyText, adminIdentityId, adminDisplayName, attachments = [] }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -744,6 +769,7 @@ export const createInquiryRepository = (pool) => {
            VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
           [trim(answerId), inquiry.rows[0].inquiry_id, String(bodyHtml || ''), String(bodyText || ''), trim(adminIdentityId), trim(adminDisplayName)],
         );
+        await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry_answer', ownerId: trim(answerId), attachments, createdBy: trim(adminIdentityId) });
         await client.query(`UPDATE app_inquiries SET updated_at=NOW() WHERE inquiry_id=$1`, [inquiry.rows[0].inquiry_id]);
         await client.query('COMMIT');
         return this.getAdminInquiry(publicId);
@@ -755,44 +781,76 @@ export const createInquiryRepository = (pool) => {
       }
     },
 
-    async updateAnswer({ publicId, answerId, bodyHtml, bodyText, actorId }) {
-      const result = await pool.query(
-        `UPDATE app_inquiry_answers ans
-            SET body_html=$3,body_text=$4,updated_at=NOW()
-           FROM app_inquiries i
-          WHERE ans.answer_id=$1 AND ans.inquiry_id=i.inquiry_id AND i.public_id=$2
-            AND i.deleted_at IS NULL AND ans.deleted_at IS NULL
-          RETURNING ans.answer_id`,
-        [trim(answerId), trim(publicId), String(bodyHtml || ''), String(bodyText || '')],
-      );
-      if (!result.rows[0]) throw repositoryError('inquiry_answer_not_found', 'Inquiry answer was not found.', 404);
-      return this.getAdminInquiry(publicId);
+    async updateAnswer({ publicId, answerId, bodyHtml, bodyText, actorId, attachments = null }) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query(
+          `UPDATE app_inquiry_answers ans
+              SET body_html=$3,body_text=$4,updated_at=NOW()
+             FROM app_inquiries i
+            WHERE ans.answer_id=$1 AND ans.inquiry_id=i.inquiry_id AND i.public_id=$2
+              AND i.deleted_at IS NULL AND ans.deleted_at IS NULL
+            RETURNING ans.answer_id`,
+          [trim(answerId), trim(publicId), String(bodyHtml || ''), String(bodyText || '')],
+        );
+        if (!result.rows[0]) throw repositoryError('inquiry_answer_not_found', 'Inquiry answer was not found.', 404);
+        if (Array.isArray(attachments)) {
+          await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry_answer', ownerId: trim(answerId), attachments, createdBy: trim(actorId) });
+        }
+        await client.query('COMMIT');
+        return this.getAdminInquiry(publicId);
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
     },
 
     async deleteAnswer({ publicId, answerId, actorId }) {
-      const result = await pool.query(
-        `UPDATE app_inquiry_answers ans
-            SET deleted_at=NOW(),deleted_by=$3,delete_actor_type='admin',updated_at=NOW()
-           FROM app_inquiries i
-          WHERE ans.answer_id=$1 AND ans.inquiry_id=i.inquiry_id AND i.public_id=$2
-            AND i.deleted_at IS NULL AND ans.deleted_at IS NULL
-          RETURNING ans.answer_id`,
-        [trim(answerId), trim(publicId), trim(actorId)],
-      );
-      if (!result.rows[0]) throw repositoryError('inquiry_answer_not_found', 'Inquiry answer was not found.', 404);
-      return this.getAdminInquiry(publicId);
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query(
+          `UPDATE app_inquiry_answers ans
+              SET deleted_at=NOW(),deleted_by=$3,delete_actor_type='admin',updated_at=NOW()
+             FROM app_inquiries i
+            WHERE ans.answer_id=$1 AND ans.inquiry_id=i.inquiry_id AND i.public_id=$2
+              AND i.deleted_at IS NULL AND ans.deleted_at IS NULL
+            RETURNING ans.answer_id`,
+          [trim(answerId), trim(publicId), trim(actorId)],
+        );
+        if (!result.rows[0]) throw repositoryError('inquiry_answer_not_found', 'Inquiry answer was not found.', 404);
+        await attachmentRepository.deleteOwnerAttachments(client, 'inquiry_answer', trim(answerId));
+        await client.query('COMMIT');
+        return this.getAdminInquiry(publicId);
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
     },
 
     async deleteAdminInquiry({ publicId, actorId }) {
-      const result = await pool.query(
-        `UPDATE app_inquiries SET deleted_at=NOW(),deleted_by=$2,delete_actor_type='admin',updated_at=NOW()
-          WHERE public_id=$1 AND deleted_at IS NULL
-          RETURNING public_id`,
-        [trim(publicId), trim(actorId)],
-      );
-      if (!result.rows[0]) throw repositoryError('inquiry_not_found', 'Inquiry was not found.', 404);
-      return Object.freeze({ publicId: result.rows[0].public_id, deleted: true });
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const inquiry = await client.query(
+          `UPDATE app_inquiries SET deleted_at=NOW(),deleted_by=$2,delete_actor_type='admin',updated_at=NOW()
+            WHERE public_id=$1 AND deleted_at IS NULL
+            RETURNING inquiry_id,public_id`,
+          [trim(publicId), trim(actorId)],
+        );
+        if (!inquiry.rows[0]) throw repositoryError('inquiry_not_found', 'Inquiry was not found.', 404);
+        await attachmentRepository.deleteOwnerAttachments(client, 'inquiry', inquiry.rows[0].inquiry_id);
+        const answers = await client.query(`SELECT answer_id FROM app_inquiry_answers WHERE inquiry_id=$1 AND deleted_at IS NULL`, [inquiry.rows[0].inquiry_id]);
+        for (const answer of answers.rows) await attachmentRepository.deleteOwnerAttachments(client, 'inquiry_answer', answer.answer_id);
+        await client.query('COMMIT');
+        return Object.freeze({ publicId: inquiry.rows[0].public_id, deleted: true });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
     },
+
   });
 };
 

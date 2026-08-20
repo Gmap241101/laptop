@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { promisify } from 'node:util';
+import { normalizeSecureAttachmentInputs } from '../attachments/attachment-service.mjs';
 
 const scrypt = promisify(scryptCallback);
 const trim = (value) => String(value ?? '').trim();
@@ -60,7 +61,12 @@ const validateInquiryContent = (input = {}) => {
   if (title.length > 200) throw serviceError('inquiry_title_too_long', 'Inquiry title is too long.', 400);
   if (!bodyText) throw serviceError('inquiry_body_required', 'Inquiry body is required.', 400);
   if (bodyText.length > 20000 || bodyHtml.length > 100000) throw serviceError('inquiry_body_too_long', 'Inquiry body is too long.', 413);
-  return Object.freeze({ categoryId, title, bodyHtml, bodyText });
+  return Object.freeze({
+    categoryId, title, bodyHtml, bodyText,
+    attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
+      ? normalizeSecureAttachmentInputs(input?.attachments)
+      : null,
+  });
 };
 
 const validateGuestIdentity = (input = {}) => {
@@ -472,6 +478,7 @@ export const createInquiryService = ({ repository }) => {
           bodyText,
           adminIdentityId: actor.id,
           adminDisplayName: actor.displayName,
+          attachments: normalizeSecureAttachmentInputs(input?.attachments),
         });
       } catch (error) {
         return mapRepositoryError(error);
@@ -483,7 +490,16 @@ export const createInquiryService = ({ repository }) => {
       const { bodyHtml, bodyText } = normalizeBody(input);
       if (!bodyText) throw serviceError('inquiry_answer_body_required', 'Inquiry answer body is required.', 400);
       try {
-        return await repository.updateAnswer({ publicId: trim(publicId), answerId: trim(answerId), bodyHtml, bodyText, actorId: actor.id });
+        return await repository.updateAnswer({
+          publicId: trim(publicId),
+          answerId: trim(answerId),
+          bodyHtml,
+          bodyText,
+          actorId: actor.id,
+          attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
+            ? normalizeSecureAttachmentInputs(input?.attachments)
+            : null,
+        });
       } catch (error) {
         return mapRepositoryError(error);
       }

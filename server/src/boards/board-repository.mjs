@@ -26,6 +26,11 @@ const mapPost = (row) => row ? Object.freeze({
   updatedAt: row.updated_at || null,
   sourceMode: row.source_mode || '',
   mirrorState: row.mirror_state || '',
+  attachments: Object.freeze((Array.isArray(row.attachments) ? row.attachments : []).map((attachment) => Object.freeze({
+    id: attachment?.id || attachment?.attachment_id || '',
+    name: attachment?.name || attachment?.display_name || '',
+    downloadPath: attachment?.downloadPath || attachment?.download_path || '',
+  })).filter((attachment) => attachment.id && attachment.name)),
 }) : null;
 
 const mapCategory = (row) => row ? Object.freeze({
@@ -81,7 +86,14 @@ const searchClause = (search, startIndex) => {
   };
 };
 
-export const createBoardRepository = (pool) => Object.freeze({
+export const createBoardRepository = (pool, { attachmentRepository = null } = {}) => {
+  const attachmentStore = attachmentRepository || Object.freeze({
+    async syncOwnerAttachments() {},
+    async deleteOwnerAttachments() {},
+    async listForOwner() { return Object.freeze([]); },
+  });
+
+  return Object.freeze({
   async getStatus() {
     const result = await pool.query(
       `SELECT scope, notice_count, faq_count, faq_category_count, source_hash, source_mode, last_actor_clerk_user_id, synced_at
@@ -128,10 +140,21 @@ export const createBoardRepository = (pool) => Object.freeze({
          LEFT JOIN app_board_configs config ON config.board_type='notice'
          WHERE sync.scope='all'
        ), filtered AS (
-         SELECT *
-           FROM app_board_posts
-          WHERE board_type='notice'
-            AND ($3::text IS NULL OR lower(title) LIKE $3 OR lower(content_text) LIKE $3)
+         SELECT p.*,
+                COALESCE((
+                  SELECT jsonb_agg(
+                    jsonb_build_object(
+                      'id',a.attachment_id,
+                      'name',a.display_name,
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+                  )
+                    FROM app_secure_attachments a
+                   WHERE a.owner_type='notice' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
+                ), '[]'::jsonb) AS attachments
+           FROM app_board_posts p
+          WHERE p.board_type='notice'
+            AND ($3::text IS NULL OR lower(p.title) LIKE $3 OR lower(p.content_text) LIKE $3)
        ), pinned_posts AS (
          SELECT *
            FROM filtered
@@ -201,7 +224,20 @@ export const createBoardRepository = (pool) => Object.freeze({
            FROM app_board_posts
           WHERE board_type='notice'
        )
-       SELECT * FROM ordered WHERE post_id=$1`,
+       SELECT ordered.*,
+              COALESCE((
+                SELECT jsonb_agg(
+                  jsonb_build_object(
+                    'id',a.attachment_id,
+                    'name',a.display_name,
+                    'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                  ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+                )
+                  FROM app_secure_attachments a
+                 WHERE a.owner_type='notice' AND a.owner_id=ordered.post_id AND a.deleted_at IS NULL
+              ), '[]'::jsonb) AS attachments
+         FROM ordered
+        WHERE post_id=$1`,
       [trim(postId)],
     );
     const row = result.rows[0];
@@ -263,15 +299,26 @@ export const createBoardRepository = (pool) => Object.freeze({
          LEFT JOIN app_board_configs config ON config.board_type='faq'
          WHERE sync.scope='all'
        ), filtered AS (
-         SELECT *
-           FROM app_board_posts
-          WHERE board_type='faq'
+         SELECT p.*,
+                COALESCE((
+                  SELECT jsonb_agg(
+                    jsonb_build_object(
+                      'id',a.attachment_id,
+                      'name',a.display_name,
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+                  )
+                    FROM app_secure_attachments a
+                   WHERE a.owner_type='faq' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
+                ), '[]'::jsonb) AS attachments
+           FROM app_board_posts p
+          WHERE p.board_type='faq'
             AND (
               $3::text='' OR $3::text='all'
               OR ($4::text IS NOT NULL AND NOT $5::boolean)
-              OR category_id=$3
+              OR p.category_id=$3
             )
-            AND ($4::text IS NULL OR lower(title) LIKE $4 OR lower(content_text) LIKE $4)
+            AND ($4::text IS NULL OR lower(p.title) LIKE $4 OR lower(p.content_text) LIKE $4)
        ), pinned_posts AS (
          SELECT *
            FROM filtered
@@ -359,8 +406,12 @@ export const createBoardRepository = (pool) => Object.freeze({
           [post.id, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid, post.authorName],
         );
       }
+      if (Array.isArray(post.attachments)) {
+        await attachmentStore.syncOwnerAttachments(client, { ownerType: 'notice', ownerId: post.id, attachments: post.attachments, createdBy: post.actorClerkUserId });
+      }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
-      const next = mapPost(nextResult.rows[0]);
+      const nextBase = mapPost(nextResult.rows[0]);
+      const next = Object.freeze({ ...nextBase, attachments: await attachmentStore.listForOwner('notice', post.id, client) });
       await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
@@ -379,6 +430,7 @@ export const createBoardRepository = (pool) => Object.freeze({
       const result = await client.query(`SELECT * FROM app_board_posts WHERE board_type='notice' AND post_id=$1 FOR UPDATE`, [trim(postId)]);
       const previous = mapPost(result.rows[0]);
       if (!previous) throw repositoryError('notice_post_not_found', 'Notice post was not found.');
+      await attachmentStore.deleteOwnerAttachments(client, 'notice', previous.id);
       await client.query(`DELETE FROM app_board_posts WHERE post_id=$1`, [previous.id]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
@@ -413,8 +465,12 @@ export const createBoardRepository = (pool) => Object.freeze({
           [post.id, post.categoryId, post.title, post.contentText, post.contentHtml, post.contentFormat, post.isPinned, post.authorUid, post.authorName],
         );
       }
+      if (Array.isArray(post.attachments)) {
+        await attachmentStore.syncOwnerAttachments(client, { ownerType: 'faq', ownerId: post.id, attachments: post.attachments, createdBy: post.actorClerkUserId });
+      }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
-      const next = mapPost(nextResult.rows[0]);
+      const nextBase = mapPost(nextResult.rows[0]);
+      const next = Object.freeze({ ...nextBase, attachments: await attachmentStore.listForOwner('faq', post.id, client) });
       await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
       await client.query('COMMIT');
@@ -431,6 +487,7 @@ export const createBoardRepository = (pool) => Object.freeze({
       const result = await client.query(`SELECT * FROM app_board_posts WHERE board_type='faq' AND post_id=$1 FOR UPDATE`, [trim(postId)]);
       const previous = mapPost(result.rows[0]);
       if (!previous) throw repositoryError('faq_post_not_found', 'FAQ post was not found.');
+      await attachmentStore.deleteOwnerAttachments(client, 'faq', previous.id);
       await client.query(`DELETE FROM app_board_posts WHERE post_id=$1`, [previous.id]);
       await refreshSyncCounts(client);
       await client.query('COMMIT');
@@ -514,4 +571,5 @@ export const createBoardRepository = (pool) => Object.freeze({
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   },
-});
+  });
+};

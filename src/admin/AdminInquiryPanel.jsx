@@ -4,6 +4,8 @@ import { Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 import { AdminPageHeader, Button, Input, Select } from '../components/CommonUI.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
+import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 import PaginationControls from '../components/PaginationControls.jsx';
 import AdminInquiryCategoryDialog from './AdminInquiryCategoryDialog.jsx';
@@ -70,6 +72,7 @@ export default function AdminInquiryPanel({ ctx }) {
   const [answerOpen, setAnswerOpen] = useState(false);
   const [answerEditing, setAnswerEditing] = useState(null);
   const [answerHtml, setAnswerHtml] = useState('');
+  const [answerAttachments, setAnswerAttachments] = useState([]);
   const [answerSaving, setAnswerSaving] = useState(false);
   const [termOpen, setTermOpen] = useState(false);
   const [termForm, setTermForm] = useState({ id: '', title: '', bodyHtml: '', required: true, enabled: true });
@@ -163,6 +166,9 @@ export default function AdminInquiryPanel({ ctx }) {
   const openAnswerEditor = (answer = null) => {
     setAnswerEditing(answer);
     setAnswerHtml(answer?.bodyHtml || '');
+    setAnswerAttachments(Array.isArray(answer?.attachments)
+      ? answer.attachments.map((attachment) => ({ ...attachment, targetUrl: '' }))
+      : []);
     setAnswerOpen(true);
   };
 
@@ -173,11 +179,12 @@ export default function AdminInquiryPanel({ ctx }) {
     setAnswerSaving(true);
     try {
       const next = answerEditing
-        ? await inquiryApi.updateAnswer(detail.publicId, answerEditing.id, { bodyHtml: answerHtml, bodyText })
-        : await inquiryApi.addAnswer(detail.publicId, { bodyHtml: answerHtml, bodyText });
+        ? await inquiryApi.updateAnswer(detail.publicId, answerEditing.id, { bodyHtml: answerHtml, bodyText, attachments: answerAttachments })
+        : await inquiryApi.addAnswer(detail.publicId, { bodyHtml: answerHtml, bodyText, attachments: answerAttachments });
       setAnswerOpen(false);
       setAnswerEditing(null);
       setAnswerHtml('');
+      setAnswerAttachments([]);
       notify(answerEditing ? '관리자 답변이 수정되었습니다.' : '관리자 답변이 등록되었습니다.');
       await refreshAfterMutation(next);
     } catch (error) {
@@ -367,13 +374,16 @@ export default function AdminInquiryPanel({ ctx }) {
                     <div><span className="text-slate-400">성명</span><div className="mt-1 font-semibold text-slate-800">{detail.authorName || '-'}</div></div><div><span className="text-slate-400">부서/팀</span><div className="mt-1 font-semibold text-slate-800">{detail.authorTeam || '-'}</div></div><div><span className="text-slate-400">이메일</span><div className="mt-1 font-semibold text-slate-800 break-all">{detail.authorEmail || '-'}</div></div><div><span className="text-slate-400">연락처</span><div className="mt-1 font-semibold text-slate-800">{detail.authorPhone || '-'}</div></div><div><span className="text-slate-400">회원 UID</span><div className="mt-1 break-all font-semibold text-slate-800">{detail.authorType === 'member' ? (detail.memberUid || '-') : '-'}</div></div><div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div><div><span className="text-slate-400">상태</span><div className="mt-1 font-semibold text-slate-800">{STATUS_LABELS[detail.status] || '-'}</div></div><div><span className="text-slate-400">답변 수</span><div className="mt-1 font-semibold text-slate-800">{Number(detail.answerCount || 0)}건</div></div>
                   </div>
                 </div>
-                <div className="min-h-[220px] p-5"><RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" /></div>
+                <div className="min-h-[220px] space-y-6 p-5">
+                  <RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" />
+                  <SecureAttachmentList attachments={detail.attachments} authMode="clerk" />
+                </div>
               </article>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Button type="button" variant="outline" onClick={() => setDetail(null)}>목록으로</Button>
                 <div className="flex gap-2"><Button type="button" variant="primary" onClick={() => openAnswerEditor()}><Plus size={14} /> 답변 등록</Button><Button type="button" variant="dangerOutline" onClick={confirmDeleteInquiry}><Trash2 size={14} /> 문의 삭제</Button></div>
               </div>
-              <div className="space-y-3"><div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">관리자 답변 이력</h4><span className="text-xs text-slate-500">유효 답변 {Number(detail.answerCount || 0)}건</span></div>{Array.isArray(detail.answers) && detail.answers.length ? detail.answers.map((answer, index) => <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-5 py-4"><div><div className="text-sm font-bold text-slate-900">관리자 답변 {index + 1}</div><div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName || '관리자'} · {formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ` · 수정 ${formatDateTime(answer.updatedAt)}` : ''}</div></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => openAnswerEditor(answer)}><Edit3 size={13} /> 수정</Button><Button type="button" variant="dangerOutline" onClick={() => confirmDeleteAnswer(answer)}><Trash2 size={13} /> 삭제</Button></div></div><div className="p-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /></div></article>) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">등록된 관리자 답변이 없습니다.</div>}</div>
+              <div className="space-y-3"><div className="flex items-center justify-between"><h4 className="text-sm font-bold text-slate-900">관리자 답변 이력</h4><span className="text-xs text-slate-500">유효 답변 {Number(detail.answerCount || 0)}건</span></div>{Array.isArray(detail.answers) && detail.answers.length ? detail.answers.map((answer, index) => <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-5 py-4"><div><div className="text-sm font-bold text-slate-900">관리자 답변 {index + 1}</div><div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName || '관리자'} · {formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ` · 수정 ${formatDateTime(answer.updatedAt)}` : ''}</div></div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => openAnswerEditor(answer)}><Edit3 size={13} /> 수정</Button><Button type="button" variant="dangerOutline" onClick={() => confirmDeleteAnswer(answer)}><Trash2 size={13} /> 삭제</Button></div></div><div className="space-y-5 p-5"><RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" /><SecureAttachmentList attachments={answer.attachments} authMode="clerk" /></div></article>) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">등록된 관리자 답변이 없습니다.</div>}</div>
             </div>
           ) : (
             <>
@@ -385,7 +395,7 @@ export default function AdminInquiryPanel({ ctx }) {
         </>
       )}
 
-      {answerOpen ? <ModalShell title={answerEditing ? '관리자 답변 수정' : '관리자 답변 등록'} description="동일 문의에 관리자 답변을 여러 번 등록할 수 있습니다." onClose={() => !answerSaving && setAnswerOpen(false)}><div className="p-5"><RichTextEditor label="답변 내용" value={answerHtml} onChange={setAnswerHtml} minHeight={320} disabled={answerSaving} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={answerSaving} onClick={() => setAnswerOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={answerSaving} onClick={saveAnswer}>{answerSaving ? '저장 중' : '답변 저장'}</Button></div></ModalShell> : null}
+      {answerOpen ? <ModalShell title={answerEditing ? '관리자 답변 수정' : '관리자 답변 등록'} description="동일 문의에 관리자 답변을 여러 번 등록할 수 있습니다." onClose={() => !answerSaving && setAnswerOpen(false)}><div className="space-y-4 p-5"><RichTextEditor label="답변 내용" value={answerHtml} onChange={setAnswerHtml} minHeight={320} disabled={answerSaving} /><SecureAttachmentEditor value={answerAttachments} onChange={setAnswerAttachments} disabled={answerSaving} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={answerSaving} onClick={() => setAnswerOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={answerSaving} onClick={saveAnswer}>{answerSaving ? '저장 중' : '답변 저장'}</Button></div></ModalShell> : null}
 
       <AdminInquiryCategoryDialog
         open={categoryOpen}
