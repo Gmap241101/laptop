@@ -48,6 +48,7 @@ import {
   parseYouTubeStartInput,
   sanitizeRichTextHtml,
 } from '../utils/richTextCore.js';
+import ModalPortal from './ModalPortal.jsx';
 
 const ToolbarButton = ({ active = false, children, title, tabIndex = -1, ...props }) => (
   <button
@@ -65,6 +66,93 @@ const ToolbarButton = ({ active = false, children, title, tabIndex = -1, ...prop
     {children}
   </button>
 );
+
+
+const EditorModal = ({
+  open,
+  title,
+  description = '',
+  onClose,
+  children,
+  maxWidthClass = 'max-w-2xl',
+  bare = false,
+}) => {
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <ModalPortal
+      className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[1px]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        className={`w-full ${maxWidthClass} max-h-[86vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {bare ? (
+          children
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-slate-900">{title}</div>
+                {description && (
+                  <div className="mt-1 text-[11px] leading-5 text-slate-500">{description}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label={`${title} 닫기`}
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <div className="p-5">{children}</div>
+          </>
+        )}
+      </div>
+    </ModalPortal>
+  );
+};
+
+const createEmptyImageForm = () => ({
+  url: '',
+  alt: '',
+  caption: '',
+  align: 'center',
+  width: '100',
+});
+
+const getImageFormFromFigure = (figure) => {
+  const image = figure?.querySelector?.('img');
+  const rawWidth = String(figure?.getAttribute?.('data-width') || '').trim();
+  const rawAlign = String(figure?.getAttribute?.('data-align') || '').trim();
+  return {
+    url: image?.getAttribute?.('src') || '',
+    alt: image?.getAttribute?.('alt') || '',
+    caption: figure?.querySelector?.('figcaption')?.textContent || '',
+    align: ['left', 'center', 'right'].includes(rawAlign) ? rawAlign : 'center',
+    width: ['25', '50', '75', '100'].includes(rawWidth) ? rawWidth : '100',
+  };
+};
 
 const createEmptyYouTubeForm = () => ({
   url: '',
@@ -236,8 +324,6 @@ const prepareEditorPreviewHtml = (html = '') => {
     video.removeAttribute('autoplay');
   });
 
-  addYouTubeEditorControls(container);
-  addHtml5VideoEditorControls(container);
   addResponsiveEditorMarkers(container);
   return container.innerHTML;
 };
@@ -294,15 +380,16 @@ export function RichTextEditor({
   const lastEmittedHtmlRef = useRef('');
   const selectedYouTubeRef = useRef(null);
   const selectedHtml5VideoRef = useRef(null);
+  const selectedImageRef = useRef(null);
   const [imagePanelOpen, setImagePanelOpen] = useState(false);
-  const [imageForm, setImageForm] = useState({
-    url: '',
-    alt: '',
-    caption: '',
-    align: 'center',
-    width: '100',
-  });
+  const [imageForm, setImageForm] = useState(createEmptyImageForm);
   const [imageError, setImageError] = useState('');
+  const [editingImage, setEditingImage] = useState(false);
+  const [colorDialog, setColorDialog] = useState({
+    open: false,
+    command: 'foreColor',
+    value: '#111827',
+  });
   const [youtubePanelOpen, setYouTubePanelOpen] = useState(false);
   const [youtubeForm, setYouTubeForm] = useState(createEmptyYouTubeForm);
   const [youtubeError, setYouTubeError] = useState('');
@@ -424,6 +511,24 @@ export function RichTextEditor({
     }
   };
 
+  const openColorDialog = (command) => {
+    saveSelection();
+    setColorDialog({
+      open: true,
+      command,
+      value: command === 'hiliteColor' ? '#fff59d' : '#111827',
+    });
+  };
+
+  const closeColorDialog = () => {
+    setColorDialog((current) => ({ ...current, open: false }));
+  };
+
+  const confirmColorDialog = () => {
+    applyColorCommand(colorDialog.command, colorDialog.value);
+    closeColorDialog();
+  };
+
   const clearFormattingPanels = () => {
     setFontSizePanelOpen(false);
     setLineHeightPanelOpen(false);
@@ -488,6 +593,62 @@ export function RichTextEditor({
     }
 
     return [...blocks];
+  };
+
+
+  const toggleBlockquote = () => {
+    if (disabled || sourceMode) return;
+    focusEditor();
+    restoreSelection();
+    const blocks = getSelectedBlockElements();
+    const shouldRemove = blocks.length > 0 && blocks.every((block) => block.tagName === 'BLOCKQUOTE');
+    document.execCommand('formatBlock', false, shouldRemove ? 'p' : 'blockquote');
+    emitChange();
+    saveSelection();
+  };
+
+  const toggleAlignment = (alignment) => {
+    if (disabled || sourceMode) return;
+    focusEditor();
+    restoreSelection();
+
+    const blocks = getSelectedBlockElements();
+    if (blocks.length === 0) {
+      const command = alignment === 'center'
+        ? 'justifyCenter'
+        : alignment === 'right'
+          ? 'justifyRight'
+          : 'justifyLeft';
+      document.execCommand(command, false, null);
+      emitChange();
+      saveSelection();
+      return;
+    }
+
+    const normalizeAlignment = (value) => {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === 'start') return 'left';
+      if (normalized === 'end') return 'right';
+      return normalized || 'left';
+    };
+
+    const allActive = blocks.every((block) => {
+      const current = normalizeAlignment(window.getComputedStyle(block).textAlign);
+      return current === alignment;
+    });
+
+    blocks.forEach((block) => {
+      block.removeAttribute('align');
+      if (allActive) {
+        block.style.removeProperty('text-align');
+        if (!block.getAttribute('style')?.trim()) block.removeAttribute('style');
+      } else {
+        block.style.textAlign = alignment;
+      }
+    });
+
+    emitChange();
+    saveSelection();
   };
 
   const convertTemporaryFontTags = (fontSizeValue = 'inherit') => {
@@ -659,8 +820,8 @@ export function RichTextEditor({
     selectedTableCellRef.current = cell;
   };
 
-  const openTablePanel = () => {
-    saveSelection();
+  const openTablePanel = (cellOverride = null) => {
+    if (!cellOverride) saveSelection();
     setImagePanelOpen(false);
     setYouTubePanelOpen(false);
     setHtml5VideoPanelOpen(false);
@@ -669,7 +830,9 @@ export function RichTextEditor({
     setFontSizePanelOpen(false);
     setLineHeightPanelOpen(false);
     setTableError('');
-    const cell = resolveTableCellFromSavedRange();
+    const cell = cellOverride && editorRef.current?.contains(cellOverride)
+      ? cellOverride
+      : resolveTableCellFromSavedRange();
     if (cell) {
       selectTableCell(cell);
       setEditingTable(true);
@@ -886,8 +1049,8 @@ export function RichTextEditor({
     emitChange();
   };
 
-  const openImagePanel = () => {
-    saveSelection();
+  const openImagePanel = (figure = null) => {
+    if (!figure) saveSelection();
     clearFormattingPanels();
     clearSelectedTableCell();
     setYouTubePanelOpen(false);
@@ -899,13 +1062,26 @@ export function RichTextEditor({
     setEditingHtml5Video(false);
     clearSelectedHtml5Video();
     setImageError('');
+
+    if (figure && editorRef.current?.contains(figure) && figure.querySelector?.('img')) {
+      selectedImageRef.current = figure;
+      setImageForm(getImageFormFromFigure(figure));
+      setEditingImage(true);
+    } else {
+      selectedImageRef.current = null;
+      setImageForm(createEmptyImageForm());
+      setEditingImage(false);
+    }
+
     setImagePanelOpen(true);
   };
 
   const closeImagePanel = () => {
     setImagePanelOpen(false);
     setImageError('');
-    setImageForm({ url: '', alt: '', caption: '', align: 'center', width: '100' });
+    setImageForm(createEmptyImageForm());
+    setEditingImage(false);
+    selectedImageRef.current = null;
   };
 
   const clearSelectedYouTube = () => {
@@ -1011,7 +1187,6 @@ export function RichTextEditor({
           replacementIframe.setAttribute('src', buildYouTubeEmbedUrl({ ...config, autoplay: false }));
         }
       }
-      addYouTubeEditorControls(replacement);
     } else {
       focusEditor();
       restoreSelection();
@@ -1094,7 +1269,6 @@ export function RichTextEditor({
         replacementVideo.setAttribute('data-stored-html5-autoplay', 'true');
         replacementVideo.removeAttribute('autoplay');
       }
-      addHtml5VideoEditorControls(replacement);
     } else {
       focusEditor();
       restoreSelection();
@@ -1112,15 +1286,15 @@ export function RichTextEditor({
       return;
     }
 
-    const escapeAttribute = (text) =>
-      String(text || '')
+    const escapeAttribute = (value) =>
+      String(value || '')
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    const escapeText = (text) =>
-      String(text || '')
+    const escapeText = (value) =>
+      String(value || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
@@ -1136,17 +1310,25 @@ export function RichTextEditor({
       ? imageForm.width
       : '100';
 
-    const figureHtml = `
-      <figure data-align="${imageForm.align}" data-width="${width}" style="display: block; width: ${width}%; ${alignStyle}">
-        <img src="${escapeAttribute(url)}" alt="${escapeAttribute(imageForm.alt)}" title="${escapeAttribute(imageForm.alt)}" loading="lazy" style="display: block; width: 100%; max-width: 100%; height: auto; ${alignStyle}">
-        ${imageForm.caption.trim() ? `<figcaption>${escapeText(imageForm.caption.trim())}</figcaption>` : ''}
-      </figure>
-      <p><br></p>
-    `;
+    const figureHtml = `<figure data-align="${imageForm.align}" data-width="${width}" style="display: block; width: ${width}%; ${alignStyle}"><img src="${escapeAttribute(url)}" alt="${escapeAttribute(imageForm.alt)}" title="${escapeAttribute(imageForm.alt)}" loading="lazy" style="display: block; width: 100%; max-width: 100%; height: auto; ${alignStyle}">${imageForm.caption.trim() ? `<figcaption>${escapeText(imageForm.caption.trim())}</figcaption>` : ''}</figure>`;
+    const sanitizedFigure = sanitizeRichTextHtml(figureHtml);
 
-    focusEditor();
-    restoreSelection();
-    document.execCommand('insertHTML', false, sanitizeRichTextHtml(figureHtml));
+    const selectedFigure = selectedImageRef.current;
+    if (editingImage && selectedFigure && editorRef.current?.contains(selectedFigure)) {
+      const holder = document.createElement('div');
+      holder.innerHTML = sanitizedFigure;
+      const replacement = holder.querySelector('figure');
+      if (!replacement) {
+        setImageError('이미지를 수정할 수 없습니다.');
+        return;
+      }
+      selectedFigure.replaceWith(replacement);
+    } else {
+      focusEditor();
+      restoreSelection();
+      document.execCommand('insertHTML', false, `${sanitizedFigure}<p><br></p>`);
+    }
+
     emitChange();
     closeImagePanel();
   };
@@ -1204,7 +1386,7 @@ export function RichTextEditor({
 
   const toggleResponsivePanel = () => {
     saveSelection();
-    setResponsivePanelOpen((prev) => !prev);
+    setResponsivePanelOpen(true);
     setFontSizePanelOpen(false);
     setLineHeightPanelOpen(false);
     setTablePanelOpen(false);
@@ -1216,6 +1398,7 @@ export function RichTextEditor({
   const toggleSourceMode = () => {
     if (disabled) return;
     setResponsivePanelOpen(false);
+    closeColorDialog();
 
     if (sourceMode) {
       const sanitizedHtml = sanitizeRichTextHtml(sourceValue);
@@ -1291,14 +1474,26 @@ export function RichTextEditor({
   };
 
   const handleEditorClick = (event) => {
+    const imageFigure = event.target?.closest?.('figure');
     const tableCell = event.target?.closest?.('td,th');
     const youtubeWrapper = event.target?.closest?.('[data-video-provider="youtube"]');
     const html5Wrapper = event.target?.closest?.('[data-video-provider="html5"]');
 
+    if (imageFigure && imageFigure.querySelector?.('img') && editorRef.current?.contains(imageFigure)) {
+      event.preventDefault();
+      clearSelectedTableCell();
+      clearSelectedYouTube();
+      clearSelectedHtml5Video();
+      openImagePanel(imageFigure);
+      return;
+    }
+
     if (tableCell && editorRef.current?.contains(tableCell)) {
+      event.preventDefault();
       clearSelectedYouTube();
       clearSelectedHtml5Video();
       selectTableCell(tableCell);
+      openTablePanel(tableCell);
       return;
     }
 
@@ -1309,32 +1504,16 @@ export function RichTextEditor({
     }
 
     if (youtubeWrapper && editorRef.current?.contains(youtubeWrapper)) {
+      event.preventDefault();
       clearSelectedHtml5Video();
-      if (selectedYouTubeRef.current !== youtubeWrapper) {
-        clearSelectedYouTube();
-        youtubeWrapper.setAttribute('data-youtube-selected', 'true');
-        selectedYouTubeRef.current = youtubeWrapper;
-      }
-
-      if (event.target?.closest?.('[data-youtube-editor-control]')) {
-        event.preventDefault();
-        openYouTubePanel(youtubeWrapper);
-      }
+      openYouTubePanel(youtubeWrapper);
       return;
     }
 
     if (html5Wrapper && editorRef.current?.contains(html5Wrapper)) {
+      event.preventDefault();
       clearSelectedYouTube();
-      if (selectedHtml5VideoRef.current !== html5Wrapper) {
-        clearSelectedHtml5Video();
-        html5Wrapper.setAttribute('data-html5-video-selected', 'true');
-        selectedHtml5VideoRef.current = html5Wrapper;
-      }
-
-      if (event.target?.closest?.('[data-html5-video-editor-control]')) {
-        event.preventDefault();
-        openHtml5VideoPanel(html5Wrapper);
-      }
+      openHtml5VideoPanel(html5Wrapper);
       return;
     }
 
@@ -1441,25 +1620,35 @@ export function RichTextEditor({
           <ToolbarButton title="기울임" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('italic')}><Italic size={15} /></ToolbarButton>
           <ToolbarButton title="밑줄" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('underline')}><Underline size={15} /></ToolbarButton>
           <ToolbarButton title="취소선" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('strikeThrough')}><Strikethrough size={15} /></ToolbarButton>
-          <label title="글자색" aria-label="글자색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
+          <ToolbarButton
+            title="글자색"
+            active={colorDialog.open && colorDialog.command === 'foreColor'}
+            disabled={disabled || sourceMode}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => openColorDialog('foreColor')}
+          >
             <Palette size={15} />
-            <input type="color" tabIndex={-1} disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => applyColorCommand('foreColor', event.target.value)} />
-          </label>
-          <label title="배경색" aria-label="배경색" className="relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600">
+          </ToolbarButton>
+          <ToolbarButton
+            title="배경색"
+            active={colorDialog.open && colorDialog.command === 'hiliteColor'}
+            disabled={disabled || sourceMode}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => openColorDialog('hiliteColor')}
+          >
             <Highlighter size={15} />
-            <input type="color" tabIndex={-1} disabled={disabled || sourceMode} className="absolute inset-0 cursor-pointer opacity-0" onChange={(event) => applyColorCommand('hiliteColor', event.target.value)} />
-          </label>
+          </ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="글머리표" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertUnorderedList')}><List size={15} /></ToolbarButton>
           <ToolbarButton title="번호 목록" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('insertOrderedList')}><ListOrdered size={15} /></ToolbarButton>
-          <ToolbarButton title="인용문" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('formatBlock', 'blockquote')}><Quote size={15} /></ToolbarButton>
+          <ToolbarButton title="인용문" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={toggleBlockquote}><Quote size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
-          <ToolbarButton title="왼쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyLeft')}><AlignLeft size={15} /></ToolbarButton>
-          <ToolbarButton title="가운데 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyCenter')}><AlignCenter size={15} /></ToolbarButton>
-          <ToolbarButton title="오른쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => runCommand('justifyRight')}><AlignRight size={15} /></ToolbarButton>
+          <ToolbarButton title="왼쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleAlignment('left')}><AlignLeft size={15} /></ToolbarButton>
+          <ToolbarButton title="가운데 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleAlignment('center')}><AlignCenter size={15} /></ToolbarButton>
+          <ToolbarButton title="오른쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleAlignment('right')}><AlignRight size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="링크 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
-          <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={openImagePanel}><ImagePlus size={15} /></ToolbarButton>
+          <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openImagePanel()}><ImagePlus size={15} /></ToolbarButton>
           {allowVideos && (
             <>
               <ToolbarButton title="YouTube 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openYouTubePanel()}><Youtube size={16} /></ToolbarButton>
@@ -1515,7 +1704,13 @@ export function RichTextEditor({
           </button>
         </div>
 
-        {responsivePanelOpen && !sourceMode && (
+        <EditorModal
+          open={responsivePanelOpen && !sourceMode}
+          title="모바일 반응형 조판"
+          onClose={() => setResponsivePanelOpen(false)}
+          maxWidthClass="max-w-4xl"
+          bare
+        >
           <div className="border-b border-slate-200 bg-indigo-50/50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1545,7 +1740,7 @@ export function RichTextEditor({
               </button>
             </div>
           </div>
-        )}
+        </EditorModal>
 
         {fontSizePanelOpen && !sourceMode && (
           <div className="border-b border-slate-200 bg-violet-50/50 p-3">
@@ -1618,7 +1813,13 @@ export function RichTextEditor({
           </div>
         )}
 
-        {tablePanelOpen && !sourceMode && (
+        <EditorModal
+          open={tablePanelOpen && !sourceMode}
+          title={editingTable ? '표 행·열 편집' : '표 삽입'}
+          onClose={closeTablePanel}
+          maxWidthClass="max-w-3xl"
+          bare
+        >
           <div className="border-b border-slate-200 bg-cyan-50/50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1672,13 +1873,19 @@ export function RichTextEditor({
               </>
             )}
           </div>
-        )}
+        </EditorModal>
 
-        {imagePanelOpen && !sourceMode && (
+        <EditorModal
+          open={imagePanelOpen && !sourceMode}
+          title={editingImage ? '이미지 설정 수정' : '이미지 URL 삽입'}
+          onClose={closeImagePanel}
+          maxWidthClass="max-w-xl"
+          bare
+        >
           <div className="border-b border-slate-200 bg-orange-50/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs font-bold text-slate-800">이미지 URL 삽입</div>
+                <div className="text-xs font-bold text-slate-800">{editingImage ? '이미지 설정 수정' : '이미지 URL 삽입'}</div>
                 <div className="mt-0.5 text-[10px] leading-4 text-slate-500">http:// 또는 https:// 이미지 주소만 사용할 수 있습니다.</div>
               </div>
               <button type="button" onClick={closeImagePanel} className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"><X size={16} /></button>
@@ -1728,12 +1935,18 @@ export function RichTextEditor({
 
             <div className="mt-3 flex justify-end gap-2">
               <button type="button" onClick={closeImagePanel} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">취소</button>
-              <button type="button" onClick={insertImage} className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-bold text-white hover:bg-orange-600">이미지 삽입</button>
+              <button type="button" onClick={insertImage} className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-bold text-white hover:bg-orange-600">{editingImage ? '변경사항 적용' : '이미지 삽입'}</button>
             </div>
           </div>
-        )}
+        </EditorModal>
 
-        {youtubePanelOpen && !sourceMode && (
+        <EditorModal
+          open={youtubePanelOpen && !sourceMode}
+          title={editingYouTube ? 'YouTube 동영상 설정 수정' : 'YouTube 동영상 삽입'}
+          onClose={closeYouTubePanel}
+          maxWidthClass="max-w-2xl"
+          bare
+        >
           <div className="border-b border-slate-200 bg-red-50/40 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1829,9 +2042,15 @@ export function RichTextEditor({
               </button>
             </div>
           </div>
-        )}
+        </EditorModal>
 
-        {html5VideoPanelOpen && !sourceMode && (
+        <EditorModal
+          open={html5VideoPanelOpen && !sourceMode}
+          title={editingHtml5Video ? '일반 동영상 설정 수정' : '일반 동영상 삽입'}
+          onClose={closeHtml5VideoPanel}
+          maxWidthClass="max-w-2xl"
+          bare
+        >
           <div className="border-b border-slate-200 bg-sky-50/50 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1898,7 +2117,45 @@ export function RichTextEditor({
               </button>
             </div>
           </div>
-        )}
+        </EditorModal>
+
+        <EditorModal
+          open={colorDialog.open && !sourceMode}
+          title={colorDialog.command === 'hiliteColor' ? '배경색 설정' : '글자색 설정'}
+          description="색상을 고른 뒤 적용 버튼을 눌러 확정해 주세요."
+          onClose={closeColorDialog}
+          maxWidthClass="max-w-sm"
+        >
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={colorDialog.value}
+              onChange={(event) => setColorDialog((current) => ({ ...current, value: event.target.value }))}
+              className="h-12 w-16 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
+              aria-label={colorDialog.command === 'hiliteColor' ? '배경색 선택' : '글자색 선택'}
+            />
+            <input
+              value={colorDialog.value}
+              onChange={(event) => {
+                const value = event.target.value.trim();
+                setColorDialog((current) => ({ ...current, value }));
+              }}
+              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 font-mono text-xs uppercase outline-none mk-form-focus"
+              aria-label="색상 코드"
+            />
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button type="button" onClick={closeColorDialog} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600">취소</button>
+            <button
+              type="button"
+              onClick={confirmColorDialog}
+              disabled={!/^#[0-9a-f]{6}$/i.test(colorDialog.value)}
+              className="rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              적용
+            </button>
+          </div>
+        </EditorModal>
 
         <div className="relative">
           {sourceMode ? (

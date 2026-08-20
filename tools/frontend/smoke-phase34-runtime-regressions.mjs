@@ -694,8 +694,20 @@ assert.match(richTextCoreSource, /normalizeLegacyPresentationAttributes\(element
 assert.match(richTextCoreSource, /element\.tagName === 'FONT'[\s\S]*appendSafeInlineStyle\(element, 'color', color\)/, 'legacy font color markup must be normalized into a persisted safe style');
 assert.match(richTextCoreSource, /getAttribute\('bgcolor'\)[\s\S]*appendSafeInlineStyle\(element, 'background-color'/, 'legacy background-color markup must be normalized into a persisted safe style');
 assert.match(richTextEditorSource, /const applyColorCommand = \(command, colorValue\) => \{[\s\S]*restoreSelection\(\)[\s\S]*styleWithCSS[\s\S]*execCommand\(command/, 'text/background color commands must save CSS-backed color markup against the restored editor selection');
-assert.match(richTextEditorSource, /applyColorCommand\('foreColor', event\.target\.value\)/, 'text color control must use the persistent CSS color command');
-assert.match(richTextEditorSource, /applyColorCommand\('hiliteColor', event\.target\.value\)/, 'background color control must use the persistent CSS color command');
+assert.match(richTextEditorSource, /const openColorDialog = \(command\) => \{[\s\S]*saveSelection\(\)[\s\S]*setColorDialog/, 'text/background color controls must preserve the editor selection before opening the confirmation dialog');
+assert.match(richTextEditorSource, /const confirmColorDialog = \(\) => \{[\s\S]*applyColorCommand\(colorDialog\.command, colorDialog\.value\)[\s\S]*closeColorDialog/, 'color changes must be applied only after the user confirms the selected color');
+assert.match(richTextEditorSource, /title=\{colorDialog\.command === 'hiliteColor' \? '배경색 설정' : '글자색 설정'\}[\s\S]*적용/, 'text/background color selection must expose an explicit apply action');
+assert.match(richTextEditorSource, /onClick=\{toggleBlockquote\}/, 'blockquote toolbar action must use toggle semantics');
+assert.match(richTextEditorSource, /const toggleBlockquote = \(\) => \{[\s\S]*shouldRemove[\s\S]*'p' : 'blockquote'/, 'blockquote must be removable by invoking the same toolbar action again');
+for (const alignment of ['left', 'center', 'right']) {
+  assert.ok(richTextEditorSource.includes(`toggleAlignment('${alignment}')`), `${alignment} alignment toolbar action must use toggle semantics`);
+}
+assert.match(richTextEditorSource, /const toggleAlignment = \(alignment\) => \{[\s\S]*allActive[\s\S]*removeProperty\('text-align'\)/, 'alignment buttons must remove their alignment when invoked again on an already-aligned block');
+for (const panelState of ['responsivePanelOpen', 'tablePanelOpen', 'imagePanelOpen', 'youtubePanelOpen', 'html5VideoPanelOpen']) {
+  assert.match(richTextEditorSource, new RegExp(`<EditorModal\\s+[\\s\\S]*?open=\\{${panelState}`), `${panelState} editor utility must render in a modal portal instead of an inline toolbar panel`);
+}
+assert.match(richTextEditorSource, /const handleEditorClick = \(event\) => \{[\s\S]*openImagePanel\(imageFigure\)[\s\S]*openTablePanel\(tableCell\)[\s\S]*openYouTubePanel\(youtubeWrapper\)[\s\S]*openHtml5VideoPanel\(html5Wrapper\)/, 'inserted image, table, YouTube, and HTML5 video objects must open their edit modal when clicked');
+assert.match(richTextEditorSource, /editingImage[\s\S]*selectedImageRef[\s\S]*replaceWith\(replacement\)/, 'inserted images must support in-place modal editing after selection');
 assert.match(richTextEditorSource, /const ToolbarButton = \([^)]*tabIndex = -1/, 'rich text toolbar buttons must be skipped by ordinary Tab navigation');
 assert.equal((richTextEditorSource.match(/<select\s+tabIndex=\{-1\}/g) || []).length, 3, 'all primary rich-text toolbar select controls must be skipped by ordinary Tab navigation');
 assert.match(richTextEditorSource, /contentEditable=\{!disabled\}[\s\S]*tabIndex=\{disabled \? -1 : 0\}/, 'visual rich-text body must be the first normal Tab stop inside the editor');
