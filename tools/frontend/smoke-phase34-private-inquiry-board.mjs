@@ -171,6 +171,7 @@ for (const marker of [
   'sm:grid-cols-[1fr_auto_1fr]',
 ]) assert.ok(adminPanel.includes(marker), `Admin inquiry marker missing: ${marker}`);
 assert.match(adminPanel, /제목, 본문, 작성자명, 이메일, 연락처 검색/);
+assert.ok(adminPanel.includes("<Field label=\"상태\"><Select value={status}") && adminPanel.includes("style={{ fontSize: '0.75rem', lineHeight: '1rem' }}"), 'admin inquiry status filter must match the compact search input text metrics');
 assert.match(adminPanel, /<th[^>]*>제목<\/th>/);
 assert.doesNotMatch(adminPanel, /<th[^>]*>이메일<\/th>/);
 assert.doesNotMatch(adminPanel, /<th[^>]*>연락처<\/th>/);

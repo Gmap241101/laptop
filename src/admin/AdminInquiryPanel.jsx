@@ -361,7 +361,7 @@ export default function AdminInquiryPanel({ ctx }) {
 
           <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_180px]">
             <Field label="문의 검색"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="search" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="제목, 본문, 작성자명, 이메일, 연락처 검색" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none mk-form-focus" /></div></Field>
-            <Field label="상태"><Select value={status} onChange={(value) => { setStatus(value); setPage(1); }}><option value="all">전체</option><option value="waiting">답변대기</option><option value="answered">답변완료</option><option value="additional">추가답변</option></Select></Field>
+            <Field label="상태"><Select value={status} onChange={(value) => { setStatus(value); setPage(1); }} style={{ fontSize: '0.75rem', lineHeight: '1rem' }}><option value="all">전체</option><option value="waiting">답변대기</option><option value="answered">답변완료</option><option value="additional">추가답변</option></Select></Field>
           </div>
 
           {detail ? (
