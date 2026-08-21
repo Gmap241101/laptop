@@ -409,9 +409,9 @@ export const createInquiryService = ({ repository }) => {
       return Object.freeze({ token, expiresAt: expiresAt.toISOString(), count: publicIds.length });
     },
 
-    async listGuest({ token, page, pageSize }) {
+    async listGuest({ token, search = '', page, pageSize }) {
       const session = await requireGuestSession(token);
-      return repository.listGuestInquiries({ publicIds: session.publicIds, page, pageSize });
+      return repository.listGuestInquiries({ publicIds: session.publicIds, search, page, pageSize });
     },
 
     async getGuest({ token, publicId }) {

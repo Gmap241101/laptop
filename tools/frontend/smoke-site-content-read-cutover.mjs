@@ -61,6 +61,18 @@ for (const file of [
   assert.equal(source.includes('syncSiteContentDomainFromFirestore'), false, `legacy Firestore sync must be removed: ${file}`);
 }
 
+const homeBannerAdmin = readFileSync('src/admin/AdminHomeBannerPanel.jsx', 'utf8');
+assert.ok(homeBannerAdmin.includes("import PaginationControls from '../components/PaginationControls.jsx';"), 'home banner lists must use the shared pagination control');
+assert.ok(homeBannerAdmin.includes('const HOME_BANNER_PAGE_SIZE = 10;'), 'home banner lists must paginate at 10 items per page');
+assert.ok(homeBannerAdmin.includes('const paginatedBanners = banners.slice('), 'home banner lists must render the current page slice');
+assert.ok(homeBannerAdmin.includes('sm:grid-cols-[1fr_auto_1fr]'), 'home banner list footer must match popup/footer three-column navigation layout');
+assert.ok(homeBannerAdmin.includes('<PaginationControls'), 'home banner registration lists must render pagination below the list');
+assert.ok(homeBannerAdmin.includes('<Plus size={14} />{panelConfig.itemLabel} 등록'), 'home banner registration action must remain available in the list footer');
+const homeBannerListHeaderStart = homeBannerAdmin.indexOf('<h3 className="text-sm font-bold text-slate-900">등록 목록</h3>');
+const homeBannerTableStart = homeBannerAdmin.indexOf('<table', homeBannerListHeaderStart);
+const homeBannerRegisterAction = homeBannerAdmin.indexOf('<Plus size={14} />{panelConfig.itemLabel} 등록', homeBannerListHeaderStart);
+assert.ok(homeBannerListHeaderStart >= 0 && homeBannerTableStart > homeBannerListHeaderStart && homeBannerRegisterAction > homeBannerTableStart, 'home banner register button must be below the registration list, not in the section header');
+
 const popupAdmin = readFileSync('src/features/boards/useAdminPopupPostController.js', 'utf8');
 assert.ok(popupAdmin.includes('patchSiteContentDomainInPostgresql'), 'popup administration must use PostgreSQL document-level partial writes');
 assert.equal(popupAdmin.includes('replaceSiteContentDomainInPostgresql'), false, 'popup administration must not resend the complete rich-content domain for ordinary mutations');

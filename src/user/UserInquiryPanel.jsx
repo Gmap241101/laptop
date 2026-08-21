@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole, Pencil, Search, Trash2 } from 'lucide-react';
 
 import { Button, Card, CardContent, Input, Select } from '../components/CommonUI.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
@@ -25,6 +25,11 @@ import {
 
 const GUEST_ACCESS_SESSION_KEY = 'mk_laptop_guest_inquiry_access';
 const PAGE_SIZE_FALLBACK = 10;
+const PAGE_SIZE_OPTIONS = Object.freeze([10, 30, 50]);
+const normalizeListPageSize = (value) => {
+  const parsed = Math.trunc(Number(value));
+  return PAGE_SIZE_OPTIONS.includes(parsed) ? parsed : PAGE_SIZE_FALLBACK;
+};
 
 const STATUS_LABELS = Object.freeze({
   waiting: '답변대기',
@@ -162,7 +167,7 @@ export default function UserInquiryPanel({ ctx }) {
     includeCategories: hasFirebaseAuthSession,
   });
   const cachedMemberList = hasFirebaseAuthSession
-    ? inquiryApi.peekMemberList({ page: 1, search: '' })
+    ? inquiryApi.peekMemberList({ page: 1, search: '', pageSize: PAGE_SIZE_FALLBACK })
     : null;
 
   const [config, setConfig] = useState(() => cachedSummaryConfig);
@@ -176,7 +181,7 @@ export default function UserInquiryPanel({ ctx }) {
   const [items, setItems] = useState(() => Array.isArray(cachedMemberList?.items) ? cachedMemberList.items : []);
   const [totalCount, setTotalCount] = useState(() => Number(cachedMemberList?.totalCount || 0));
   const [page, setPage] = useState(() => Number(cachedMemberList?.page || 1));
-  const [listPageSize, setListPageSize] = useState(() => Number(cachedMemberList?.pageSize || PAGE_SIZE_FALLBACK));
+  const [listPageSize, setListPageSize] = useState(() => normalizeListPageSize(cachedMemberList?.pageSize));
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -196,7 +201,7 @@ export default function UserInquiryPanel({ ctx }) {
   const [guestVerifyLoading, setGuestVerifyLoading] = useState(false);
   const [guestPrepareLoading, setGuestPrepareLoading] = useState(false);
 
-  const pageSize = Number(listPageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK);
+  const pageSize = normalizeListPageSize(listPageSize);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const categories = Array.isArray(config?.categories) ? config.categories : [];
   const guestTerms = Array.isArray(config?.guestTerms) ? config.guestTerms : [];
@@ -248,9 +253,9 @@ export default function UserInquiryPanel({ ctx }) {
     setItems(Array.isArray(safeResult.items) ? safeResult.items : []);
     setTotalCount(Number(safeResult.totalCount || 0));
     setPage(Number(safeResult.page || targetPage || 1));
-    setListPageSize(Number(safeResult.pageSize || config?.postsPerPage || PAGE_SIZE_FALLBACK));
+    setListPageSize(normalizeListPageSize(safeResult.pageSize));
     setListLoaded(true);
-  }, [config?.postsPerPage]);
+  }, []);
 
   const clearGuestSession = useCallback(() => {
     writeGuestAccess(null);
@@ -259,6 +264,8 @@ export default function UserInquiryPanel({ ctx }) {
     setTotalCount(0);
     setDetail(null);
     setPage(1);
+    setListPageSize(PAGE_SIZE_FALLBACK);
+    setMemberSearchQuery('');
     setListLoaded(false);
     setGuestEntry('intro');
     setGuestMode('verify');
@@ -266,14 +273,15 @@ export default function UserInquiryPanel({ ctx }) {
     replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'intro' });
   }, []);
 
-  const loadList = useCallback(async ({ targetPage = page, access = guestAccess, search = memberSearchQuery } = {}) => {
+  const loadList = useCallback(async ({ targetPage = page, access = guestAccess, search = memberSearchQuery, targetPageSize = listPageSize } = {}) => {
+    const requestedPageSize = normalizeListPageSize(targetPageSize);
     setListLoading(true);
     try {
       const result = hasFirebaseAuthSession
-        ? await inquiryApi.listMember({ page: targetPage, search })
+        ? await inquiryApi.listMember({ page: targetPage, search, pageSize: requestedPageSize })
         : access?.token
-          ? await inquiryApi.listGuest({ token: access.token, page: targetPage })
-          : { items: [], totalCount: 0, page: 1, pageSize: config?.postsPerPage || PAGE_SIZE_FALLBACK };
+          ? await inquiryApi.listGuest({ token: access.token, page: targetPage, search, pageSize: requestedPageSize })
+          : { items: [], totalCount: 0, page: 1, pageSize: requestedPageSize };
       applyListResult(result, targetPage);
       return result;
     } catch (error) {
@@ -286,7 +294,7 @@ export default function UserInquiryPanel({ ctx }) {
     } finally {
       setListLoading(false);
     }
-  }, [applyListResult, clearGuestSession, config?.postsPerPage, guestAccess, hasFirebaseAuthSession, memberSearchQuery, notify, page]);
+  }, [applyListResult, clearGuestSession, guestAccess, hasFirebaseAuthSession, listPageSize, memberSearchQuery, notify, page]);
 
   useEffect(() => {
     let active = true;
@@ -296,18 +304,18 @@ export default function UserInquiryPanel({ ctx }) {
           includeGuestTerms: false,
           includeCategories: true,
         });
-        const warmList = inquiryApi.peekMemberList({ page: 1, search: '' });
+        const warmList = inquiryApi.peekMemberList({ page: 1, search: '', pageSize: PAGE_SIZE_FALLBACK });
         if (warmConfig) applyConfig(warmConfig);
         if (warmList) applyListResult(warmList, 1);
         if (!warmConfig && !warmList) {
           await Promise.all([
             loadSummaryConfig(),
-            loadList({ targetPage: 1, search: '' }),
+            loadList({ targetPage: 1, search: '', targetPageSize: PAGE_SIZE_FALLBACK }),
           ]);
         } else if (!warmConfig) {
           await loadSummaryConfig();
         } else if (!warmList) {
-          await loadList({ targetPage: 1, search: '' });
+          await loadList({ targetPage: 1, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
         }
         return;
       }
@@ -315,7 +323,7 @@ export default function UserInquiryPanel({ ctx }) {
       const next = await loadSummaryConfig();
       if (!active || !next) return;
       if (guestAccess?.token) {
-        await loadList({ targetPage: 1, access: guestAccess });
+        await loadList({ targetPage: 1, access: guestAccess, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
       }
     })();
     return () => { active = false; };
@@ -350,8 +358,19 @@ export default function UserInquiryPanel({ ctx }) {
       window.clearTimeout(memberSearchTimerRef.current);
     }
     memberSearchTimerRef.current = window.setTimeout(() => {
-      void loadList({ targetPage: 1, search: query });
+      void loadList({ targetPage: 1, search: query, targetPageSize: listPageSize });
     }, 250);
+  };
+
+  const handleListPageSizeChange = (value) => {
+    if (memberSearchTimerRef.current) {
+      window.clearTimeout(memberSearchTimerRef.current);
+      memberSearchTimerRef.current = null;
+    }
+    const nextPageSize = normalizeListPageSize(value);
+    setListPageSize(nextPageSize);
+    setPage(1);
+    void loadList({ targetPage: 1, search: memberSearchQuery, targetPageSize: nextPageSize });
   };
 
   const resetOwnedForm = useCallback(() => {
@@ -479,7 +498,7 @@ export default function UserInquiryPanel({ ctx }) {
         setMemberView('list');
         await loadList({ targetPage: 1 });
       } else {
-        await loadList({ targetPage: 1, access: guestAccess });
+        await loadList({ targetPage: 1, access: guestAccess, search: memberSearchQuery, targetPageSize: pageSize });
       }
       if (!returnedByHistory) {
         replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
@@ -539,7 +558,9 @@ export default function UserInquiryPanel({ ctx }) {
         replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
       }
       notify('비회원 문의가 등록되었습니다. 현재 브라우저에서 바로 확인할 수 있습니다.');
-      await loadList({ targetPage: 1, access });
+      setMemberSearchQuery('');
+      setListPageSize(PAGE_SIZE_FALLBACK);
+      await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
     } catch (error) {
       const message = error?.code === 'guest_inquiry_disabled'
         ? '현재 비회원 문의를 접수하지 않습니다.'
@@ -574,7 +595,9 @@ export default function UserInquiryPanel({ ctx }) {
       setDetail(null);
       setListLoaded(false);
       replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
-      await loadList({ targetPage: 1, access });
+      setMemberSearchQuery('');
+      setListPageSize(PAGE_SIZE_FALLBACK);
+      await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
       notify('비회원 문의 확인 인증이 완료되었습니다.');
     } catch (error) {
       notify('입력한 정보와 일치하는 문의를 확인할 수 없습니다.', 'error');
@@ -925,7 +948,7 @@ export default function UserInquiryPanel({ ctx }) {
             variant="outline"
             onClick={returnToInquiryList}
           >
-            <ArrowLeft size={14} /> 목록으로
+            목록으로
           </Button>
           {Number(detail.answerCount || 0) === 0 ? (
             <div className="flex gap-2">
@@ -940,28 +963,41 @@ export default function UserInquiryPanel({ ctx }) {
 
   const renderList = ({ guest = false } = {}) => (
     <div className="space-y-5">
-      {!guest ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <label className="block text-[11px] font-semibold text-slate-600">
-            문의내역 검색
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,4fr)_minmax(150px,1fr)] md:items-end">
+          <label className="block min-w-0">
+            <span className="block text-[11px] font-semibold text-slate-600">문의내역 검색</span>
+            <div className="relative mt-2">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                size={16}
+              />
+              <input
+                type="search"
+                value={memberSearchQuery}
+                onChange={(event) => handleMemberSearchChange(event.target.value)}
+                placeholder="문의 제목 또는 본문 검색"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
+              />
+            </div>
           </label>
-          <div className="relative mt-2">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              size={16}
-            />
-            <input
-              type="search"
-              value={memberSearchQuery}
-              onChange={(event) => handleMemberSearchChange(event.target.value)}
-              placeholder="문의 제목 또는 본문 검색"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition mk-form-focus"
-            />
-          </div>
-        </div>
-      ) : null}
 
-      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{!guest && memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
+          <label className="block">
+            <span className="block text-[11px] font-semibold text-slate-600">목록 표시</span>
+            <select
+              value={pageSize}
+              onChange={(event) => handleListPageSizeChange(event.target.value)}
+              disabled={listLoading}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs outline-none transition mk-form-focus disabled:bg-slate-100 disabled:text-slate-400"
+              aria-label="문의 목록 표시 건수"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}개씩 보기</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
@@ -972,7 +1008,7 @@ export default function UserInquiryPanel({ ctx }) {
 
       <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
-        <PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage })} />
+        <PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage, search: memberSearchQuery, targetPageSize: pageSize })} />
         <div className="flex flex-wrap gap-2 sm:justify-self-end">
           {guest ? (
             <>

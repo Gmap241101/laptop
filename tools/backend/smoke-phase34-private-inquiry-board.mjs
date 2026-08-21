@@ -99,7 +99,17 @@ const repository = {
   async createGuestSession({ tokenHash, publicIds, expiresAt }) { state.sessions.set(tokenHash, { publicIds: clone(publicIds), expiresAt }); return { expiresAt }; },
   async getGuestSession(tokenHash) { return state.sessions.get(tokenHash) || null; },
   async revokeGuestSession(tokenHash) { state.sessions.delete(tokenHash); },
-  async listGuestInquiries({ publicIds }) { const items = state.inquiries.filter((i) => !i.deleted && i.authorType === 'guest' && publicIds.includes(i.publicId)).map(toSummary); return { items, totalCount: items.length, page: 1, pageSize: 10 }; },
+  async listGuestInquiries({ publicIds, search = '', page = 1, pageSize = 10 }) {
+    const query = String(search || '').trim().toLowerCase();
+    const safePageSize = [10, 30, 50].includes(Number(pageSize)) ? Number(pageSize) : 10;
+    const all = state.inquiries
+      .filter((i) => !i.deleted && i.authorType === 'guest' && publicIds.includes(i.publicId))
+      .filter((i) => !query || String(i.title || '').toLowerCase().includes(query) || String(i.bodyText || '').toLowerCase().includes(query))
+      .map(toSummary);
+    const safePage = Math.max(1, Number(page) || 1);
+    const start = (safePage - 1) * safePageSize;
+    return { items: all.slice(start, start + safePageSize), totalCount: all.length, page: safePage, pageSize: safePageSize };
+  },
   async getGuestInquiry({ publicIds, publicId }) { const row = state.inquiries.find((i) => !i.deleted && i.authorType === 'guest' && i.publicId === publicId && publicIds.includes(i.publicId)); return row ? toDetail(row) : null; },
   async listAdminInquiries() { const items = state.inquiries.filter((i) => !i.deleted).map(toSummary); return { items, totalCount: items.length, page: 1, pageSize: 10 }; },
   async getAdminInquiry(publicId) { const row = state.inquiries.find((i) => !i.deleted && i.publicId === publicId); return row ? toDetail(row) : null; },
@@ -165,6 +175,9 @@ await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:
 
 const guestAccess = await service.verifyGuestAccess({ input:{ name:'홍길동', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23' } });
 assert.equal((await service.listGuest({ token:guestAccess.token })).items.length, 2);
+assert.equal((await service.listGuest({ token:guestAccess.token, search:'비회원 A2', pageSize:30 })).items.length, 1);
+assert.equal((await service.listGuest({ token:guestAccess.token, search:'검색 결과 없음', pageSize:50 })).items.length, 0);
+assert.equal((await service.listGuest({ token:guestAccess.token, pageSize:30 })).pageSize, 30);
 assert.equal((await service.getGuest({ token:guestAccess.token, publicId:guestA.publicId })).publicId, guestA.publicId);
 assert.equal((await service.getGuest({ token:guestAccess.token, publicId:guestA2.publicId })).publicId, guestA2.publicId);
 await assert.rejects(() => service.getGuest({ token:guestAccess.token, publicId:guestB.publicId }), (error) => error.code === 'inquiry_not_found');
@@ -226,6 +239,9 @@ assert.match(repositorySource, /LAG\(i\.public_id\) OVER \(ORDER BY i\.created_a
 assert.match(repositorySource, /LEAD\(i\.public_id\) OVER \(ORDER BY i\.created_at DESC,i\.inquiry_id DESC\)/);
 assert.match(repositorySource, /i\.member_uid=\$1 AND i\.author_type='member' AND i\.deleted_at IS NULL/);
 assert.match(repositorySource, /i\.public_id=ANY\(\$1::text\[\]\) AND i\.author_type='guest' AND i\.deleted_at IS NULL/);
+assert.match(repositorySource, /LOWER\(i\.title\) LIKE \$2 OR LOWER\(i\.body_text\) LIKE \$2/);
+assert.match(serviceSource, /listGuestInquiries\(\{ publicIds: session\.publicIds, search, page, pageSize \}\)/);
+assert.match(appSource, /search: url\.searchParams\.get\('search'\) \|\| ''/);
 assert.match(repositorySource, /LOWER\(author_email\)=LOWER\(\$2\)/);
 assert.match(repositorySource, /author_phone=\$3/);
 assert.match(serviceSource, /guest_inquiry_identity_password_mismatch/);

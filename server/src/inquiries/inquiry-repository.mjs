@@ -664,22 +664,31 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
       await pool.query(`DELETE FROM app_inquiry_guest_sessions WHERE token_hash=$1`, [trim(tokenHash)]);
     },
 
-    async listGuestInquiries({ publicIds, page, pageSize }) {
+    async listGuestInquiries({ publicIds, search = '', page, pageSize }) {
       const ids = [...new Set((publicIds || []).map(trim).filter(Boolean))];
       const safePage = normalizePage(page);
       const settings = await getSettings();
       const safePageSize = normalizePageSize(pageSize, settings.postsPerPage);
+      const normalizedSearch = lower(search);
+      const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
       if (ids.length === 0) return Object.freeze({ items: [], totalCount: 0, page: safePage, pageSize: safePageSize });
       const offset = (safePage - 1) * safePageSize;
       const [rowsResult, countResult] = await Promise.all([
         pool.query(
           `${INQUIRY_WITH_STATUS_SELECT}
             WHERE i.public_id=ANY($1::text[]) AND i.author_type='guest' AND i.deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
             ORDER BY i.created_at DESC,i.inquiry_id DESC
-            LIMIT $2 OFFSET $3`,
-          [ids, safePageSize, offset],
+            LIMIT $3 OFFSET $4`,
+          [ids, searchPattern, safePageSize, offset],
         ),
-        pool.query(`SELECT COUNT(*)::int AS count FROM app_inquiries WHERE public_id=ANY($1::text[]) AND author_type='guest' AND deleted_at IS NULL`, [ids]),
+        pool.query(
+          `SELECT COUNT(*)::int AS count
+             FROM app_inquiries i
+            WHERE i.public_id=ANY($1::text[]) AND i.author_type='guest' AND i.deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)`,
+          [ids, searchPattern],
+        ),
       ]);
       return Object.freeze({
         items: Object.freeze(rowsResult.rows.map(mapInquirySummary)),

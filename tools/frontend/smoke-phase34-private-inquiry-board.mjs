@@ -112,9 +112,14 @@ assert.match(userPanel, /redirectingToLoginRef\.current\s*=\s*true;\s*goToUserLo
 // Member inquiry opens on the searchable list and loads the list in parallel with lightweight config. Guest terms remain lazy-loaded.
 assert.match(userPanel, /useState\('list'\)/);
 assert.doesNotMatch(userPanel, />\s*내 문의 내역\s*</);
-assert.match(userPanel, /Promise\.all\(\[[\s\S]*loadSummaryConfig\(\)[\s\S]*loadList\(\{ targetPage: 1, search: '' \}\)/);
+assert.match(userPanel, /Promise\.all\(\[[\s\S]*loadSummaryConfig\(\)[\s\S]*loadList\(\{ targetPage: 1, search: '', targetPageSize: PAGE_SIZE_FALLBACK \}\)/);
 assert.match(userPanel, /문의내역 검색/);
 assert.match(userPanel, /placeholder="문의 제목 또는 본문 검색"/);
+assert.match(userPanel, /md:grid-cols-\[minmax\(0,4fr\)_minmax\(150px,1fr\)\]/, 'inquiry list search and page-size controls must use a 4:1 desktop grid');
+assert.match(userPanel, /PAGE_SIZE_OPTIONS = Object\.freeze\(\[10, 30, 50\]\)/);
+assert.match(userPanel, /PAGE_SIZE_OPTIONS\.map\(\(size\) => <option key=\{size\} value=\{size\}>\{size\}개씩 보기<\/option>\)/);
+assert.match(userPanel, /aria-label="문의 목록 표시 건수"/);
+assert.match(userPanel, /inquiryApi\.listGuest\(\{ token: access\.token, page: targetPage, search, pageSize: requestedPageSize \}\)/, 'guest inquiry list must support scoped search and page-size selection');
 assert.match(userPanel, /\['이전글', detail\.navigation\?\.previous\]/);
 assert.match(userPanel, /\['다음글', detail\.navigation\?\.next\]/);
 assert.match(userPanel, /\{label\}이 없습니다\./, 'missing inquiry neighbor must render only the missing-title message');
@@ -122,8 +127,9 @@ assert.doesNotMatch(userPanel, /\{item \? item\.authorName \|\| '-' : '-'\}/, 'm
 assert.match(userPanel, /text-sm font-normal text-slate-800 hover:text-orange-600/, 'inquiry previous/next titles must use normal font weight');
 assert.doesNotMatch(userPanel, /min-h-\[220px\]/, 'short inquiry body must not reserve a fixed minimum height');
 const inquiryNavigationIndex = userPanel.indexOf("['이전글', detail.navigation?.previous]");
-const inquiryDetailListButtonIndex = userPanel.indexOf('<ArrowLeft size={14} /> 목록으로', inquiryNavigationIndex);
+const inquiryDetailListButtonIndex = userPanel.indexOf('>\n            목록으로\n          </Button>', inquiryNavigationIndex);
 assert.ok(inquiryNavigationIndex >= 0 && inquiryDetailListButtonIndex > inquiryNavigationIndex, 'inquiry detail action buttons must render below previous/next navigation');
+assert.doesNotMatch(userPanel, /ArrowLeft/, 'inquiry detail list button must not show a left-arrow icon');
 const inquiryNavigationBlock = userPanel.slice(inquiryNavigationIndex, inquiryDetailListButtonIndex);
 assert.doesNotMatch(inquiryNavigationBlock, /<thead[^>]*>/, 'inquiry previous/next navigation must not render a gray title header');
 assert.match(userPanel, /includeGuestTerms: true, includeCategories: true/);
@@ -132,7 +138,8 @@ assert.match(api, /includeGuestTerms: includeGuestTerms \? '1' : ''/);
 assert.match(api, /includeCategories: includeCategories \? '' : '0'/);
 assert.match(api, /async listMember\(\{ search = '', page = 1, pageSize \} = \{\}\)/);
 assert.match(api, /queryString\(\{ search, page, pageSize \}\)/);
-assert.match(api, /async listGuest\(\{ token, page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /async listGuest\(\{ token, search = '', page = 1, pageSize \} = \{\}\)/);
+assert.match(api, /queryString\(\{ search, page, pageSize \}\)/);
 assert.match(api, /async prepareGuestCreate\(input\)/);
 
 // Inquiry uses the same public-board hero/header shell as notices.

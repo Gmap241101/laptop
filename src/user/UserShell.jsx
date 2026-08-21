@@ -38,7 +38,7 @@ const prefetchUserInquiry = (authenticated) => {
       const reads = [
         inquiryApi.getPublicConfig({ includeGuestTerms: false, includeCategories: Boolean(authenticated) }),
       ];
-      if (authenticated) reads.push(inquiryApi.listMember({ page: 1, search: '' }));
+      if (authenticated) reads.push(inquiryApi.listMember({ page: 1, search: '', pageSize: 10 }));
       await Promise.all(reads);
     })
     .catch(() => {});

@@ -1642,6 +1642,7 @@ export const createRequestHandler = ({
       try {
         const result = await inquiryService.listGuest({
           token: readGuestInquiryToken(request),
+          search: url.searchParams.get('search') || '',
           page: url.searchParams.get('page') || '1',
           pageSize: url.searchParams.get('pageSize') || undefined,
         });

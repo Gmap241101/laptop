@@ -206,9 +206,9 @@ export const inquiryApi = Object.freeze({
     return payload.guestInquiryAccess || null;
   },
 
-  async listGuest({ token, page = 1, pageSize } = {}) {
+  async listGuest({ token, search = '', page = 1, pageSize } = {}) {
     const payload = await requestJson({
-      path: `/api/inquiries/guest${queryString({ page, pageSize })}`,
+      path: `/api/inquiries/guest${queryString({ search, page, pageSize })}`,
       auth: 'guest',
       guestToken: token,
     });

@@ -20,6 +20,9 @@ import {
   subscribeSiteContentInvalidation,
 } from '../features/content/siteContentCutover.js';
 import ModalPortal from '../components/ModalPortal.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
+
+const HOME_BANNER_PAGE_SIZE = 10;
 
 const PLACEMENT_CONFIG = {
   hero: {
@@ -216,6 +219,7 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
   const [toggleSavingId, setToggleSavingId] = useState('');
   const [previewFailed, setPreviewFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [listPage, setListPage] = useState(1);
 
   const replaceHomeDomain = async ({ banners = allBanners, config = configDraft } = {}) => {
     const updatedAt = new Date();
@@ -315,6 +319,21 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)),
     [allBanners, now]
   );
+
+  const listTotalPages = Math.max(1, Math.ceil(banners.length / HOME_BANNER_PAGE_SIZE));
+  const safeListPage = Math.min(Math.max(1, listPage), listTotalPages);
+  const paginatedBanners = banners.slice(
+    (safeListPage - 1) * HOME_BANNER_PAGE_SIZE,
+    safeListPage * HOME_BANNER_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setListPage(1);
+  }, [placement]);
+
+  useEffect(() => {
+    if (listPage > listTotalPages) setListPage(listTotalPages);
+  }, [listPage, listTotalPages]);
 
   const formDirty = editing && JSON.stringify(form) !== formBaselineRef.current;
   const configDirty = configReady && JSON.stringify(configDraft) !== configBaselineRef.current;
@@ -924,14 +943,9 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
       )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">등록 목록</h3>
-            <p className="mt-1 text-[11px] leading-5 text-slate-500">{recommendation}</p>
-          </div>
-          <Button type="button" variant="primary" onClick={openCreate} disabled={editing} className="shrink-0 px-4 py-2 text-xs">
-            <Plus size={14} />{panelConfig.itemLabel} 등록
-          </Button>
+        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+          <h3 className="text-sm font-bold text-slate-900">등록 목록</h3>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">{recommendation}</p>
         </div>
 
         <div className="p-5">
@@ -956,14 +970,15 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
                   </tr>
                 </thead>
                 <tbody>
-                  {banners.map((banner, index) => {
+                  {paginatedBanners.map((banner, index) => {
+                    const globalIndex = ((safeListPage - 1) * HOME_BANNER_PAGE_SIZE) + index;
                     const status = getDisplayStatus(banner, now);
                     return (
                       <tr key={banner.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
                         <td className="px-3 py-3">
                           <div className="flex justify-center gap-1">
-                            <button type="button" disabled={index === 0} onClick={() => moveBanner(banner.id, -1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"><ArrowUp size={14} /></button>
-                            <button type="button" disabled={index === banners.length - 1} onClick={() => moveBanner(banner.id, 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"><ArrowDown size={14} /></button>
+                            <button type="button" disabled={globalIndex === 0} onClick={() => moveBanner(banner.id, -1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"><ArrowUp size={14} /></button>
+                            <button type="button" disabled={globalIndex === banners.length - 1} onClick={() => moveBanner(banner.id, 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 disabled:opacity-30"><ArrowDown size={14} /></button>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center">
@@ -1024,6 +1039,25 @@ export default function AdminHomeBannerPanel({ ctx, placement, embedded = false 
               </table>
             </div>
           )}
+
+          {bannersReady && !loadError ? (
+            <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <div className="text-[11px] text-slate-500 sm:justify-self-start">
+                전체 {panelConfig.itemLabel} {banners.length}건 · {safeListPage} / {listTotalPages}페이지
+              </div>
+              <PaginationControls
+                className="sm:justify-self-center"
+                currentPage={safeListPage}
+                totalPages={listTotalPages}
+                onPageChange={(nextPage) => setListPage(nextPage)}
+              />
+              <div className="flex sm:justify-self-end">
+                <Button type="button" variant="primary" onClick={openCreate} disabled={editing}>
+                  <Plus size={14} />{panelConfig.itemLabel} 등록
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
