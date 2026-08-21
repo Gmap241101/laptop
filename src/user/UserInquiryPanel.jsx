@@ -402,6 +402,15 @@ export default function UserInquiryPanel({ ctx }) {
     if (!listLoaded) await loadList({ targetPage: 1 });
   };
 
+  const prefetchDetail = (publicId) => {
+    if (!publicId) return;
+    if (hasFirebaseAuthSession) {
+      void inquiryApi.prefetchMemberDetail(publicId);
+      return;
+    }
+    if (guestAccess?.token) void inquiryApi.prefetchGuestDetail(publicId, guestAccess.token);
+  };
+
   const openDetail = async (publicId, { historyMode = 'push' } = {}) => {
     const cached = hasFirebaseAuthSession
       ? inquiryApi.peekMemberDetail(publicId)
@@ -951,6 +960,9 @@ export default function UserInquiryPanel({ ctx }) {
                         <button
                           type="button"
                           className="min-w-0 truncate text-left text-sm font-normal text-slate-800 hover:text-orange-600 hover:underline"
+                          onPointerEnter={() => prefetchDetail(item.publicId)}
+                          onPointerDown={() => prefetchDetail(item.publicId)}
+                          onFocus={() => prefetchDetail(item.publicId)}
                           onClick={() => void openDetail(item.publicId)}
                         >
                           {item.title}
@@ -1031,7 +1043,16 @@ export default function UserInquiryPanel({ ctx }) {
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button type="button" className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline" onClick={() => openDetail(item.publicId)}>{item.title}</button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
+            <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button
+                  type="button"
+                  className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                  onPointerEnter={() => prefetchDetail(item.publicId)}
+                  onPointerDown={() => prefetchDetail(item.publicId)}
+                  onFocus={() => prefetchDetail(item.publicId)}
+                  onClick={() => void openDetail(item.publicId)}
+                >
+                  {item.title}
+                </button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
           </table>
         </div>
       )}
@@ -1051,10 +1072,23 @@ export default function UserInquiryPanel({ ctx }) {
     </div>
   );
   const renderDetailLoading = () => (
-    <div className="flex min-h-[320px] flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
-      <div>
-        <div className="text-sm font-bold text-slate-800">문의 본문을 불러오는 중입니다.</div>
-        <div className="mt-2 text-xs text-slate-400">목록은 다시 조회하지 않고 선택한 문의 상세만 확인하고 있습니다.</div>
+    <div
+      className="min-h-[320px] flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-6"
+      aria-busy="true"
+      aria-label="문의 상세 불러오는 중"
+    >
+      <div className="animate-pulse space-y-5">
+        <div className="h-7 w-2/5 max-w-sm rounded-lg bg-slate-100" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="h-16 rounded-xl bg-slate-100" />
+          <div className="h-16 rounded-xl bg-slate-100" />
+          <div className="h-16 rounded-xl bg-slate-100" />
+        </div>
+        <div className="space-y-3">
+          <div className="h-4 w-full rounded bg-slate-100" />
+          <div className="h-4 w-11/12 rounded bg-slate-100" />
+          <div className="h-4 w-4/5 rounded bg-slate-100" />
+        </div>
       </div>
     </div>
   );

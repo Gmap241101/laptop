@@ -30,6 +30,27 @@ assert.match(repositorySource, /async listMemberInquiriesByClerkUserId\(/,
 assert.match(repositorySource, /async getMemberInquiryByClerkUserId\(/,
   'member detail must combine Clerk member-scope resolution with target lookup');
 
+const memberDetailBlock = repositorySource.match(/async getMemberInquiryByClerkUserId\(\{ clerkUserId, publicId \}\) \{([\s\S]*?)\n    \},\n\n    async updateOwnedInquiry/)?.[1] || '';
+assert.ok(memberDetailBlock, 'optimized member detail implementation must be present');
+assert.equal((memberDetailBlock.match(/pool\.query\(/g) || []).length, 1,
+  'member detail hot path must use a single PostgreSQL request');
+assert.doesNotMatch(memberDetailBlock, /Promise\.all|listActiveAnswers\(|attachmentRepository\.listForOwner|getInquiryNavigation\(/,
+  'member detail hot path must not start a second DB latency phase');
+assert.match(memberDetailBlock, /FROM app_inquiry_answers ans/, 'member detail single query must include answers');
+assert.match(memberDetailBlock, /FROM app_secure_attachments att/, 'member detail single query must include attachments');
+assert.match(memberDetailBlock, /LAG\(i\.public_id\)[\s\S]*LEAD\(i\.public_id\)/, 'member detail single query must include navigation');
+
+const guestDetailBlock = repositorySource.match(/async getGuestInquiryBySession\(\{ tokenHash, publicId \}\) \{([\s\S]*?)\n    \},\n\n    async listAdminInquiries/)?.[1] || '';
+assert.ok(guestDetailBlock, 'optimized guest detail implementation must be present');
+assert.equal((guestDetailBlock.match(/pool\.query\(/g) || []).length, 1,
+  'guest detail hot path must use a single PostgreSQL request');
+assert.doesNotMatch(guestDetailBlock, /Promise\.all|listActiveAnswers\(|listConsents\(|attachmentRepository\.listForOwner|getInquiryNavigation\(/,
+  'guest detail hot path must not start a second DB latency phase');
+assert.match(guestDetailBlock, /FROM app_inquiry_answers ans/, 'guest detail single query must include answers');
+assert.match(guestDetailBlock, /FROM app_inquiry_guest_consents gc/, 'guest detail single query must include consents');
+assert.match(guestDetailBlock, /FROM app_secure_attachments att/, 'guest detail single query must include attachments');
+assert.match(guestDetailBlock, /LAG\(i\.public_id\)[\s\S]*LEAD\(i\.public_id\)/, 'guest detail single query must include navigation');
+
 const activeAnswers = repositorySource.match(/const listActiveAnswers = async \(client, inquiryId\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
 assert.match(activeAnswers, /FROM app_secure_attachments att/,
   'answer attachment metadata must be loaded in the same answer query');
@@ -47,8 +68,8 @@ assert.match(serviceSource, /repository\.getGuestInquiryBySession/,
 assert.match(serviceSource, /initialList/,
   'guest verification must return the already-scoped first list to avoid a second HTTP read');
 
-assert.match(frontendApi, /INQUIRY_DETAIL_CACHE_TTL_MS = 8_000/,
-  'short completed-detail cache must remain bounded');
+assert.match(frontendApi, /INQUIRY_DETAIL_CACHE_TTL_MS = 30_000/,
+  'completed detail cache must stay bounded while covering normal list-detail navigation');
 assert.match(frontendApi, /peekGuestList/,
   'guest list route must synchronously consume a completed verification/list read');
 assert.match(frontendApi, /peekMemberDetail/,
@@ -59,8 +80,14 @@ assert.match(frontendPanel, /!hasFirebaseAuthSession && \(configLoading \|\| !co
   'authenticated list/detail paint must not be blocked on compose-only category/config reads');
 assert.doesNotMatch(frontendPanel, /listLoading \|\| detailLoading \? <div[^>]*>문의 내역을 불러오는 중입니다/,
   'detail fetch must not masquerade as a full list reload');
-assert.match(frontendPanel, /문의 본문을 불러오는 중입니다/,
-  'detail route must show detail-specific progress while the list cache stays intact');
+assert.doesNotMatch(frontendPanel, /문의 본문을 불러오는 중입니다|목록은 다시 조회하지 않고 선택한 문의 상세만 확인하고 있습니다/,
+  'internal loading diagnostics must never be rendered as user-facing copy');
+assert.match(frontendPanel, /aria-busy="true"[\s\S]*animate-pulse/,
+  'detail loading may use a neutral skeleton without exposing internal implementation text');
+assert.match(frontendApi, /prefetchMemberDetail/, 'member detail intent must be able to warm the shared pending/read cache');
+assert.match(frontendApi, /prefetchGuestDetail/, 'guest detail intent must be able to warm the shared pending/read cache');
+assert.match(frontendPanel, /onPointerEnter=\{\(\) => prefetchDetail\(item\.publicId\)\}/,
+  'detail links must start a bounded prefetch on clear pointer intent');
 
 const calls = [];
 const memberSummary = Object.freeze({ publicId: 'member-1', title: 'member', answerCount: 0 });

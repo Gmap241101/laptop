@@ -54,7 +54,12 @@ assert.ok(inquiryApi.includes('peekGuestList'), 'verified guest inquiry lists mu
 assert.ok(inquiryApi.includes('peekMemberDetail'), 'member inquiry detail reads must have a short completed-read cache');
 assert.ok(inquiryApi.includes('peekGuestDetail'), 'guest inquiry detail reads must have a short completed-read cache');
 assert.ok(inquiryPanel.includes('!hasFirebaseAuthSession && (configLoading || !config)'), 'member list/detail paint must not wait for compose-only inquiry configuration');
-assert.ok(inquiryPanel.includes('문의 본문을 불러오는 중입니다.'), 'detail loading must use a detail-specific state instead of replacing the list with a list-loading message');
+assert.equal(inquiryPanel.includes('문의 본문을 불러오는 중입니다.'), false, 'internal detail-loading diagnostics must not be shown to users');
+assert.equal(inquiryPanel.includes('목록은 다시 조회하지 않고 선택한 문의 상세만 확인하고 있습니다.'), false, 'implementation commentary must never be rendered in the user UI');
+assert.ok(inquiryPanel.includes('aria-busy="true"'), 'detail wait state may use a neutral accessibility-labelled skeleton');
+assert.ok(inquiryApi.includes('INQUIRY_DETAIL_CACHE_TTL_MS = 30_000'), 'detail reuse must cover normal list-detail navigation without becoming long-lived stale data');
+assert.ok(inquiryApi.includes('prefetchMemberDetail'), 'member detail must warm on explicit navigation intent');
+assert.ok(inquiryApi.includes('prefetchGuestDetail'), 'guest detail must warm on explicit navigation intent');
 
 assert.ok(userShell.includes('prefetchUserCommunity'), 'community parent interaction must warm notice, FAQ, and inquiry data together');
 assert.ok(userShell.includes("if (userTab !== 'home') return undefined"), 'background community warmup must be limited to the already-painted home shell');

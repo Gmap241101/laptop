@@ -2,7 +2,7 @@ import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 
 const trim = (value) => String(value ?? '').trim();
 const INQUIRY_READ_CACHE_TTL_MS = 30_000;
-const INQUIRY_DETAIL_CACHE_TTL_MS = 8_000;
+const INQUIRY_DETAIL_CACHE_TTL_MS = 30_000;
 const INQUIRY_GUEST_LIST_CACHE_TTL_MS = 10_000;
 const inquiryReadCache = new Map();
 let lastMemberSessionCacheKey = '';
@@ -292,6 +292,22 @@ export const inquiryApi = Object.freeze({
     return scope
       ? withInquiryReadCache(`guest-detail|${scope}|${normalizedId}`, loader, INQUIRY_DETAIL_CACHE_TTL_MS)
       : loader();
+  },
+
+  async prefetchMemberDetail(publicId) {
+    try {
+      return await inquiryApi.getMember(publicId);
+    } catch {
+      return null;
+    }
+  },
+
+  async prefetchGuestDetail(publicId, token) {
+    try {
+      return await inquiryApi.getGuest(publicId, token);
+    } catch {
+      return null;
+    }
   },
 
   async updateGuest(publicId, input, token) {

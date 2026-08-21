@@ -676,40 +676,110 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     },
 
     async getMemberInquiryByClerkUserId({ clerkUserId, publicId }) {
-      // Resolve the Clerk -> member scope and the requested inquiry in one DB
-      // request.  The prior read path resolved the member in one query and only
-      // then started the inquiry query, imposing an avoidable sequential RTT.
+      // Read the complete member inquiry detail in one PostgreSQL request.
+      // The former path used one query for member+target and then a second
+      // latency phase for answers, attachments and navigation.  Keeping the
+      // authorization scope, rich-text body and all detail metadata in one
+      // statement removes that remaining round-trip without widening access.
       const result = await pool.query(
         `WITH member AS (
            ${MEMBER_READ_SCOPE_CTE}
+         ), target AS (
+           ${INQUIRY_WITH_STATUS_SELECT}
+            WHERE i.public_id=$2
+              AND i.member_uid=(SELECT member_uid FROM member)
+              AND i.author_type='member'
+              AND i.deleted_at IS NULL
+            LIMIT 1
+         ), ordered AS (
+           SELECT i.public_id,i.title,i.author_name,i.created_at,i.inquiry_id,
+                  LAG(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_public_id,
+                  LAG(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_title,
+                  LAG(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_author_name,
+                  LAG(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_created_at,
+                  LEAD(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_public_id,
+                  LEAD(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_title,
+                  LEAD(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_author_name,
+                  LEAD(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_created_at
+             FROM app_inquiries i
+            WHERE i.member_uid=(SELECT member_uid FROM member)
+              AND i.author_type='member'
+              AND i.deleted_at IS NULL
+         ), nav AS (
+           SELECT * FROM ordered WHERE public_id=$2
          )
-         SELECT m.member_uid AS resolved_member_uid,m.status AS resolved_member_status,target.*
-           FROM member m
-           LEFT JOIN LATERAL (
-             ${INQUIRY_WITH_STATUS_SELECT}
-              WHERE i.public_id=$2
-                AND i.member_uid=m.member_uid
-                AND i.author_type='member'
-                AND i.deleted_at IS NULL
-              LIMIT 1
-           ) target ON TRUE`,
+         SELECT (SELECT member_uid FROM member) AS resolved_member_uid,
+                (SELECT status FROM member) AS resolved_member_status,
+                (SELECT TO_JSONB(target) FROM target) AS inquiry,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'answer_id',ans.answer_id,
+                      'body_html',ans.body_html,
+                      'body_text',ans.body_text,
+                      'admin_identity_id',ans.admin_identity_id,
+                      'admin_display_name',ans.admin_display_name,
+                      'created_at',ans.created_at,
+                      'updated_at',ans.updated_at,
+                      'attachments',COALESCE((
+                        SELECT JSONB_AGG(
+                          JSONB_BUILD_OBJECT(
+                            'id',att.attachment_id,
+                            'name',att.display_name,
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                          ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                        )
+                          FROM app_secure_attachments att
+                         WHERE att.owner_type='inquiry_answer'
+                           AND att.owner_id=ans.answer_id
+                           AND att.deleted_at IS NULL
+                      ),'[]'::jsonb)
+                    ) ORDER BY ans.created_at,ans.answer_id
+                  )
+                    FROM app_inquiry_answers ans
+                   WHERE ans.inquiry_id=(SELECT inquiry_id FROM target)
+                     AND ans.deleted_at IS NULL
+                ),'[]'::jsonb) AS answers,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id',att.attachment_id,
+                      'name',att.display_name,
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                    ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                  )
+                    FROM app_secure_attachments att
+                   WHERE att.owner_type='inquiry'
+                     AND att.owner_id=(SELECT inquiry_id FROM target)
+                     AND att.deleted_at IS NULL
+                ),'[]'::jsonb) AS attachments,
+                COALESCE((
+                  SELECT JSONB_BUILD_OBJECT(
+                    'previous',CASE WHEN previous_public_id IS NULL THEN NULL ELSE JSONB_BUILD_OBJECT(
+                      'publicId',previous_public_id,'title',previous_title,'authorName',previous_author_name,'createdAt',previous_created_at
+                    ) END,
+                    'next',CASE WHEN next_public_id IS NULL THEN NULL ELSE JSONB_BUILD_OBJECT(
+                      'publicId',next_public_id,'title',next_title,'authorName',next_author_name,'createdAt',next_created_at
+                    ) END
+                  ) FROM nav
+                ),JSONB_BUILD_OBJECT('previous',NULL,'next',NULL)) AS navigation`,
         [trim(clerkUserId), trim(publicId)],
       );
-      const joined = result.rows[0];
-      if (!joined) return Object.freeze({ member: null, inquiry: null });
-      const member = Object.freeze({
-        memberUid: joined.resolved_member_uid || '',
-        status: joined.resolved_member_status || '',
-      });
-      if (!joined.inquiry_id) return Object.freeze({ member, inquiry: null });
-      const [answers, attachments, navigation] = await Promise.all([
-        listActiveAnswers(pool, joined.inquiry_id),
-        attachmentRepository.listForOwner('inquiry', joined.inquiry_id),
-        getInquiryNavigation(pool, { ownerType: 'member', memberUid: member.memberUid, publicId }),
-      ]);
+      const row = result.rows[0] || {};
+      const member = row.resolved_member_uid ? Object.freeze({
+        memberUid: row.resolved_member_uid,
+        status: row.resolved_member_status || '',
+      }) : null;
+      const inquiryRow = row.inquiry && typeof row.inquiry === 'object' ? row.inquiry : null;
+      if (!inquiryRow?.inquiry_id) return Object.freeze({ member, inquiry: null });
       return Object.freeze({
         member,
-        inquiry: mapInquiryDetail({ ...joined, attachments }, answers, [], navigation),
+        inquiry: mapInquiryDetail(
+          { ...inquiryRow, attachments: safeJsonArray(row.attachments) },
+          safeJsonArray(row.answers),
+          [],
+          row.navigation && typeof row.navigation === 'object' ? row.navigation : {},
+        ),
       });
     },
 
@@ -922,9 +992,11 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     },
 
     async getGuestInquiryBySession({ tokenHash, publicId }) {
-      // Validate the guest session scope and locate the requested inquiry in the
-      // same SQL request.  This removes the old session SELECT -> inquiry SELECT
-      // serial dependency while preserving the opaque session boundary.
+      // Validate the opaque guest session and load the complete detail payload
+      // in one PostgreSQL request.  Answers, guest consents, inquiry/answer
+      // attachments and previous/next navigation are aggregated inside the
+      // same statement so a first detail open no longer waits for a second DB
+      // latency phase.
       const result = await pool.query(
         `WITH session AS (
            SELECT scope_public_ids
@@ -939,27 +1011,108 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
               AND i.author_type='guest'
               AND i.deleted_at IS NULL
             LIMIT 1
+         ), ordered AS (
+           SELECT i.public_id,i.title,i.author_name,i.created_at,i.inquiry_id,
+                  LAG(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_public_id,
+                  LAG(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_title,
+                  LAG(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_author_name,
+                  LAG(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS previous_created_at,
+                  LEAD(i.public_id) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_public_id,
+                  LEAD(i.title) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_title,
+                  LEAD(i.author_name) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_author_name,
+                  LEAD(i.created_at) OVER (ORDER BY i.created_at DESC,i.inquiry_id DESC) AS next_created_at
+             FROM app_inquiries i
+            WHERE i.public_id IN (SELECT public_id FROM scope)
+              AND i.author_type='guest'
+              AND i.deleted_at IS NULL
+         ), nav AS (
+           SELECT * FROM ordered WHERE public_id=$2
          )
          SELECT EXISTS(SELECT 1 FROM session) AS session_valid,
-                COALESCE((SELECT JSONB_AGG(public_id) FROM scope),'[]'::jsonb) AS scope_public_ids,
-                (SELECT TO_JSONB(target) FROM target) AS inquiry`,
+                (SELECT TO_JSONB(target) FROM target) AS inquiry,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'answer_id',ans.answer_id,
+                      'body_html',ans.body_html,
+                      'body_text',ans.body_text,
+                      'admin_identity_id',ans.admin_identity_id,
+                      'admin_display_name',ans.admin_display_name,
+                      'created_at',ans.created_at,
+                      'updated_at',ans.updated_at,
+                      'attachments',COALESCE((
+                        SELECT JSONB_AGG(
+                          JSONB_BUILD_OBJECT(
+                            'id',att.attachment_id,
+                            'name',att.display_name,
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                          ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                        )
+                          FROM app_secure_attachments att
+                         WHERE att.owner_type='inquiry_answer'
+                           AND att.owner_id=ans.answer_id
+                           AND att.deleted_at IS NULL
+                      ),'[]'::jsonb)
+                    ) ORDER BY ans.created_at,ans.answer_id
+                  )
+                    FROM app_inquiry_answers ans
+                   WHERE ans.inquiry_id=(SELECT inquiry_id FROM target)
+                     AND ans.deleted_at IS NULL
+                ),'[]'::jsonb) AS answers,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'term_source',gc.term_source,
+                      'term_id',gc.term_id,
+                      'term_revision',gc.term_revision,
+                      'term_version_id',gc.term_version_id,
+                      'required_snapshot',gc.required_snapshot,
+                      'title_snapshot',gc.title_snapshot,
+                      'content_hash',gc.content_hash,
+                      'consented_at',gc.consented_at
+                    ) ORDER BY gc.consented_at,gc.consent_id
+                  )
+                    FROM app_inquiry_guest_consents gc
+                   WHERE gc.inquiry_id=(SELECT inquiry_id FROM target)
+                ),'[]'::jsonb) AS consents,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id',att.attachment_id,
+                      'name',att.display_name,
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                    ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                  )
+                    FROM app_secure_attachments att
+                   WHERE att.owner_type='inquiry'
+                     AND att.owner_id=(SELECT inquiry_id FROM target)
+                     AND att.deleted_at IS NULL
+                ),'[]'::jsonb) AS attachments,
+                COALESCE((
+                  SELECT JSONB_BUILD_OBJECT(
+                    'previous',CASE WHEN previous_public_id IS NULL THEN NULL ELSE JSONB_BUILD_OBJECT(
+                      'publicId',previous_public_id,'title',previous_title,'authorName',previous_author_name,'createdAt',previous_created_at
+                    ) END,
+                    'next',CASE WHEN next_public_id IS NULL THEN NULL ELSE JSONB_BUILD_OBJECT(
+                      'publicId',next_public_id,'title',next_title,'authorName',next_author_name,'createdAt',next_created_at
+                    ) END
+                  ) FROM nav
+                ),JSONB_BUILD_OBJECT('previous',NULL,'next',NULL)) AS navigation`,
         [trim(tokenHash), trim(publicId)],
       );
       const row = result.rows[0] || {};
-      const ids = safeJsonArray(row.scope_public_ids).map((id) => trim(id)).filter(Boolean);
       const inquiryRow = row.inquiry && typeof row.inquiry === 'object' ? row.inquiry : null;
       if (!inquiryRow?.inquiry_id) {
         return Object.freeze({ sessionValid: Boolean(row.session_valid), inquiry: null });
       }
-      const [answers, consents, attachments, navigation] = await Promise.all([
-        listActiveAnswers(pool, inquiryRow.inquiry_id),
-        listConsents(pool, inquiryRow.inquiry_id),
-        attachmentRepository.listForOwner('inquiry', inquiryRow.inquiry_id),
-        getInquiryNavigation(pool, { ownerType: 'guest', publicIds: ids, publicId }),
-      ]);
       return Object.freeze({
         sessionValid: Boolean(row.session_valid),
-        inquiry: mapInquiryDetail({ ...inquiryRow, attachments }, answers, consents, navigation),
+        inquiry: mapInquiryDetail(
+          { ...inquiryRow, attachments: safeJsonArray(row.attachments) },
+          safeJsonArray(row.answers),
+          safeJsonArray(row.consents),
+          row.navigation && typeof row.navigation === 'object' ? row.navigation : {},
+        ),
       });
     },
 
