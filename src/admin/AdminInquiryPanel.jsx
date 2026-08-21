@@ -17,7 +17,7 @@ const STATUS_CLASSES = Object.freeze({
   answered: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   additional: 'border-violet-200 bg-violet-50 text-violet-700',
 });
-const PAGE_SIZE_OPTIONS = Object.freeze([5, 10, 20, 30, 50]);
+const ADMIN_LIST_PAGE_SIZE = 10;
 
 const trim = (value) => String(value ?? '').trim();
 const htmlToText = (html) => {
@@ -41,7 +41,7 @@ const formatDateTime = (value) => {
 
 const StatusBadge = ({ status }) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${STATUS_CLASSES[status] || STATUS_CLASSES.waiting}`}>{STATUS_LABELS[status] || STATUS_LABELS.waiting}</span>;
 
-const ModalShell = ({ title, description = '', maxWidth = 'max-w-4xl', children, onClose }) => (
+const ModalShell = ({ title, description = '', maxWidth = 'max-w-[820px]', children, onClose }) => (
   <ModalPortal
     className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm sm:p-5"
     role="dialog"
@@ -88,7 +88,7 @@ export default function AdminInquiryPanel({ ctx }) {
   const [editingCategoryName, setEditingCategoryName] = useState('');
   const [categorySavingId, setCategorySavingId] = useState('');
   const [categoryDeletingId, setCategoryDeletingId] = useState('');
-  const [settingsDraft, setSettingsDraft] = useState({ allowGuest: false, postsPerPage: 10, guestTermBindings: [] });
+  const [settingsDraft, setSettingsDraft] = useState({ allowGuest: false, guestTermBindings: [] });
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const notify = useCallback((message, type = 'success') => {
@@ -98,7 +98,7 @@ export default function AdminInquiryPanel({ ctx }) {
   const categories = Array.isArray(settingsBundle?.categories) ? settingsBundle.categories : [];
   const signupTerms = Array.isArray(settingsBundle?.signupTerms) ? settingsBundle.signupTerms : [];
   const inquiryTerms = Array.isArray(settingsBundle?.inquiryTerms) ? settingsBundle.inquiryTerms : [];
-  const pageSize = Number(settingsBundle?.settings?.postsPerPage || 10);
+  const pageSize = ADMIN_LIST_PAGE_SIZE;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const loadSettings = useCallback(async ({ silent = false } = {}) => {
@@ -108,7 +108,6 @@ export default function AdminInquiryPanel({ ctx }) {
       setSettingsBundle(bundle);
       setSettingsDraft({
         allowGuest: Boolean(bundle?.settings?.allowGuest),
-        postsPerPage: Number(bundle?.settings?.postsPerPage || 10),
         guestTermBindings: Array.isArray(bundle?.settings?.guestTermBindings) ? bundle.settings.guestTermBindings : [],
       });
       return bundle;
@@ -124,7 +123,7 @@ export default function AdminInquiryPanel({ ctx }) {
     if (!bundle) return;
     setListLoading(true);
     try {
-      const result = await inquiryApi.listAdmin({ search: query, status, categoryId, page: targetPage, pageSize: bundle.settings?.postsPerPage || 10 });
+      const result = await inquiryApi.listAdmin({ search: query, status, categoryId, page: targetPage, pageSize: ADMIN_LIST_PAGE_SIZE });
       setItems(Array.isArray(result.items) ? result.items : []);
       setTotalCount(Number(result.totalCount || 0));
       setPage(Number(result.page || targetPage || 1));
@@ -229,7 +228,12 @@ export default function AdminInquiryPanel({ ctx }) {
   const saveSettings = async () => {
     setSettingsSaving(true);
     try {
-      await inquiryApi.saveAdminSettings(settingsDraft);
+      await inquiryApi.saveAdminSettings({
+        ...settingsDraft,
+        // Legacy server field retained for backward-compatible settings persistence only.
+        // User inquiry lists now choose 10/30/50 directly, and the admin list is fixed at 10.
+        postsPerPage: Number(settingsBundle?.settings?.postsPerPage || ADMIN_LIST_PAGE_SIZE),
+      });
       const bundle = await loadSettings({ silent: true });
       setSettingsOpen(false);
       setPage(1);
@@ -425,8 +429,8 @@ export default function AdminInquiryPanel({ ctx }) {
       {settingsOpen ? (
         <ModalShell
           title="문의하기 설정"
-          description="문의 가능 대상, 비회원 적용 약관, 페이지당 목록 표시 수를 설정합니다."
-          maxWidth="max-w-4xl"
+          description="문의 가능 대상과 비회원 적용 약관을 설정합니다."
+          maxWidth="max-w-[820px]"
           onClose={() => !settingsSaving && setSettingsOpen(false)}
         >
           <div className="space-y-6 p-5">
@@ -443,12 +447,6 @@ export default function AdminInquiryPanel({ ctx }) {
                 </label>
               </div>
             </div>
-
-            <Field label="페이지당 목록 표시 수">
-              <Select value={settingsDraft.postsPerPage} onChange={(value) => setSettingsDraft((c) => ({ ...c, postsPerPage: Number(value) }))}>
-                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}개</option>)}
-              </Select>
-            </Field>
 
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -471,8 +469,8 @@ export default function AdminInquiryPanel({ ctx }) {
                   <div className="mb-3 text-xs font-bold text-slate-700">기존 회원가입 약관</div>
                   <div className="space-y-2">
                     {signupTerms.map((term) => (
-                      <label key={`signup:${term.id}`} className="flex items-start gap-2 text-xs">
-                        <input type="checkbox" className="mt-0.5" checked={isTermBound('signup', term.id)} onChange={(e) => toggleTermBinding('signup', term.id, e.target.checked)} />
+                      <label key={`signup:${term.id}`} className="flex items-center gap-2 text-xs">
+                        <input type="checkbox" className="shrink-0" checked={isTermBound('signup', term.id)} onChange={(e) => toggleTermBinding('signup', term.id, e.target.checked)} />
                         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
                             {term.required ? '필수' : '선택'}
@@ -491,9 +489,9 @@ export default function AdminInquiryPanel({ ctx }) {
                 {inquiryTerms.length ? (
                   <div className="space-y-3">
                     {inquiryTerms.map((term) => (
-                      <div key={`inquiry:${term.id}`} className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-slate-50 p-3">
-                        <label className="flex min-w-0 flex-1 items-start gap-2 text-xs">
-                          <input type="checkbox" className="mt-0.5" disabled={term.enabled === false} checked={isTermBound('inquiry', term.id)} onChange={(e) => toggleTermBinding('inquiry', term.id, e.target.checked)} />
+                      <div key={`inquiry:${term.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+                          <input type="checkbox" className="shrink-0" disabled={term.enabled === false} checked={isTermBound('inquiry', term.id)} onChange={(e) => toggleTermBinding('inquiry', term.id, e.target.checked)} />
                           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
                               {term.required ? '필수' : '선택'}
@@ -522,7 +520,7 @@ export default function AdminInquiryPanel({ ctx }) {
         </ModalShell>
       ) : null}
 
-      {termOpen ? <ModalShell title={termForm.id ? '문의 전용 약관 수정' : '문의 전용 약관 등록'} description="비회원 문의에 별도로 적용할 약관을 관리합니다. 내용이 변경되면 revision이 증가합니다." maxWidth="max-w-4xl" onClose={() => !termSaving && setTermOpen(false)}><div className="space-y-4 p-5"><Field label="약관 제목"><Input value={termForm.title} onChange={(title) => setTermForm((c) => ({ ...c, title }))} /></Field><div className="flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.required} onChange={(e) => setTermForm((c) => ({ ...c, required: e.target.checked }))} /> 필수 약관</label><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.enabled} onChange={(e) => setTermForm((c) => ({ ...c, enabled: e.target.checked }))} /> 사용</label></div><RichTextEditor label="약관 본문" value={termForm.bodyHtml} onChange={(bodyHtml) => setTermForm((c) => ({ ...c, bodyHtml }))} minHeight={320} disabled={termSaving} allowVideos={false} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={termSaving} onClick={() => setTermOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={termSaving} onClick={saveTerm}>{termSaving ? '저장 중' : '약관 저장'}</Button></div></ModalShell> : null}
+      {termOpen ? <ModalShell title={termForm.id ? '문의 전용 약관 수정' : '문의 전용 약관 등록'} description="비회원 문의에 별도로 적용할 약관을 관리합니다. 내용이 변경되면 revision이 증가합니다." maxWidth="max-w-[820px]" onClose={() => !termSaving && setTermOpen(false)}><div className="space-y-4 p-5"><Field label="약관 제목"><Input value={termForm.title} onChange={(title) => setTermForm((c) => ({ ...c, title }))} /></Field><div className="flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.required} onChange={(e) => setTermForm((c) => ({ ...c, required: e.target.checked }))} /> 필수 약관</label><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.enabled} onChange={(e) => setTermForm((c) => ({ ...c, enabled: e.target.checked }))} /> 사용</label></div><RichTextEditor label="약관 본문" value={termForm.bodyHtml} onChange={(bodyHtml) => setTermForm((c) => ({ ...c, bodyHtml }))} minHeight={320} disabled={termSaving} allowVideos={false} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={termSaving} onClick={() => setTermOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={termSaving} onClick={saveTerm}>{termSaving ? '저장 중' : '약관 저장'}</Button></div></ModalShell> : null}
     </div>
   );
 }
