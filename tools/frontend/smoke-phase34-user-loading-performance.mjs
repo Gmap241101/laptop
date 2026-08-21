@@ -50,6 +50,11 @@ assert.ok(inquiryApi.includes("clearInquiryReadCache('member-list|')"), 'member 
 assert.ok(inquiryPanel.includes('cachedMemberList'), 'inquiry first render must initialize from a completed session-scoped prefetch when available');
 assert.ok(inquiryPanel.includes('if (!warmConfig && !warmList)'), 'inquiry panel must use completed warm data before starting both network reads');
 assert.ok(inquiryPanel.includes('else if (!warmList)'), 'inquiry panel must fetch the member list only when its warm value is unavailable');
+assert.ok(inquiryApi.includes('peekGuestList'), 'verified guest inquiry lists must be able to reuse a completed first-page read');
+assert.ok(inquiryApi.includes('peekMemberDetail'), 'member inquiry detail reads must have a short completed-read cache');
+assert.ok(inquiryApi.includes('peekGuestDetail'), 'guest inquiry detail reads must have a short completed-read cache');
+assert.ok(inquiryPanel.includes('!hasFirebaseAuthSession && (configLoading || !config)'), 'member list/detail paint must not wait for compose-only inquiry configuration');
+assert.ok(inquiryPanel.includes('문의 본문을 불러오는 중입니다.'), 'detail loading must use a detail-specific state instead of replacing the list with a list-loading message');
 
 assert.ok(userShell.includes('prefetchUserCommunity'), 'community parent interaction must warm notice, FAQ, and inquiry data together');
 assert.ok(userShell.includes("if (userTab !== 'home') return undefined"), 'background community warmup must be limited to the already-painted home shell');

@@ -211,13 +211,17 @@ export const createInquiryService = ({ repository }) => {
     return Object.freeze({ settings, terms: Object.freeze(selected) });
   };
 
-  const resolveMember = async (clerkUserId) => {
-    const member = await repository.resolveMemberByClerkUserId(trim(clerkUserId));
+  const assertEligibleMember = (member) => {
     if (!member?.memberUid) throw serviceError('inquiry_member_not_found', 'Member account is not linked to the current Clerk session.', 403);
     if (!['active', 'profileRequired'].includes(trim(member.status))) {
       throw serviceError('inquiry_member_not_eligible', 'Current member account cannot use inquiry service.', 403);
     }
     return member;
+  };
+
+  const resolveMember = async (clerkUserId) => {
+    const member = await repository.resolveMemberByClerkUserId(trim(clerkUserId));
+    return assertEligibleMember(member);
   };
 
   const requireGuestSession = async (token) => {
@@ -289,11 +293,22 @@ export const createInquiryService = ({ repository }) => {
     },
 
     async listMember({ clerkUserId, search = '', page, pageSize }) {
+      if (typeof repository.listMemberInquiriesByClerkUserId === 'function') {
+        const result = await repository.listMemberInquiriesByClerkUserId({ clerkUserId: trim(clerkUserId), search, page, pageSize });
+        assertEligibleMember(result?.member);
+        return result.list;
+      }
       const member = await resolveMember(clerkUserId);
       return repository.listMemberInquiries({ memberUid: member.memberUid, search, page, pageSize });
     },
 
     async getMember({ clerkUserId, publicId }) {
+      if (typeof repository.getMemberInquiryByClerkUserId === 'function') {
+        const result = await repository.getMemberInquiryByClerkUserId({ clerkUserId: trim(clerkUserId), publicId: trim(publicId) });
+        assertEligibleMember(result?.member);
+        if (!result?.inquiry) throw serviceError('inquiry_not_found', 'Inquiry was not found.', 404);
+        return result.inquiry;
+      }
       const member = await resolveMember(clerkUserId);
       const inquiry = await repository.getMemberInquiry({ memberUid: member.memberUid, publicId: trim(publicId) });
       if (!inquiry) throw serviceError('inquiry_not_found', 'Inquiry was not found.', 404);
@@ -407,17 +422,40 @@ export const createInquiryService = ({ repository }) => {
       const publicIds = identityCheck.publicIds;
       const token = randomBytes(32).toString('base64url');
       const expiresAt = new Date(Date.now() + GUEST_SESSION_TTL_MS);
-      await repository.createGuestSession({ tokenHash: sha256(token), publicIds, expiresAt });
-      return Object.freeze({ token, expiresAt: expiresAt.toISOString(), count: publicIds.length });
+      const [, initialList] = await Promise.all([
+        repository.createGuestSession({ tokenHash: sha256(token), publicIds, expiresAt }),
+        repository.listGuestInquiries({ publicIds, search: '', page: 1, pageSize: 10 }),
+      ]);
+      return Object.freeze({
+        token,
+        expiresAt: expiresAt.toISOString(),
+        count: publicIds.length,
+        initialList,
+      });
     },
 
     async listGuest({ token, search = '', page, pageSize }) {
-      const session = await requireGuestSession(token);
+      const normalizedToken = trim(token);
+      if (!normalizedToken) throw serviceError('guest_inquiry_session_required', 'Guest inquiry access session is required.', 401);
+      if (typeof repository.listGuestInquiriesBySession === 'function') {
+        const result = await repository.listGuestInquiriesBySession({ tokenHash: sha256(normalizedToken), search, page, pageSize });
+        if (!result?.sessionValid) throw serviceError('guest_inquiry_session_invalid', 'Guest inquiry access session is invalid or expired.', 401);
+        return result.list;
+      }
+      const session = await requireGuestSession(normalizedToken);
       return repository.listGuestInquiries({ publicIds: session.publicIds, search, page, pageSize });
     },
 
     async getGuest({ token, publicId }) {
-      const session = await requireGuestSession(token);
+      const normalizedToken = trim(token);
+      if (!normalizedToken) throw serviceError('guest_inquiry_session_required', 'Guest inquiry access session is required.', 401);
+      if (typeof repository.getGuestInquiryBySession === 'function') {
+        const result = await repository.getGuestInquiryBySession({ tokenHash: sha256(normalizedToken), publicId: trim(publicId) });
+        if (!result?.sessionValid) throw serviceError('guest_inquiry_session_invalid', 'Guest inquiry access session is invalid or expired.', 401);
+        if (!result?.inquiry) throw serviceError('inquiry_not_found', 'Inquiry was not found.', 404);
+        return result.inquiry;
+      }
+      const session = await requireGuestSession(normalizedToken);
       const inquiry = await repository.getGuestInquiry({ publicIds: session.publicIds, publicId: trim(publicId) });
       if (!inquiry) throw serviceError('inquiry_not_found', 'Inquiry was not found.', 404);
       return inquiry;

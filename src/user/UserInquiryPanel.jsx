@@ -153,13 +153,18 @@ const PasswordInput = ({ value, onChange, autoComplete = 'current-password', dis
 export default function UserInquiryPanel({ ctx }) {
   const { hasFirebaseAuthSession, goToUserLogin, triggerToast } = ctx;
   const redirectingToLoginRef = useRef(false);
+  const initialGuestAccess = hasFirebaseAuthSession ? null : readGuestAccess();
   const cachedSummaryConfig = inquiryApi.peekPublicConfig({
     includeGuestTerms: false,
-    includeCategories: hasFirebaseAuthSession,
+    includeCategories: hasFirebaseAuthSession || Boolean(initialGuestAccess?.token),
   });
   const cachedMemberList = hasFirebaseAuthSession
     ? inquiryApi.peekMemberList({ page: 1, search: '', pageSize: PAGE_SIZE_FALLBACK })
     : null;
+  const cachedGuestList = !hasFirebaseAuthSession && initialGuestAccess?.token
+    ? inquiryApi.peekGuestList({ token: initialGuestAccess.token, page: 1, search: '', pageSize: PAGE_SIZE_FALLBACK })
+    : null;
+  const cachedOwnedList = cachedMemberList || cachedGuestList;
 
   const [config, setConfig] = useState(() => cachedSummaryConfig);
   const [configError, setConfigError] = useState('');
@@ -168,11 +173,11 @@ export default function UserInquiryPanel({ ctx }) {
   const [guestTermsLoading, setGuestTermsLoading] = useState(false);
 
   const [listLoading, setListLoading] = useState(false);
-  const [listLoaded, setListLoaded] = useState(() => Boolean(cachedMemberList));
-  const [items, setItems] = useState(() => Array.isArray(cachedMemberList?.items) ? cachedMemberList.items : []);
-  const [totalCount, setTotalCount] = useState(() => Number(cachedMemberList?.totalCount || 0));
-  const [page, setPage] = useState(() => Number(cachedMemberList?.page || 1));
-  const [listPageSize, setListPageSize] = useState(() => normalizeListPageSize(cachedMemberList?.pageSize));
+  const [listLoaded, setListLoaded] = useState(() => Boolean(cachedOwnedList));
+  const [items, setItems] = useState(() => Array.isArray(cachedOwnedList?.items) ? cachedOwnedList.items : []);
+  const [totalCount, setTotalCount] = useState(() => Number(cachedOwnedList?.totalCount || 0));
+  const [page, setPage] = useState(() => Number(cachedOwnedList?.page || 1));
+  const [listPageSize, setListPageSize] = useState(() => normalizeListPageSize(cachedOwnedList?.pageSize));
 
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -188,7 +193,7 @@ export default function UserInquiryPanel({ ctx }) {
   const [guestForm, setGuestForm] = useState(emptyGuestForm);
   const [guestVerify, setGuestVerify] = useState({ name: '', email: '', phone: '', password: '' });
   const [guestPreparedPassword, setGuestPreparedPassword] = useState('');
-  const [guestAccess, setGuestAccess] = useState(readGuestAccess);
+  const [guestAccess, setGuestAccess] = useState(() => initialGuestAccess);
   const [guestVerifyLoading, setGuestVerifyLoading] = useState(false);
   const [guestPrepareLoading, setGuestPrepareLoading] = useState(false);
 
@@ -313,7 +318,7 @@ export default function UserInquiryPanel({ ctx }) {
 
       const next = await loadSummaryConfig();
       if (!active || !next) return;
-      if (guestAccess?.token) {
+      if (guestAccess?.token && !listLoaded) {
         await loadList({ targetPage: 1, access: guestAccess, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
       }
     })();
@@ -369,7 +374,16 @@ export default function UserInquiryPanel({ ctx }) {
     setForm(emptyForm());
   }, [categories]);
 
-  const showMemberCompose = ({ historyMode = 'push' } = {}) => {
+  const showMemberCompose = async ({ historyMode = 'push' } = {}) => {
+    // The member list/detail views do not need category/config data.  Defer that
+    // read until compose is actually requested instead of blocking list paint.
+    if (!config) {
+      const nextConfig = await loadSummaryConfig();
+      if (!nextConfig) {
+        notify('문의 작성 설정을 불러오지 못했습니다.', 'error');
+        return;
+      }
+    }
     resetOwnedForm();
     setDetail(null);
     setMemberView('compose');
@@ -389,17 +403,31 @@ export default function UserInquiryPanel({ ctx }) {
   };
 
   const openDetail = async (publicId, { historyMode = 'push' } = {}) => {
+    const cached = hasFirebaseAuthSession
+      ? inquiryApi.peekMemberDetail(publicId)
+      : inquiryApi.peekGuestDetail(publicId, guestAccess?.token);
+    if (cached) {
+      setDetail(cached);
+      if (hasFirebaseAuthSession) setMemberView('detail');
+      if (historyMode === 'push') {
+        pushUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: publicId });
+      }
+      return;
+    }
+
+    setDetail(null);
     setDetailLoading(true);
+    if (hasFirebaseAuthSession) setMemberView('detail');
     try {
       const next = hasFirebaseAuthSession
         ? await inquiryApi.getMember(publicId)
         : await inquiryApi.getGuest(publicId, guestAccess?.token);
       setDetail(next);
-      if (hasFirebaseAuthSession) setMemberView('detail');
       if (historyMode === 'push') {
         pushUserCommunityHistoryState({ tab: 'inquiry', view: 'detail', id: publicId });
       }
     } catch (error) {
+      if (hasFirebaseAuthSession) setMemberView('list');
       notify('문의 상세를 불러오지 못했습니다.', 'error');
       if (!hasFirebaseAuthSession && error?.status === 401) clearGuestSession();
     } finally {
@@ -554,7 +582,11 @@ export default function UserInquiryPanel({ ctx }) {
       notify('비회원 문의가 등록되었습니다. 현재 브라우저에서 바로 확인할 수 있습니다.');
       setMemberSearchQuery('');
       setListPageSize(PAGE_SIZE_FALLBACK);
-      await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
+      if (access?.initialList) {
+        applyListResult(access.initialList, 1);
+      } else {
+        await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
+      }
     } catch (error) {
       const message = error?.code === 'guest_inquiry_disabled'
         ? '현재 비회원 문의를 접수하지 않습니다.'
@@ -591,7 +623,11 @@ export default function UserInquiryPanel({ ctx }) {
       replaceUserCommunityHistoryState({ tab: 'inquiry', view: 'list' });
       setMemberSearchQuery('');
       setListPageSize(PAGE_SIZE_FALLBACK);
-      await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
+      if (access?.initialList) {
+        applyListResult(access.initialList, 1);
+      } else {
+        await loadList({ targetPage: 1, access, search: '', targetPageSize: PAGE_SIZE_FALLBACK });
+      }
       notify('비회원 문의 확인 인증이 완료되었습니다.');
     } catch (error) {
       notify('입력한 정보와 일치하는 문의를 확인할 수 없습니다.', 'error');
@@ -991,7 +1027,7 @@ export default function UserInquiryPanel({ ctx }) {
         </div>
       </div>
 
-      {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
+      {listLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
@@ -1009,11 +1045,20 @@ export default function UserInquiryPanel({ ctx }) {
               <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button>
               <Button type="button" variant="primary" onClick={startGuestCreateFromList}>문의하기</Button>
             </>
-          ) : <Button type="button" variant="primary" onClick={showMemberCompose}>문의 작성</Button>}
+          ) : <Button type="button" variant="primary" onClick={() => void showMemberCompose()}>문의 작성</Button>}
         </div>
       </div>
     </div>
   );
+  const renderDetailLoading = () => (
+    <div className="flex min-h-[320px] flex-1 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-6 text-center">
+      <div>
+        <div className="text-sm font-bold text-slate-800">문의 본문을 불러오는 중입니다.</div>
+        <div className="mt-2 text-xs text-slate-400">목록은 다시 조회하지 않고 선택한 문의 상세만 확인하고 있습니다.</div>
+      </div>
+    </div>
+  );
+
   const renderInquiryShell = (children) => (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
@@ -1030,11 +1075,11 @@ export default function UserInquiryPanel({ ctx }) {
     </Card>
   );
 
-  if (configError) {
+  if (!hasFirebaseAuthSession && configError) {
     return renderInquiryShell(<div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-8 text-sm text-rose-800">{configError}</div>);
   }
 
-  if (configLoading || !config) {
+  if (!hasFirebaseAuthSession && (configLoading || !config)) {
     return renderInquiryShell(<div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center text-xs text-slate-500">문의하기 화면을 준비하는 중입니다.</div>);
   }
 
@@ -1158,13 +1203,13 @@ export default function UserInquiryPanel({ ctx }) {
         </>
       ) : null}
 
-      {hasFirebaseAuthSession && memberView === 'compose' ? renderOwnedEditor() : null}
-      {hasFirebaseAuthSession && memberView === 'detail' && detail && !editingPublicId ? renderDetail() : null}
+      {hasFirebaseAuthSession && memberView === 'compose' ? (config ? renderOwnedEditor() : <div className="rounded-2xl border border-slate-200 bg-slate-50 py-10 text-center text-xs text-slate-500">문의 작성 설정을 불러오는 중입니다.</div>) : null}
+      {hasFirebaseAuthSession && memberView === 'detail' && !editingPublicId ? (detail ? renderDetail() : detailLoading ? renderDetailLoading() : null) : null}
       {hasFirebaseAuthSession && memberView === 'list' ? renderList() : null}
 
       {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && editingPublicId ? renderOwnedEditor() : null}
-      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && detail ? renderDetail() : null}
-      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && !detail ? renderList({ guest: true }) : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && (detail || detailLoading) ? (detail ? renderDetail() : renderDetailLoading()) : null}
+      {!hasFirebaseAuthSession && guestAccess?.token && guestMode !== 'create' && !editingPublicId && !detail && !detailLoading ? renderList({ guest: true }) : null}
     </div>
   );
 }

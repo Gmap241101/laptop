@@ -131,6 +131,42 @@ const INQUIRY_WITH_STATUS_SELECT = `
     ) a ON TRUE
 `;
 
+// User-facing lists intentionally select only summary columns.  The previous
+// i.* projection pulled body_html/body_text, guest password hashes and contact
+// fields for every row, only to discard them in mapInquirySummary().  Keeping
+// list reads narrow materially reduces PostgreSQL -> Node transfer for rich
+// text inquiries without changing the public list contract.
+const INQUIRY_SUMMARY_SELECT = `
+  SELECT i.inquiry_id,
+         i.public_id,
+         i.author_type,
+         i.member_uid,
+         i.category_id,
+         c.name AS category_name,
+         i.title,
+         i.author_name,
+         i.created_at,
+         i.updated_at,
+         COALESCE(a.answer_count,0)::int AS answer_count,
+         a.latest_answer_at
+    FROM app_inquiries i
+    JOIN app_inquiry_categories c ON c.category_id=i.category_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS answer_count, MAX(created_at) AS latest_answer_at
+        FROM app_inquiry_answers ans
+       WHERE ans.inquiry_id=i.inquiry_id AND ans.deleted_at IS NULL
+    ) a ON TRUE
+`;
+
+const MEMBER_READ_SCOPE_CTE = `
+  SELECT m.firebase_uid AS member_uid,m.status
+    FROM app_user_identities u
+    JOIN app_user_firebase_links l ON l.app_user_id=u.id
+    JOIN app_member_accounts m ON m.firebase_uid=l.firebase_uid
+   WHERE u.clerk_user_id=$1
+   LIMIT 1
+`;
+
 export const createInquiryRepository = (pool, { attachmentRepository = null } = {}) => {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('A PostgreSQL pool is required.');
   if (!attachmentRepository) throw new TypeError('Secure attachment repository is required.');
@@ -147,15 +183,32 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
   };
 
   const listActiveAnswers = async (client, inquiryId) => {
+    // Fetch answers and their public attachment metadata in one PostgreSQL
+    // round-trip.  A correlated indexed attachment aggregate avoids grouping
+    // potentially large rich-text answer bodies while still removing the old
+    // second sequential attachment query.
     const result = await client.query(
-      `SELECT answer_id, body_html, body_text, admin_identity_id, admin_display_name, created_at, updated_at
-         FROM app_inquiry_answers
-        WHERE inquiry_id=$1 AND deleted_at IS NULL
-        ORDER BY created_at, answer_id`,
+      `SELECT ans.answer_id,ans.body_html,ans.body_text,ans.admin_identity_id,ans.admin_display_name,
+              ans.created_at,ans.updated_at,
+              COALESCE((
+                SELECT JSONB_AGG(
+                  JSONB_BUILD_OBJECT(
+                    'id',att.attachment_id,
+                    'name',att.display_name,
+                    'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                  ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                )
+                  FROM app_secure_attachments att
+                 WHERE att.owner_type='inquiry_answer'
+                   AND att.owner_id=ans.answer_id
+                   AND att.deleted_at IS NULL
+              ),'[]'::jsonb) AS attachments
+         FROM app_inquiry_answers ans
+        WHERE ans.inquiry_id=$1 AND ans.deleted_at IS NULL
+        ORDER BY ans.created_at,ans.answer_id`,
       [trim(inquiryId)],
     );
-    const mapped = await attachmentRepository.listForOwners('inquiry_answer', result.rows.map((row) => row.answer_id), client);
-    return result.rows.map((row) => ({ ...row, attachments: mapped.get(row.answer_id) || [] }));
+    return result.rows.map((row) => ({ ...row, attachments: safeJsonArray(row.attachments) }));
   };
 
   const listConsents = async (client, inquiryId) => {
@@ -540,43 +593,74 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
 
     async listMemberInquiries({ memberUid, search = '', page, pageSize }) {
       const safePage = normalizePage(page);
-      const requestedPageSize = Math.trunc(Number(pageSize));
-      const safeRequestedPageSize = Number.isFinite(requestedPageSize) && requestedPageSize >= 5 && requestedPageSize <= 50
-        ? requestedPageSize
-        : null;
+      const safePageSize = normalizePageSize(pageSize, 10);
       const normalizedSearch = lower(search);
       const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
       const result = await pool.query(
-        `WITH effective_settings AS (
-           SELECT CASE
-                    WHEN $3::int IS NOT NULL AND $3::int BETWEEN 5 AND 50 THEN $3::int
-                    ELSE COALESCE((SELECT NULLIF(posts_per_page,0) FROM app_inquiry_settings WHERE setting_key='current'),10)
-                  END::int AS page_size
-         ), filtered AS (
-           ${INQUIRY_WITH_STATUS_SELECT}
+        `WITH filtered AS (
+           ${INQUIRY_SUMMARY_SELECT}
             WHERE i.member_uid=$1 AND i.author_type='member' AND i.deleted_at IS NULL
               AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
          ), paged AS (
            SELECT *
              FROM filtered
             ORDER BY created_at DESC,inquiry_id DESC
-            LIMIT (SELECT page_size FROM effective_settings)
-           OFFSET (($4::int - 1) * (SELECT page_size FROM effective_settings))
+            LIMIT $3
+           OFFSET (($4::int - 1) * $3)
          )
-         SELECT settings.page_size,
-                COALESCE((SELECT jsonb_agg(to_jsonb(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
-                (SELECT COUNT(*)::int FROM filtered) AS total_count
-           FROM effective_settings settings`,
-        [trim(memberUid), searchPattern, safeRequestedPageSize, safePage],
+         SELECT COALESCE((SELECT JSONB_AGG(TO_JSONB(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count`,
+        [trim(memberUid), searchPattern, safePageSize, safePage],
       );
       const row = result.rows[0] || {};
-      const safePageSize = normalizePageSize(row.page_size, 10);
-      const rows = Array.isArray(row.items) ? row.items : [];
+      const rows = safeJsonArray(row.items);
       return Object.freeze({
         items: Object.freeze(rows.map(mapInquirySummary)),
         totalCount: Number(row.total_count || 0),
         page: safePage,
         pageSize: safePageSize,
+      });
+    },
+
+    async listMemberInquiriesByClerkUserId({ clerkUserId, search = '', page, pageSize }) {
+      const safePage = normalizePage(page);
+      const safePageSize = normalizePageSize(pageSize, 10);
+      const normalizedSearch = lower(search);
+      const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+      const result = await pool.query(
+        `WITH member AS (
+           ${MEMBER_READ_SCOPE_CTE}
+         ), filtered AS (
+           ${INQUIRY_SUMMARY_SELECT}
+            WHERE i.member_uid=(SELECT member_uid FROM member)
+              AND i.author_type='member' AND i.deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
+         ), paged AS (
+           SELECT *
+             FROM filtered
+            ORDER BY created_at DESC,inquiry_id DESC
+            LIMIT $3
+           OFFSET (($4::int - 1) * $3)
+         )
+         SELECT (SELECT member_uid FROM member) AS resolved_member_uid,
+                (SELECT status FROM member) AS resolved_member_status,
+                COALESCE((SELECT JSONB_AGG(TO_JSONB(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count`,
+        [trim(clerkUserId), searchPattern, safePageSize, safePage],
+      );
+      const row = result.rows[0] || {};
+      const member = row.resolved_member_uid ? Object.freeze({
+        memberUid: row.resolved_member_uid,
+        status: row.resolved_member_status || '',
+      }) : null;
+      return Object.freeze({
+        member,
+        list: Object.freeze({
+          items: Object.freeze(safeJsonArray(row.items).map(mapInquirySummary)),
+          totalCount: Number(row.total_count || 0),
+          page: safePage,
+          pageSize: safePageSize,
+        }),
       });
     },
 
@@ -589,6 +673,44 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         getInquiryNavigation(pool, { ownerType: 'member', memberUid, publicId }),
       ]);
       return mapInquiryDetail({ ...row, attachments }, answers, [], navigation);
+    },
+
+    async getMemberInquiryByClerkUserId({ clerkUserId, publicId }) {
+      // Resolve the Clerk -> member scope and the requested inquiry in one DB
+      // request.  The prior read path resolved the member in one query and only
+      // then started the inquiry query, imposing an avoidable sequential RTT.
+      const result = await pool.query(
+        `WITH member AS (
+           ${MEMBER_READ_SCOPE_CTE}
+         )
+         SELECT m.member_uid AS resolved_member_uid,m.status AS resolved_member_status,target.*
+           FROM member m
+           LEFT JOIN LATERAL (
+             ${INQUIRY_WITH_STATUS_SELECT}
+              WHERE i.public_id=$2
+                AND i.member_uid=m.member_uid
+                AND i.author_type='member'
+                AND i.deleted_at IS NULL
+              LIMIT 1
+           ) target ON TRUE`,
+        [trim(clerkUserId), trim(publicId)],
+      );
+      const joined = result.rows[0];
+      if (!joined) return Object.freeze({ member: null, inquiry: null });
+      const member = Object.freeze({
+        memberUid: joined.resolved_member_uid || '',
+        status: joined.resolved_member_status || '',
+      });
+      if (!joined.inquiry_id) return Object.freeze({ member, inquiry: null });
+      const [answers, attachments, navigation] = await Promise.all([
+        listActiveAnswers(pool, joined.inquiry_id),
+        attachmentRepository.listForOwner('inquiry', joined.inquiry_id),
+        getInquiryNavigation(pool, { ownerType: 'member', memberUid: member.memberUid, publicId }),
+      ]);
+      return Object.freeze({
+        member,
+        inquiry: mapInquiryDetail({ ...joined, attachments }, answers, [], navigation),
+      });
     },
 
     async updateOwnedInquiry({ ownerType, memberUid = '', publicId, categoryId, title, bodyHtml, bodyText, attachments = null }) {
@@ -675,9 +797,13 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     },
 
     async createGuestSession({ tokenHash, publicIds, expiresAt }) {
-      await pool.query(`DELETE FROM app_inquiry_guest_sessions WHERE expires_at<=NOW()`);
+      // Cleanup and insert share one SQL round-trip.  Expiry cleanup is kept off
+      // normal reads and performed opportunistically when a new session is made.
       await pool.query(
-        `INSERT INTO app_inquiry_guest_sessions (token_hash,scope_public_ids,created_at,expires_at)
+        `WITH expired AS (
+           DELETE FROM app_inquiry_guest_sessions WHERE expires_at<=NOW() RETURNING token_hash
+         )
+         INSERT INTO app_inquiry_guest_sessions (token_hash,scope_public_ids,created_at,expires_at)
          VALUES ($1,$2::jsonb,NOW(),$3)`,
         [trim(tokenHash), JSON.stringify(publicIds || []), expiresAt],
       );
@@ -685,7 +811,10 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     },
 
     async getGuestSession(tokenHash) {
-      await pool.query(`DELETE FROM app_inquiry_guest_sessions WHERE expires_at<=NOW()`);
+      // Expired rows are ignored by the indexed predicate below.  Deleting all
+      // expired sessions on every list/detail read turned a read into a write
+      // and added a full sequential DB round-trip.  Cleanup remains on session
+      // creation, where it is opportunistic and off the hot read path.
       const result = await pool.query(
         `SELECT token_hash,scope_public_ids,created_at,expires_at
            FROM app_inquiry_guest_sessions
@@ -708,34 +837,73 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     async listGuestInquiries({ publicIds, search = '', page, pageSize }) {
       const ids = [...new Set((publicIds || []).map(trim).filter(Boolean))];
       const safePage = normalizePage(page);
-      const settings = await getSettings();
-      const safePageSize = normalizePageSize(pageSize, settings.postsPerPage);
+      const safePageSize = normalizePageSize(pageSize, 10);
       const normalizedSearch = lower(search);
       const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
       if (ids.length === 0) return Object.freeze({ items: [], totalCount: 0, page: safePage, pageSize: safePageSize });
-      const offset = (safePage - 1) * safePageSize;
-      const [rowsResult, countResult] = await Promise.all([
-        pool.query(
-          `${INQUIRY_WITH_STATUS_SELECT}
+      const result = await pool.query(
+        `WITH filtered AS (
+           ${INQUIRY_SUMMARY_SELECT}
             WHERE i.public_id=ANY($1::text[]) AND i.author_type='guest' AND i.deleted_at IS NULL
               AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
-            ORDER BY i.created_at DESC,i.inquiry_id DESC
-            LIMIT $3 OFFSET $4`,
-          [ids, searchPattern, safePageSize, offset],
-        ),
-        pool.query(
-          `SELECT COUNT(*)::int AS count
-             FROM app_inquiries i
-            WHERE i.public_id=ANY($1::text[]) AND i.author_type='guest' AND i.deleted_at IS NULL
-              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)`,
-          [ids, searchPattern],
-        ),
-      ]);
+         ), paged AS (
+           SELECT *
+             FROM filtered
+            ORDER BY created_at DESC,inquiry_id DESC
+            LIMIT $3
+           OFFSET (($4::int - 1) * $3)
+         )
+         SELECT COALESCE((SELECT JSONB_AGG(TO_JSONB(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count`,
+        [ids, searchPattern, safePageSize, safePage],
+      );
+      const row = result.rows[0] || {};
       return Object.freeze({
-        items: Object.freeze(rowsResult.rows.map(mapInquirySummary)),
-        totalCount: Number(countResult.rows[0]?.count || 0),
+        items: Object.freeze(safeJsonArray(row.items).map(mapInquirySummary)),
+        totalCount: Number(row.total_count || 0),
         page: safePage,
         pageSize: safePageSize,
+      });
+    },
+
+    async listGuestInquiriesBySession({ tokenHash, search = '', page, pageSize }) {
+      const safePage = normalizePage(page);
+      const safePageSize = normalizePageSize(pageSize, 10);
+      const normalizedSearch = lower(search);
+      const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+      const result = await pool.query(
+        `WITH session AS (
+           SELECT scope_public_ids
+             FROM app_inquiry_guest_sessions
+            WHERE token_hash=$1 AND expires_at>NOW()
+         ), scope AS (
+           SELECT JSONB_ARRAY_ELEMENTS_TEXT(scope_public_ids) AS public_id FROM session
+         ), filtered AS (
+           ${INQUIRY_SUMMARY_SELECT}
+            WHERE i.public_id IN (SELECT public_id FROM scope)
+              AND i.author_type='guest' AND i.deleted_at IS NULL
+              AND ($2::text IS NULL OR LOWER(i.title) LIKE $2 OR LOWER(i.body_text) LIKE $2)
+         ), paged AS (
+           SELECT *
+             FROM filtered
+            ORDER BY created_at DESC,inquiry_id DESC
+            LIMIT $3
+           OFFSET (($4::int - 1) * $3)
+         )
+         SELECT EXISTS(SELECT 1 FROM session) AS session_valid,
+                COALESCE((SELECT JSONB_AGG(TO_JSONB(paged) ORDER BY created_at DESC,inquiry_id DESC) FROM paged),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count`,
+        [trim(tokenHash), searchPattern, safePageSize, safePage],
+      );
+      const row = result.rows[0] || {};
+      return Object.freeze({
+        sessionValid: Boolean(row.session_valid),
+        list: Object.freeze({
+          items: Object.freeze(safeJsonArray(row.items).map(mapInquirySummary)),
+          totalCount: Number(row.total_count || 0),
+          page: safePage,
+          pageSize: safePageSize,
+        }),
       });
     },
 
@@ -751,6 +919,48 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         getInquiryNavigation(pool, { ownerType: 'guest', publicIds: ids, publicId }),
       ]);
       return mapInquiryDetail({ ...row, attachments }, answers, consents, navigation);
+    },
+
+    async getGuestInquiryBySession({ tokenHash, publicId }) {
+      // Validate the guest session scope and locate the requested inquiry in the
+      // same SQL request.  This removes the old session SELECT -> inquiry SELECT
+      // serial dependency while preserving the opaque session boundary.
+      const result = await pool.query(
+        `WITH session AS (
+           SELECT scope_public_ids
+             FROM app_inquiry_guest_sessions
+            WHERE token_hash=$1 AND expires_at>NOW()
+         ), scope AS (
+           SELECT JSONB_ARRAY_ELEMENTS_TEXT(scope_public_ids) AS public_id FROM session
+         ), target AS (
+           ${INQUIRY_WITH_STATUS_SELECT}
+            WHERE i.public_id=$2
+              AND i.public_id IN (SELECT public_id FROM scope)
+              AND i.author_type='guest'
+              AND i.deleted_at IS NULL
+            LIMIT 1
+         )
+         SELECT EXISTS(SELECT 1 FROM session) AS session_valid,
+                COALESCE((SELECT JSONB_AGG(public_id) FROM scope),'[]'::jsonb) AS scope_public_ids,
+                (SELECT TO_JSONB(target) FROM target) AS inquiry`,
+        [trim(tokenHash), trim(publicId)],
+      );
+      const row = result.rows[0] || {};
+      const ids = safeJsonArray(row.scope_public_ids).map((id) => trim(id)).filter(Boolean);
+      const inquiryRow = row.inquiry && typeof row.inquiry === 'object' ? row.inquiry : null;
+      if (!inquiryRow?.inquiry_id) {
+        return Object.freeze({ sessionValid: Boolean(row.session_valid), inquiry: null });
+      }
+      const [answers, consents, attachments, navigation] = await Promise.all([
+        listActiveAnswers(pool, inquiryRow.inquiry_id),
+        listConsents(pool, inquiryRow.inquiry_id),
+        attachmentRepository.listForOwner('inquiry', inquiryRow.inquiry_id),
+        getInquiryNavigation(pool, { ownerType: 'guest', publicIds: ids, publicId }),
+      ]);
+      return Object.freeze({
+        sessionValid: Boolean(row.session_valid),
+        inquiry: mapInquiryDetail({ ...inquiryRow, attachments }, answers, consents, navigation),
+      });
     },
 
     async listAdminInquiries({ search = '', status = 'all', categoryId = 'all', page = 1, pageSize = 10 }) {
