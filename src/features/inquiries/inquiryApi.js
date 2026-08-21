@@ -4,6 +4,8 @@ const trim = (value) => String(value ?? '').trim();
 const INQUIRY_READ_CACHE_TTL_MS = 30_000;
 const INQUIRY_DETAIL_CACHE_TTL_MS = 30_000;
 const INQUIRY_GUEST_LIST_CACHE_TTL_MS = 10_000;
+const INQUIRY_ADMIN_LIST_CACHE_TTL_MS = 15_000;
+const INQUIRY_ADMIN_SETTINGS_CACHE_TTL_MS = 30_000;
 const inquiryReadCache = new Map();
 let lastMemberSessionCacheKey = '';
 
@@ -184,6 +186,23 @@ export const inquiryApi = Object.freeze({
     if (!scope || !trim(publicId)) return null;
     return getFreshInquiryReadValue(`guest-detail|${scope}|${trim(publicId)}`);
   },
+
+  peekAdminList({ search = '', status = 'all', categoryId = 'all', page = 1, pageSize = 10 } = {}) {
+    if (!lastMemberSessionCacheKey) return null;
+    const path = `/api/admin/inquiries${queryString({ search, status, categoryId, page, pageSize })}`;
+    return getFreshInquiryReadValue(`admin-list|${lastMemberSessionCacheKey}|${path}`);
+  },
+
+  peekAdminDetail(publicId) {
+    if (!lastMemberSessionCacheKey || !trim(publicId)) return null;
+    return getFreshInquiryReadValue(`admin-detail|${lastMemberSessionCacheKey}|${trim(publicId)}`);
+  },
+
+  peekAdminSettings() {
+    if (!lastMemberSessionCacheKey) return null;
+    return getFreshInquiryReadValue(`admin-settings|${lastMemberSessionCacheKey}`);
+  },
+
   async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
     const path = createPublicConfigPath({ includeGuestTerms, includeCategories });
     if (includeGuestTerms) {
@@ -325,32 +344,60 @@ export const inquiryApi = Object.freeze({
   },
 
   async listAdmin({ search = '', status = 'all', categoryId = 'all', page = 1, pageSize = 10 } = {}) {
-    const payload = await requestJson({
-      path: `/api/admin/inquiries${queryString({ search, status, categoryId, page, pageSize })}`,
-      auth: 'clerk',
-    });
-    return payload.inquiryList || { items: [], totalCount: 0, page: 1, pageSize };
+    const path = `/api/admin/inquiries${queryString({ search, status, categoryId, page, pageSize })}`;
+    const sessionKey = await getMemberSessionCacheKey();
+    const loader = async () => {
+      const payload = await requestJson({ path, auth: 'clerk' });
+      return payload.inquiryList || { items: [], categories: [], totalCount: 0, page: 1, pageSize };
+    };
+    return sessionKey
+      ? withInquiryReadCache(`admin-list|${sessionKey}|${path}`, loader, INQUIRY_ADMIN_LIST_CACHE_TTL_MS)
+      : loader();
   },
 
   async getAdmin(publicId) {
-    const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}`, auth: 'clerk' });
-    return payload.inquiry || null;
+    const normalizedId = trim(publicId);
+    const sessionKey = await getMemberSessionCacheKey();
+    const loader = async () => {
+      const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(normalizedId)}`, auth: 'clerk' });
+      return payload.inquiry || null;
+    };
+    return sessionKey
+      ? withInquiryReadCache(`admin-detail|${sessionKey}|${normalizedId}`, loader, INQUIRY_DETAIL_CACHE_TTL_MS)
+      : loader();
+  },
+
+  async prefetchAdminDetail(publicId) {
+    try {
+      return await inquiryApi.getAdmin(publicId);
+    } catch {
+      return null;
+    }
   },
 
   async deleteAdmin(publicId) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}`, method: 'DELETE', auth: 'clerk' });
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-detail|');
     return payload.inquiryDelete || {};
   },
 
   async getAdminSettings() {
-    const payload = await requestJson({ path: '/api/admin/inquiries/settings', auth: 'clerk' });
-    return payload.inquiryAdminSettings || {};
+    const sessionKey = await getMemberSessionCacheKey();
+    const loader = async () => {
+      const payload = await requestJson({ path: '/api/admin/inquiries/settings', auth: 'clerk' });
+      return payload.inquiryAdminSettings || {};
+    };
+    return sessionKey
+      ? withInquiryReadCache(`admin-settings|${sessionKey}`, loader, INQUIRY_ADMIN_SETTINGS_CACHE_TTL_MS)
+      : loader();
   },
 
   async saveAdminSettings(input) {
     const payload = await requestJson({ path: '/api/admin/inquiries/settings', method: 'PUT', body: input, auth: 'clerk' });
     clearInquiryReadCache('public-config|');
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('admin-settings|');
     return payload.inquirySettings || {};
   },
 
@@ -358,6 +405,8 @@ export const inquiryApi = Object.freeze({
     const payload = await requestJson({ path: '/api/admin/inquiries/categories', method: 'POST', body: input, auth: 'clerk' });
     clearInquiryReadCache('public-config|');
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-settings|');
     return payload.inquiryCategory || null;
   },
 
@@ -365,36 +414,55 @@ export const inquiryApi = Object.freeze({
     const payload = await requestJson({ path: `/api/admin/inquiries/categories/${encodeURIComponent(id)}`, method: 'DELETE', auth: 'clerk' });
     clearInquiryReadCache('public-config|');
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-settings|');
     return payload.inquiryCategoryDelete || {};
   },
 
   async saveInquiryTerm(input) {
     const payload = await requestJson({ path: '/api/admin/inquiries/terms', method: 'POST', body: input, auth: 'clerk' });
     clearInquiryReadCache('public-config|');
+    clearInquiryReadCache('admin-settings|');
     return payload.inquiryTerm || null;
   },
 
   async deleteInquiryTerm(id) {
     const payload = await requestJson({ path: `/api/admin/inquiries/terms/${encodeURIComponent(id)}`, method: 'DELETE', auth: 'clerk' });
     clearInquiryReadCache('public-config|');
+    clearInquiryReadCache('admin-settings|');
     return payload.inquiryTermDelete || {};
   },
 
   async addAnswer(publicId, input) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers`, method: 'POST', body: input, auth: 'clerk' });
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('member-detail|');
+    clearInquiryReadCache('guest-list|');
+    clearInquiryReadCache('guest-detail|');
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-detail|');
     return payload.inquiry || null;
   },
 
   async updateAnswer(publicId, answerId, input) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers/${encodeURIComponent(answerId)}`, method: 'PATCH', body: input, auth: 'clerk' });
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('member-detail|');
+    clearInquiryReadCache('guest-list|');
+    clearInquiryReadCache('guest-detail|');
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-detail|');
     return payload.inquiry || null;
   },
 
   async deleteAnswer(publicId, answerId) {
     const payload = await requestJson({ path: `/api/admin/inquiries/${encodeURIComponent(publicId)}/answers/${encodeURIComponent(answerId)}`, method: 'DELETE', auth: 'clerk' });
     clearInquiryReadCache('member-list|');
+    clearInquiryReadCache('member-detail|');
+    clearInquiryReadCache('guest-list|');
+    clearInquiryReadCache('guest-detail|');
+    clearInquiryReadCache('admin-list|');
+    clearInquiryReadCache('admin-detail|');
     return payload.inquiry || null;
   },
 });

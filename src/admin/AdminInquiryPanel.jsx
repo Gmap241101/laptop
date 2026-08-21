@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 
 import { AdminPageHeader, Button, Input, Select } from '../components/CommonUI.jsx';
@@ -55,7 +55,8 @@ const Field = ({ label, children }) => <div><div className="mb-1.5 text-[11px] f
 export default function AdminInquiryPanel({ ctx }) {
   const { triggerConfirm, triggerToast } = ctx;
   const [settingsBundle, setSettingsBundle] = useState(null);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [categories, setCategories] = useState([]);
   const [listLoading, setListLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -87,7 +88,6 @@ export default function AdminInquiryPanel({ ctx }) {
     if (typeof triggerToast === 'function') triggerToast(message, type);
   }, [triggerToast]);
 
-  const categories = Array.isArray(settingsBundle?.categories) ? settingsBundle.categories : [];
   const signupTerms = Array.isArray(settingsBundle?.signupTerms) ? settingsBundle.signupTerms : [];
   const inquiryTerms = Array.isArray(settingsBundle?.inquiryTerms) ? settingsBundle.inquiryTerms : [];
   const pageSize = ADMIN_LIST_PAGE_SIZE;
@@ -111,12 +111,12 @@ export default function AdminInquiryPanel({ ctx }) {
     }
   }, [notify]);
 
-  const loadList = useCallback(async ({ targetPage = page, bundle = settingsBundle } = {}) => {
-    if (!bundle) return;
+  const loadList = useCallback(async ({ targetPage = page } = {}) => {
     setListLoading(true);
     try {
       const result = await inquiryApi.listAdmin({ search: query, status, categoryId, page: targetPage, pageSize: ADMIN_LIST_PAGE_SIZE });
       setItems(Array.isArray(result.items) ? result.items : []);
+      setCategories(Array.isArray(result.categories) ? result.categories : []);
       setTotalCount(Number(result.totalCount || 0));
       setPage(Number(result.page || targetPage || 1));
     } catch (error) {
@@ -124,27 +124,31 @@ export default function AdminInquiryPanel({ ctx }) {
     } finally {
       setListLoading(false);
     }
-  }, [categoryId, notify, page, query, settingsBundle, status]);
+  }, [categoryId, notify, page, query, status]);
 
+  const didInitializeListRef = useRef(false);
   useEffect(() => {
-    let active = true;
-    (async () => {
-      const bundle = await loadSettings();
-      if (!active || !bundle) return;
-      await loadList({ targetPage: 1, bundle });
-    })();
-    return () => { active = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (!settingsBundle) return undefined;
+    if (!didInitializeListRef.current) {
+      didInitializeListRef.current = true;
+      void loadList({ targetPage: 1 });
+      return undefined;
+    }
     const timer = window.setTimeout(() => { void loadList({ targetPage: 1 }); }, 220);
     return () => window.clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, status, categoryId]);
 
+  const prefetchDetail = useCallback((publicId) => {
+    void inquiryApi.prefetchAdminDetail(publicId);
+  }, []);
+
   const openDetail = async (publicId) => {
+    const cached = inquiryApi.peekAdminDetail(publicId);
+    if (cached) {
+      setDetail(cached);
+      setDetailLoading(false);
+      return;
+    }
     setDetailLoading(true);
     try {
       setDetail(await inquiryApi.getAdmin(publicId));
@@ -155,9 +159,24 @@ export default function AdminInquiryPanel({ ctx }) {
     }
   };
 
+  const openSettingsDialog = async () => {
+    setSettingsOpen(true);
+    const cached = inquiryApi.peekAdminSettings();
+    if (cached) {
+      setSettingsBundle(cached);
+      setSettingsDraft({
+        allowGuest: Boolean(cached?.settings?.allowGuest),
+        guestTermBindings: Array.isArray(cached?.settings?.guestTermBindings) ? cached.settings.guestTermBindings : [],
+      });
+      return;
+    }
+    const loaded = await loadSettings();
+    if (!loaded) setSettingsOpen(false);
+  };
+
   const refreshAfterMutation = async (nextDetail = null) => {
     if (nextDetail) setDetail(nextDetail);
-    await Promise.all([loadList({ targetPage: page }), loadSettings({ silent: true })]);
+    await loadList({ targetPage: page });
   };
 
   const openAnswerEditor = (answer = null) => {
@@ -227,11 +246,9 @@ export default function AdminInquiryPanel({ ctx }) {
         // User inquiry lists now choose 10/30/50 directly, and the admin list is fixed at 10.
         postsPerPage: Number(settingsBundle?.settings?.postsPerPage || ADMIN_LIST_PAGE_SIZE),
       });
-      const bundle = await loadSettings({ silent: true });
+      await loadSettings({ silent: true });
       setSettingsOpen(false);
-      setPage(1);
       notify('문의하기 설정이 저장되었습니다.');
-      if (bundle) await loadList({ targetPage: 1, bundle });
     } catch (error) {
       notify(`문의하기 설정 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
     } finally {
@@ -257,9 +274,8 @@ export default function AdminInquiryPanel({ ctx }) {
     try {
       await inquiryApi.saveCategory({ id: '', name });
       setNewCategoryName('');
-      const bundle = await loadSettings({ silent: true });
       notify('문의 구분이 등록되었습니다.');
-      if (bundle) await loadList({ targetPage: 1, bundle });
+      await loadList({ targetPage: 1 });
     } catch (error) {
       notify(`문의 구분 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
     } finally {
@@ -280,9 +296,8 @@ export default function AdminInquiryPanel({ ctx }) {
       await inquiryApi.saveCategory({ id: category.id, name });
       setEditingCategoryId('');
       setEditingCategoryName('');
-      const bundle = await loadSettings({ silent: true });
       notify('문의 구분이 수정되었습니다.');
-      if (bundle) await loadList({ targetPage: 1, bundle });
+      await loadList({ targetPage: 1 });
     } catch (error) {
       notify(`문의 구분 저장에 실패했습니다.${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
     } finally {
@@ -300,9 +315,8 @@ export default function AdminInquiryPanel({ ctx }) {
           setEditingCategoryId('');
           setEditingCategoryName('');
         }
-        const bundle = await loadSettings({ silent: true });
         notify('문의 구분이 삭제되었습니다.');
-        if (bundle) await loadList({ targetPage: 1, bundle });
+        await loadList({ targetPage: 1 });
       } catch (error) {
         const suffix = error?.code === 'inquiry_category_in_use' ? ` 현재 문의 ${Number(error?.payload?.inquiryCount || 0)}건에서 사용 중입니다.` : '';
         notify(`문의 구분 삭제에 실패했습니다.${suffix}${error?.code ? ` 오류 코드: ${error.code}` : ''}`, 'error');
@@ -356,8 +370,7 @@ export default function AdminInquiryPanel({ ctx }) {
     <div className="space-y-6">
       <AdminPageHeader title="문의하기 관리" description="회원·비회원 1:1 문의와 관리자 답변, 문의 정책을 PostgreSQL 기준으로 관리합니다." />
 
-      {settingsLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의하기 관리 설정을 불러오는 중입니다.</div> : (
-        <>
+      <>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => { setCategoryId('all'); setPage(1); }} className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${categoryId === 'all' ? 'border-orange-500 bg-orange-500 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}>전체</button>
             {categories.map((category) => <button key={category.id} type="button" onClick={() => { setCategoryId(category.id); setPage(1); }} className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${categoryId === category.id ? 'border-orange-500 bg-orange-500 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}>{category.name}</button>)}
@@ -368,7 +381,19 @@ export default function AdminInquiryPanel({ ctx }) {
             <Field label="상태"><Select value={status} onChange={(value) => { setStatus(value); setPage(1); }} style={{ fontSize: '0.75rem', lineHeight: '1rem' }}><option value="all">전체</option><option value="waiting">답변대기</option><option value="answered">답변완료</option><option value="additional">추가답변</option></Select></Field>
           </div>
 
-          {detail ? (
+          {detailLoading && !detail ? (
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5" aria-busy="true" aria-label="문의 상세 불러오는 중">
+              <div className="h-5 w-2/5 animate-pulse rounded bg-slate-200" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 8 }, (_, index) => <div key={index} className="h-14 animate-pulse rounded-xl bg-slate-100" />)}
+              </div>
+              <div className="space-y-3 pt-2">
+                <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-11/12 animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+              </div>
+            </div>
+          ) : detail ? (
             <div className="space-y-5">
               <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 bg-slate-50 p-5">
@@ -391,13 +416,12 @@ export default function AdminInquiryPanel({ ctx }) {
             </div>
           ) : (
             <>
-              {listLoading || detailLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 목록을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">검색 조건에 맞는 문의가 없습니다.</div> : <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><table className="w-full table-fixed border-collapse text-left"><thead className="bg-slate-50 text-[10px] font-semibold text-slate-600"><tr><th className="w-12 border-b border-slate-200 px-2 py-3 text-center">번호</th><th className="w-20 border-b border-slate-200 px-2 py-3 text-center">상태</th><th className="w-16 border-b border-slate-200 px-2 py-3 text-center">회원구분</th><th className="w-24 border-b border-slate-200 px-2 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-2 py-3">제목</th><th className="w-20 border-b border-slate-200 px-2 py-3 text-center">작성자</th><th className="w-32 border-b border-slate-200 px-2 py-3 text-center">작성일시</th><th className="w-16 border-b border-slate-200 px-2 py-3 text-center">답변수</th><th className="w-32 border-b border-slate-200 px-2 py-3 text-center">최근 답변일시</th></tr></thead><tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-2 py-3 text-center text-[11px] text-slate-500">{resultNumber.get(item.publicId)}</td><td className="px-2 py-3 text-center"><StatusBadge status={item.status} /></td><td className="px-2 py-3 text-center text-[11px] text-slate-600">{item.authorType === 'member' ? '회원' : '비회원'}</td><td className="truncate px-2 py-3 text-center text-[11px] text-slate-600" title={item.categoryName || '-'}>{item.categoryName || '-'}</td><td className="min-w-0 px-2 py-3"><button type="button" title={item.title} onClick={() => openDetail(item.publicId)} className="block max-w-full truncate text-left text-xs font-semibold text-slate-800 hover:text-orange-600 hover:underline">{item.title}</button></td><td className="truncate px-2 py-3 text-center text-[11px] text-slate-600" title={item.authorName || '-'}>{item.authorName || '-'}</td><td className="whitespace-nowrap px-2 py-3 text-center text-[11px] text-slate-500">{formatDateTime(item.createdAt)}</td><td className="px-2 py-3 text-center text-[11px] text-slate-600">{Number(item.answerCount || 0)}</td><td className="whitespace-nowrap px-2 py-3 text-center text-[11px] text-slate-500">{formatDateTime(item.latestAnswerAt)}</td></tr>)}</tbody></table></div>}
+              {listLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 목록을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">검색 조건에 맞는 문의가 없습니다.</div> : <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><table className="w-full table-fixed border-collapse text-left"><thead className="bg-slate-50 text-[10px] font-semibold text-slate-600"><tr><th className="w-12 border-b border-slate-200 px-2 py-3 text-center">번호</th><th className="w-20 border-b border-slate-200 px-2 py-3 text-center">상태</th><th className="w-16 border-b border-slate-200 px-2 py-3 text-center">회원구분</th><th className="w-24 border-b border-slate-200 px-2 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-2 py-3">제목</th><th className="w-20 border-b border-slate-200 px-2 py-3 text-center">작성자</th><th className="w-32 border-b border-slate-200 px-2 py-3 text-center">작성일시</th><th className="w-16 border-b border-slate-200 px-2 py-3 text-center">답변수</th><th className="w-32 border-b border-slate-200 px-2 py-3 text-center">최근 답변일시</th></tr></thead><tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-2 py-3 text-center text-[11px] text-slate-500">{resultNumber.get(item.publicId)}</td><td className="px-2 py-3 text-center"><StatusBadge status={item.status} /></td><td className="px-2 py-3 text-center text-[11px] text-slate-600">{item.authorType === 'member' ? '회원' : '비회원'}</td><td className="truncate px-2 py-3 text-center text-[11px] text-slate-600" title={item.categoryName || '-'}>{item.categoryName || '-'}</td><td className="min-w-0 px-2 py-3"><button type="button" title={item.title} onPointerEnter={() => prefetchDetail(item.publicId)} onPointerDown={() => prefetchDetail(item.publicId)} onFocus={() => prefetchDetail(item.publicId)} onClick={() => openDetail(item.publicId)} className="block max-w-full truncate text-left text-xs font-semibold text-slate-800 hover:text-orange-600 hover:underline">{item.title}</button></td><td className="truncate px-2 py-3 text-center text-[11px] text-slate-600" title={item.authorName || '-'}>{item.authorName || '-'}</td><td className="whitespace-nowrap px-2 py-3 text-center text-[11px] text-slate-500">{formatDateTime(item.createdAt)}</td><td className="px-2 py-3 text-center text-[11px] text-slate-600">{Number(item.answerCount || 0)}</td><td className="whitespace-nowrap px-2 py-3 text-center text-[11px] text-slate-500">{formatDateTime(item.latestAnswerAt)}</td></tr>)}</tbody></table></div>}
 
-              <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center"><div className="text-[11px] text-slate-500 sm:justify-self-start">검색 결과 {totalCount}건 · {page} / {totalPages}페이지</div><PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} onPageChange={(nextPage) => loadList({ targetPage: nextPage })} /><div className="flex flex-wrap gap-2 sm:justify-self-end"><Button type="button" variant="outline" onClick={() => setCategoryOpen(true)}>문의 구분 관리</Button><Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>문의 설정</Button></div></div>
+              <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center"><div className="text-[11px] text-slate-500 sm:justify-self-start">검색 결과 {totalCount}건 · {page} / {totalPages}페이지</div><PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} onPageChange={(nextPage) => loadList({ targetPage: nextPage })} /><div className="flex flex-wrap gap-2 sm:justify-self-end"><Button type="button" variant="outline" onClick={() => setCategoryOpen(true)}>문의 구분 관리</Button><Button type="button" variant="outline" onClick={openSettingsDialog}>문의 설정</Button></div></div>
             </>
           )}
-        </>
-      )}
+      </>
 
       {answerOpen ? <ModalShell title={answerEditing ? '관리자 답변 수정' : '관리자 답변 등록'} description="동일 문의에 관리자 답변을 여러 번 등록할 수 있습니다." onClose={() => !answerSaving && setAnswerOpen(false)}><div className="space-y-4 p-5"><RichTextEditor label="답변 내용" value={answerHtml} onChange={setAnswerHtml} minHeight={320} disabled={answerSaving} /><SecureAttachmentEditor value={answerAttachments} onChange={setAnswerAttachments} disabled={answerSaving} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={answerSaving} onClick={() => setAnswerOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={answerSaving} onClick={saveAnswer}>{answerSaving ? '저장 중' : '답변 저장'}</Button></div></ModalShell> : null}
 
@@ -428,6 +452,14 @@ export default function AdminInquiryPanel({ ctx }) {
           onClose={() => !settingsSaving && setSettingsOpen(false)}
         >
           <div className="space-y-6 p-5">
+            {settingsLoading || !settingsBundle ? (
+              <div className="space-y-4" aria-busy="true" aria-label="문의 설정 불러오는 중">
+                <div className="h-5 w-1/4 animate-pulse rounded bg-slate-200" />
+                <div className="h-10 w-full animate-pulse rounded-xl bg-slate-100" />
+                <div className="h-5 w-1/3 animate-pulse rounded bg-slate-200" />
+                <div className="h-28 w-full animate-pulse rounded-xl bg-slate-100" />
+              </div>
+            ) : (<>
             <div>
               <div className="text-sm font-bold text-slate-900">문의 가능 대상</div>
               <div className="mt-3 flex flex-wrap gap-5 text-sm">
@@ -506,6 +538,7 @@ export default function AdminInquiryPanel({ ctx }) {
                 )}
               </div>
             </div>
+            </>)}
           </div>
           <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
             <Button type="button" variant="outline" disabled={settingsSaving} onClick={() => setSettingsOpen(false)}>취소</Button>

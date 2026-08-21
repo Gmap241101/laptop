@@ -572,12 +572,14 @@ export const createInquiryService = ({ repository }) => {
 
     async getAdminSettings({ admin }) {
       requireAdmin(admin);
-      const [settings, categories, catalog] = await Promise.all([
+      // Category filters/counts travel with the admin list response.  Full
+      // settings are loaded only when the settings modal is opened, so avoid
+      // an otherwise redundant category query here.
+      const [settings, catalog] = await Promise.all([
         repository.getSettings(),
-        repository.listCategories({ includeCounts: true }),
         getTermCatalog({ includeDisabledInquiryTerms: true }),
       ]);
-      return Object.freeze({ settings, categories, ...catalog });
+      return Object.freeze({ settings, ...catalog });
     },
 
     async saveAdminSettings({ admin, input }) {

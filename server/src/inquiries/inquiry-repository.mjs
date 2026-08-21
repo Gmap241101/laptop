@@ -1125,49 +1125,148 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
       const offset = (safePage - 1) * safePageSize;
       const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
       const result = await pool.query(
-        `WITH scoped AS (
-           SELECT i.*,c.name AS category_name,
-                  COALESCE(a.answer_count,0)::int AS answer_count,
-                  a.latest_answer_at,
+        `WITH category_rows AS (
+           SELECT c.category_id,c.name,c.sort_order,c.created_at,c.updated_at,
+                  COUNT(i.inquiry_id) FILTER (WHERE i.deleted_at IS NULL)::int AS inquiry_count
+             FROM app_inquiry_categories c
+             LEFT JOIN app_inquiries i ON i.category_id=c.category_id
+            WHERE c.deleted_at IS NULL
+            GROUP BY c.category_id,c.name,c.sort_order,c.created_at,c.updated_at
+         ), answer_stats AS (
+           SELECT ans.inquiry_id,COUNT(*)::int AS answer_count,MAX(ans.created_at) AS latest_answer_at
+             FROM app_inquiry_answers ans
+            WHERE ans.deleted_at IS NULL
+            GROUP BY ans.inquiry_id
+         ), scoped AS (
+           SELECT i.inquiry_id,i.public_id,i.author_type,i.member_uid,i.category_id,
+                  c.name AS category_name,i.title,i.author_name,i.created_at,i.updated_at,
+                  COALESCE(a.answer_count,0)::int AS answer_count,a.latest_answer_at,
                   CASE WHEN COALESCE(a.answer_count,0)>=2 THEN 'additional'
                        WHEN COALESCE(a.answer_count,0)=1 THEN 'answered'
                        ELSE 'waiting' END AS inquiry_status
              FROM app_inquiries i
              JOIN app_inquiry_categories c ON c.category_id=i.category_id
-             LEFT JOIN LATERAL (
-               SELECT COUNT(*)::int AS answer_count,MAX(created_at) AS latest_answer_at
-                 FROM app_inquiry_answers ans
-                WHERE ans.inquiry_id=i.inquiry_id AND ans.deleted_at IS NULL
-             ) a ON TRUE
+             LEFT JOIN answer_stats a ON a.inquiry_id=i.inquiry_id
             WHERE i.deleted_at IS NULL
               AND ($1::text IS NULL OR LOWER(i.title) LIKE $1 OR LOWER(i.body_text) LIKE $1 OR LOWER(i.author_name) LIKE $1 OR LOWER(i.author_email) LIKE $1 OR LOWER(i.author_phone) LIKE $1)
               AND ($2::text='' OR $2::text='all' OR i.category_id=$2)
          ), filtered AS (
            SELECT * FROM scoped WHERE ($3::text='all' OR inquiry_status=$3)
+         ), paged AS (
+           SELECT * FROM filtered
+            ORDER BY created_at DESC,inquiry_id DESC
+            LIMIT $4 OFFSET $5
          )
-         SELECT *,COUNT(*) OVER()::int AS total_count
-           FROM filtered
-          ORDER BY created_at DESC,inquiry_id DESC
-          LIMIT $4 OFFSET $5`,
+         SELECT COALESCE((
+                  SELECT JSONB_AGG(TO_JSONB(paged) ORDER BY created_at DESC,inquiry_id DESC)
+                    FROM paged
+                ),'[]'::jsonb) AS items,
+                (SELECT COUNT(*)::int FROM filtered) AS total_count,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'category_id',category_id,
+                      'name',name,
+                      'sort_order',sort_order,
+                      'inquiry_count',inquiry_count,
+                      'created_at',created_at,
+                      'updated_at',updated_at
+                    ) ORDER BY sort_order,created_at,category_id
+                  ) FROM category_rows
+                ),'[]'::jsonb) AS categories`,
         [searchPattern, normalizedCategory, ['waiting','answered','additional'].includes(normalizedStatus) ? normalizedStatus : 'all', safePageSize, offset],
       );
+      const row = result.rows[0] || {};
       return Object.freeze({
-        items: Object.freeze(result.rows.map(mapInquirySummary)),
-        totalCount: Number(result.rows[0]?.total_count || 0),
+        items: Object.freeze(safeJsonArray(row.items).map(mapInquirySummary)),
+        categories: Object.freeze(safeJsonArray(row.categories).map(mapCategory).filter(Boolean)),
+        totalCount: Number(row.total_count || 0),
         page: safePage,
         pageSize: safePageSize,
       });
     },
 
     async getAdminInquiry(publicId) {
-      const row = await getInquiryRow(pool, `i.public_id=$1 AND i.deleted_at IS NULL`, [trim(publicId)]);
-      if (!row) return null;
-      const [answers, consents, attachments] = await Promise.all([
-        listActiveAnswers(pool, row.inquiry_id),
-        listConsents(pool, row.inquiry_id),
-        attachmentRepository.listForOwner('inquiry', row.inquiry_id),
-      ]);
-      return mapInquiryDetail({ ...row, attachments }, answers, consents);
+      // Administrator detail reads the complete inquiry in one PostgreSQL
+      // statement.  The previous implementation fetched the target first and
+      // then issued a second latency phase for answers, consents and
+      // attachments.  Admin inquiry screens do not need a separate navigation
+      // query, so all detail payloads are aggregated directly from the target.
+      const result = await pool.query(
+        `WITH target AS (
+           ${INQUIRY_WITH_STATUS_SELECT}
+            WHERE i.public_id=$1 AND i.deleted_at IS NULL
+            LIMIT 1
+         )
+         SELECT (SELECT TO_JSONB(target) FROM target) AS inquiry,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'answer_id',ans.answer_id,
+                      'body_html',ans.body_html,
+                      'body_text',ans.body_text,
+                      'admin_identity_id',ans.admin_identity_id,
+                      'admin_display_name',ans.admin_display_name,
+                      'created_at',ans.created_at,
+                      'updated_at',ans.updated_at,
+                      'attachments',COALESCE((
+                        SELECT JSONB_AGG(
+                          JSONB_BUILD_OBJECT(
+                            'id',att.attachment_id,
+                            'name',att.display_name,
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                          ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                        )
+                          FROM app_secure_attachments att
+                         WHERE att.owner_type='inquiry_answer'
+                           AND att.owner_id=ans.answer_id
+                           AND att.deleted_at IS NULL
+                      ),'[]'::jsonb)
+                    ) ORDER BY ans.created_at,ans.answer_id
+                  )
+                    FROM app_inquiry_answers ans
+                   WHERE ans.inquiry_id=(SELECT inquiry_id FROM target)
+                     AND ans.deleted_at IS NULL
+                ),'[]'::jsonb) AS answers,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'term_source',gc.term_source,
+                      'term_id',gc.term_id,
+                      'term_revision',gc.term_revision,
+                      'term_version_id',gc.term_version_id,
+                      'required_snapshot',gc.required_snapshot,
+                      'title_snapshot',gc.title_snapshot,
+                      'content_hash',gc.content_hash,
+                      'consented_at',gc.consented_at
+                    ) ORDER BY gc.consented_at,gc.consent_id
+                  )
+                    FROM app_inquiry_guest_consents gc
+                   WHERE gc.inquiry_id=(SELECT inquiry_id FROM target)
+                ),'[]'::jsonb) AS consents,
+                COALESCE((
+                  SELECT JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                      'id',att.attachment_id,
+                      'name',att.display_name,
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                    ) ORDER BY att.sort_order,att.created_at,att.attachment_id
+                  )
+                    FROM app_secure_attachments att
+                   WHERE att.owner_type='inquiry'
+                     AND att.owner_id=(SELECT inquiry_id FROM target)
+                     AND att.deleted_at IS NULL
+                ),'[]'::jsonb) AS attachments`,
+        [trim(publicId)],
+      );
+      const row = result.rows[0] || {};
+      const inquiryRow = row.inquiry && typeof row.inquiry === 'object' ? row.inquiry : null;
+      if (!inquiryRow?.inquiry_id) return null;
+      return mapInquiryDetail(
+        { ...inquiryRow, attachments: safeJsonArray(row.attachments) },
+        safeJsonArray(row.answers),
+        safeJsonArray(row.consents),
+      );
     },
 
     async addAnswer({ answerId, publicId, bodyHtml, bodyText, adminIdentityId, adminDisplayName, attachments = [] }) {
