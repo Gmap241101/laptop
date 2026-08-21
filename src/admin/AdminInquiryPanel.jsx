@@ -4,6 +4,7 @@ import { Edit3, Plus, Search, Trash2, X } from 'lucide-react';
 import { AdminPageHeader, Button, Input, Select } from '../components/CommonUI.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import { isRichTextEmpty, richTextHtmlToText, sanitizeRichTextHtml } from '../utils/richTextCore.js';
 import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -20,15 +21,6 @@ const STATUS_CLASSES = Object.freeze({
 const ADMIN_LIST_PAGE_SIZE = 10;
 
 const trim = (value) => String(value ?? '').trim();
-const htmlToText = (html) => {
-  const source = String(html || '');
-  if (typeof document !== 'undefined') {
-    const node = document.createElement('div');
-    node.innerHTML = source;
-    return trim(node.textContent || node.innerText || '');
-  }
-  return trim(source.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '));
-};
 const formatDateTime = (value) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -170,7 +162,7 @@ export default function AdminInquiryPanel({ ctx }) {
 
   const openAnswerEditor = (answer = null) => {
     setAnswerEditing(answer);
-    setAnswerHtml(answer?.bodyHtml || '');
+    setAnswerHtml(sanitizeRichTextHtml(answer?.bodyHtml || ''));
     setAnswerAttachments(Array.isArray(answer?.attachments)
       ? answer.attachments.map((attachment) => ({ ...attachment, targetUrl: '' }))
       : []);
@@ -179,13 +171,14 @@ export default function AdminInquiryPanel({ ctx }) {
 
   const saveAnswer = async () => {
     if (!detail) return;
-    const bodyText = htmlToText(answerHtml);
-    if (!bodyText) { notify('답변 내용을 입력해 주세요.', 'error'); return; }
+    const bodyHtml = sanitizeRichTextHtml(answerHtml);
+    const bodyText = richTextHtmlToText(bodyHtml);
+    if (isRichTextEmpty(bodyHtml)) { notify('답변 내용을 입력해 주세요.', 'error'); return; }
     setAnswerSaving(true);
     try {
       const next = answerEditing
-        ? await inquiryApi.updateAnswer(detail.publicId, answerEditing.id, { bodyHtml: answerHtml, bodyText, attachments: answerAttachments })
-        : await inquiryApi.addAnswer(detail.publicId, { bodyHtml: answerHtml, bodyText, attachments: answerAttachments });
+        ? await inquiryApi.updateAnswer(detail.publicId, answerEditing.id, { bodyHtml, bodyText, attachments: answerAttachments })
+        : await inquiryApi.addAnswer(detail.publicId, { bodyHtml, bodyText, attachments: answerAttachments });
       setAnswerOpen(false);
       setAnswerEditing(null);
       setAnswerHtml('');
@@ -320,16 +313,17 @@ export default function AdminInquiryPanel({ ctx }) {
   };
 
   const openTermEditor = (term = null) => {
-    setTermForm(term ? { id: term.id, title: term.title, bodyHtml: term.contentHtml || '', required: Boolean(term.required), enabled: term.enabled !== false } : { id: '', title: '', bodyHtml: '', required: true, enabled: true });
+    setTermForm(term ? { id: term.id, title: term.title, bodyHtml: sanitizeRichTextHtml(term.contentHtml || ''), required: Boolean(term.required), enabled: term.enabled !== false } : { id: '', title: '', bodyHtml: '', required: true, enabled: true });
     setTermOpen(true);
   };
 
   const saveTerm = async () => {
-    const bodyText = htmlToText(termForm.bodyHtml);
-    if (!trim(termForm.title) || !bodyText) { notify('약관 제목과 본문을 입력해 주세요.', 'error'); return; }
+    const bodyHtml = sanitizeRichTextHtml(termForm.bodyHtml);
+    const bodyText = richTextHtmlToText(bodyHtml);
+    if (!trim(termForm.title) || isRichTextEmpty(bodyHtml)) { notify('약관 제목과 본문을 입력해 주세요.', 'error'); return; }
     setTermSaving(true);
     try {
-      await inquiryApi.saveInquiryTerm({ ...termForm, bodyText });
+      await inquiryApi.saveInquiryTerm({ ...termForm, bodyHtml, bodyText });
       await loadSettings({ silent: true });
       setTermOpen(false);
       notify(termForm.id ? '문의 전용 약관이 수정되었습니다.' : '문의 전용 약관이 등록되었습니다.');

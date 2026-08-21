@@ -6,6 +6,7 @@ import PaginationControls from '../components/PaginationControls.jsx';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
+import { isRichTextEmpty, richTextHtmlToText, sanitizeRichTextHtml } from '../utils/richTextCore.js';
 import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -52,16 +53,6 @@ const parseDomesticPhoneDraft = (value) => {
     middle: normalizePhoneMiddleDigits(rawMiddle),
     last: normalizePhoneDigits(rawLast, 4),
   };
-};
-
-const htmlToText = (html) => {
-  const source = String(html || '');
-  if (typeof document !== 'undefined') {
-    const node = document.createElement('div');
-    node.innerHTML = source;
-    return trim(node.textContent || node.innerText || '');
-  }
-  return trim(source.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' '));
 };
 
 const formatDateTime = (value) => {
@@ -422,7 +413,7 @@ export default function UserInquiryPanel({ ctx }) {
     setForm({
       categoryId: detail.categoryId || '',
       title: detail.title || '',
-      bodyHtml: detail.bodyHtml || detail.bodyText || '',
+      bodyHtml: sanitizeRichTextHtml(detail.bodyHtml || detail.bodyText || ''),
       attachments: Array.isArray(detail.attachments)
         ? detail.attachments.map((attachment) => ({ ...attachment, targetUrl: '' }))
         : [],
@@ -447,14 +438,15 @@ export default function UserInquiryPanel({ ctx }) {
   const saveMemberOrGuestInquiry = async () => {
     const wasEditing = Boolean(editingPublicId);
     const editingId = editingPublicId;
-    const bodyText = htmlToText(form.bodyHtml);
-    if (!form.categoryId || !form.title.trim() || !bodyText) {
+    const bodyHtml = sanitizeRichTextHtml(form.bodyHtml);
+    const bodyText = richTextHtmlToText(bodyHtml);
+    if (!form.categoryId || !form.title.trim() || isRichTextEmpty(bodyHtml)) {
       notify('문의 구분, 제목, 본문을 모두 입력해 주세요.', 'error');
       return;
     }
     setSaving(true);
     try {
-      const payload = { ...form, bodyText };
+      const payload = { ...form, bodyHtml, bodyText };
       let next;
       if (editingPublicId) {
         next = hasFirebaseAuthSession
@@ -511,9 +503,10 @@ export default function UserInquiryPanel({ ctx }) {
 
   const createGuest = async () => {
     const hadGuestAccess = Boolean(guestAccess?.token);
-    const bodyText = htmlToText(guestForm.bodyHtml);
+    const bodyHtml = sanitizeRichTextHtml(guestForm.bodyHtml);
+    const bodyText = richTextHtmlToText(bodyHtml);
     if (!guestForm.name.trim() || !guestForm.team.trim() || !guestForm.email.trim() || !isValidDomesticPhoneNumber(parseDomesticPhoneDraft(guestForm.phone))
-      || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || !bodyText) {
+      || !guestForm.password || !guestForm.passwordConfirm || !guestForm.categoryId || !guestForm.title.trim() || isRichTextEmpty(bodyHtml)) {
       notify('비회원 문의 필수 입력 항목을 모두 입력해 주세요.', 'error');
       return;
     }
@@ -533,6 +526,7 @@ export default function UserInquiryPanel({ ctx }) {
       }));
       await inquiryApi.createGuest({
         ...guestForm,
+        bodyHtml,
         bodyText,
         author: guestForm,
         currentPassword: guestPreparedPassword,

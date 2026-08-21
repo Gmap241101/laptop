@@ -1401,16 +1401,21 @@ export function RichTextEditor({
     setHtml5VideoPanelOpen(false);
   };
 
+  const commitSourceValue = () => {
+    const sanitizedHtml = sanitizeRichTextHtml(sourceValue);
+    setSourceValue(sanitizedHtml);
+    lastEmittedHtmlRef.current = sanitizedHtml;
+    onChange?.(sanitizedHtml);
+    return sanitizedHtml;
+  };
+
   const toggleSourceMode = () => {
     if (disabled) return;
     setResponsivePanelOpen(false);
     closeColorDialog();
 
     if (sourceMode) {
-      const sanitizedHtml = sanitizeRichTextHtml(sourceValue);
-      setSourceValue(sanitizedHtml);
-      lastEmittedHtmlRef.current = sanitizedHtml;
-      onChange?.(sanitizedHtml);
+      const sanitizedHtml = commitSourceValue();
       setSourceMode(false);
 
       window.requestAnimationFrame(() => {
@@ -1422,7 +1427,10 @@ export function RichTextEditor({
       return;
     }
 
-    setSourceValue(getStoredHtmlFromEditor(editorRef.current) || String(value || ''));
+    const currentHtml = getStoredHtmlFromEditor(editorRef.current) || sanitizeRichTextHtml(String(value || ''));
+    setSourceValue(currentHtml);
+    lastEmittedHtmlRef.current = currentHtml;
+    onChange?.(currentHtml);
     setImagePanelOpen(false);
     setYouTubePanelOpen(false);
     setHtml5VideoPanelOpen(false);
@@ -2174,6 +2182,7 @@ export function RichTextEditor({
                 lastEmittedHtmlRef.current = nextValue;
                 onChange?.(nextValue);
               }}
+              onBlur={commitSourceValue}
               disabled={disabled}
               spellCheck={false}
               wrap="soft"

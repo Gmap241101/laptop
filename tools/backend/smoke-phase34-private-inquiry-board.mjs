@@ -119,7 +119,24 @@ const repository = {
   async deleteAdminInquiry({ publicId }) { const row=state.inquiries.find((i)=>i.publicId===publicId&&!i.deleted); row.deleted=true; return {publicId,deleted:true}; },
   async saveSettings({ allowGuest, postsPerPage, guestTermBindings }) { state.allowGuest=allowGuest;state.postsPerPage=postsPerPage;state.guestTermBindings=clone(guestTermBindings);return this.getSettings(); },
   async saveCategory() { return { id:'x', name:'x' }; }, async deleteCategory(){ return {deleted:true}; },
-  async getInquiryTerm(id) { return state.terms.find((t)=>t.id===id)||null; }, async saveInquiryTerm(input){ return input; }, async deleteInquiryTerm(){ return {deleted:true}; },
+  async getInquiryTerm(id) { return state.terms.find((t)=>t.id===id)||null; },
+  async saveInquiryTerm(input){
+    const next = {
+      id: input.id,
+      title: input.title,
+      contentHtml: input.bodyHtml,
+      contentText: input.bodyText,
+      required: Boolean(input.required),
+      revision: Number(input.revision || 1),
+      contentHash: input.contentHash,
+      enabled: input.enabled !== false,
+    };
+    const index = state.terms.findIndex((term) => term.id === next.id);
+    if (index >= 0) state.terms[index] = next;
+    else state.terms.push(next);
+    return clone(next);
+  },
+  async deleteInquiryTerm(){ return {deleted:true}; },
 };
 
 const service = createInquiryService({ repository });
@@ -154,7 +171,20 @@ assert.notEqual(passwordHash, 'StrongPass!23');
 assert.equal(await verifyGuestInquiryPassword('StrongPass!23', passwordHash), true);
 assert.equal(await verifyGuestInquiryPassword('wrong-password', passwordHash), false);
 
-const memberA = await service.createMember({ clerkUserId:'clerkA', input:{ categoryId:'rental', title:'A 문의', bodyText:'A 내용' } });
+const styledTermHtml = '<p><span style="color: rgb(194, 65, 12); background-color: rgb(255, 247, 237); font-weight: 700; font-size: 18px; line-height: 1.5">필수</span></p><blockquote style="text-align: center; color: #334155">안내</blockquote><table style="width: 100%; border-collapse: collapse"><tbody><tr><td style="background-color: #ffffff; color: #0f172a; border-width: 1px; border-style: solid; border-color: #cbd5e1">표</td></tr></tbody></table>';
+const styledTerm = await service.saveInquiryTerm({ admin, input:{ id:'privacy', title:'개인정보 수집 동의', bodyHtml:styledTermHtml, bodyText:'필수 안내 표', required:true, enabled:true } });
+assert.equal(styledTerm.contentHtml, styledTermHtml, 'inquiry-term HTML must round-trip without losing safe tags or style attributes');
+assert.equal(styledTerm.revision, 2, 'first canonical HTML save must advance the inquiry-term revision from the legacy hash');
+const firstStyledHash = styledTerm.contentHash;
+const recoloredTermHtml = styledTermHtml.replace('rgb(194, 65, 12)', 'rgb(37, 99, 235)');
+const recoloredTerm = await service.saveInquiryTerm({ admin, input:{ id:'privacy', title:'개인정보 수집 동의', bodyHtml:recoloredTermHtml, bodyText:'필수 안내 표', required:true, enabled:true } });
+assert.equal(recoloredTerm.contentHtml, recoloredTermHtml, 'formatting-only inquiry-term edits must persist exactly');
+assert.equal(recoloredTerm.revision, 3, 'formatting-only inquiry-term edits must advance revision');
+assert.notEqual(recoloredTerm.contentHash, firstStyledHash, 'inquiry-term content hash must include HTML formatting, not only plain text');
+
+const styledInquiryHtml = '<p><span style="color: #dc2626; background-color: #fef2f2; font-weight: 700">A 내용</span></p>';
+const memberA = await service.createMember({ clerkUserId:'clerkA', input:{ categoryId:'rental', title:'A 문의', bodyHtml:styledInquiryHtml, bodyText:'A 내용' } });
+assert.equal(memberA.bodyHtml, styledInquiryHtml, 'member inquiry rich-text HTML must round-trip exactly');
 const memberB = await service.createMember({ clerkUserId:'clerkB', input:{ categoryId:'rental', title:'B 문의', bodyText:'B 내용' } });
 assert.equal((await service.listMember({ clerkUserId:'clerkA' })).items.length, 1);
 assert.equal((await service.listMember({ clerkUserId:'clerkB' })).items.length, 1);
@@ -208,7 +238,9 @@ state.allowGuest = false;
 await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'OFF', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } }), (error) => error.code === 'guest_inquiry_disabled' && error.status === 403);
 state.allowGuest = true;
 
-const firstAnswer = await service.addAnswer({ admin, publicId:memberA.publicId, input:{ bodyHtml:'<p>답변1</p>', bodyText:'답변1' } });
+const styledAnswerHtml = '<p><span style="color: #059669; text-decoration: underline">답변1</span></p>';
+const firstAnswer = await service.addAnswer({ admin, publicId:memberA.publicId, input:{ bodyHtml:styledAnswerHtml, bodyText:'답변1' } });
+assert.equal(firstAnswer.answers[0].bodyHtml, styledAnswerHtml, 'administrator answer rich-text HTML must round-trip exactly');
 assert.equal(firstAnswer.status, 'answered');
 assert.equal(firstAnswer.answerCount, 1);
 await assert.rejects(() => service.deleteMember({ clerkUserId:'clerkA', publicId:memberA.publicId }), (error) => error.code === 'inquiry_answered_mutation_forbidden');

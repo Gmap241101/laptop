@@ -136,6 +136,7 @@ const createMemberListPath = ({ search = '', page = 1, pageSize } = {}) =>
 
 export const inquiryApi = Object.freeze({
   peekPublicConfig(options = {}) {
+    if (options?.includeGuestTerms) return null;
     const path = createPublicConfigPath(options);
     return getFreshInquiryReadValue(`public-config|${path}`);
   },
@@ -147,6 +148,10 @@ export const inquiryApi = Object.freeze({
   },
   async getPublicConfig({ includeGuestTerms = false, includeCategories = true } = {}) {
     const path = createPublicConfigPath({ includeGuestTerms, includeCategories });
+    if (includeGuestTerms) {
+      const payload = await requestJson({ path });
+      return payload.inquiryConfig || {};
+    }
     return withInquiryReadCache(`public-config|${path}`, async () => {
       const payload = await requestJson({ path });
       return payload.inquiryConfig || {};
@@ -276,11 +281,13 @@ export const inquiryApi = Object.freeze({
 
   async saveInquiryTerm(input) {
     const payload = await requestJson({ path: '/api/admin/inquiries/terms', method: 'POST', body: input, auth: 'clerk' });
+    clearInquiryReadCache('public-config|');
     return payload.inquiryTerm || null;
   },
 
   async deleteInquiryTerm(id) {
     const payload = await requestJson({ path: `/api/admin/inquiries/terms/${encodeURIComponent(id)}`, method: 'DELETE', auth: 'clerk' });
+    clearInquiryReadCache('public-config|');
     return payload.inquiryTermDelete || {};
   },
 
