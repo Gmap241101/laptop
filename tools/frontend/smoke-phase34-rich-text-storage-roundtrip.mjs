@@ -10,6 +10,8 @@ const userInquiry = read('src/user/UserInquiryPanel.jsx');
 const inquiryApi = read('src/features/inquiries/inquiryApi.js');
 const inquiryService = read('server/src/inquiries/inquiry-service.mjs');
 const inquiryRepository = read('server/src/inquiries/inquiry-repository.mjs');
+const boardRepository = read('server/src/boards/board-repository.mjs');
+const siteContentRepository = read('server/src/content/site-content-repository.mjs');
 const boardController = read('src/features/boards/useAdminBoardPostController.js');
 const popupController = read('src/features/boards/useAdminPopupPostController.js');
 const footerController = read('src/features/boards/useAdminFooterContentController.js');
@@ -67,12 +69,23 @@ assert.match(adminInquiry, /const bodyHtml = sanitizeRichTextHtml\(termForm\.bod
 
 assert.match(inquiryService, /const contentHash = hashStructured\(\{ title, bodyHtml, bodyText, required: Boolean\(input\?\.required\) \}\)/, 'inquiry-term version hash must include HTML so formatting-only edits create a new revision');
 for (const code of ['inquiry_body_storage_roundtrip_mismatch','inquiry_answer_storage_roundtrip_mismatch','inquiry_term_storage_roundtrip_mismatch']) {
-  assert.ok(inquiryService.includes(code), `server must fail closed when stored rich-text HTML changes unexpectedly: ${code}`);
+  assert.ok(inquiryRepository.includes(code), `repository transaction must fail closed when stored rich-text HTML changes unexpectedly: ${code}`);
 }
+assert.doesNotMatch(inquiryService, /assertRichTextRoundTrip/, 'rich-text verification must not happen after repository COMMIT');
+assert.match(inquiryRepository, /const assertStoredRichTextHtml = /, 'inquiry repository must own transactional rich-text verification');
+assert.match(inquiryRepository, /SELECT public_id,body_html,body_text FROM app_inquiries WHERE inquiry_id=\$1 AND deleted_at IS NULL/, 'guest create must re-read stored rich HTML before COMMIT');
+assert.match(inquiryRepository, /bodyHtml: stored\.rows\[0\]\?\.body_html \|\| ''/, 'guest create must return stored bodyHtml instead of only publicId');
 assert.match(inquiryRepository, /SET title=\$2,body_html=\$3,body_text=\$4/, 'inquiry-term repository must write body_html directly');
 assert.match(inquiryRepository, /contentHtml: row\.body_html \|\| ''/, 'inquiry-term repository must return stored body_html without text-only reconstruction');
 assert.match(inquiryRepository, /SET category_id=\$2,title=\$3,body_html=\$4,body_text=\$5/, 'inquiry repository updates must preserve body_html separately from body_text');
 assert.match(inquiryRepository, /SET body_html=\$3,body_text=\$4/, 'administrator answer updates must preserve body_html separately from body_text');
+assert.match(boardRepository, /notice_content_storage_roundtrip_mismatch/, 'notice writes must verify stored rich HTML before commit');
+assert.match(boardRepository, /faq_content_storage_roundtrip_mismatch/, 'FAQ writes must verify stored rich HTML before commit');
+assert.match(boardRepository, /assertStoredRichTextHtml\(\{ expectedHtml: post\.contentHtml, actualHtml: nextBase\?\.contentHtml/, 'board repository must compare PostgreSQL content_html with submitted canonical HTML');
+assert.match(siteContentRepository, /const assertStoredRichTextDocuments = async/, 'site-content repository must verify rich HTML embedded in JSONB documents');
+assert.match(siteContentRepository, /payload->>'contentHtml' AS content_html/, 'site-content round-trip verification must read the stored JSONB contentHtml string');
+assert.match(siteContentRepository, /await assertStoredRichTextDocuments\(client, domain, normalizedDocuments\);[\s\S]*await client\.query\('COMMIT'\)/, 'full-domain popup/footer/terms writes must verify rich HTML before COMMIT');
+assert.match(siteContentRepository, /await assertStoredRichTextDocuments\(client, domain, normalizedUpserts\);[\s\S]*await client\.query\('COMMIT'\)/, 'partial popup/footer/terms writes must verify rich HTML before COMMIT');
 
 assert.match(inquiryApi, /peekPublicConfig\(options = \{\}\) \{[\s\S]*if \(options\?\.includeGuestTerms\) return null;/, 'guest legal-term HTML must never be served from the short-lived summary cache');
 assert.match(inquiryApi, /async getPublicConfig\(\{ includeGuestTerms = false, includeCategories = true \} = \{\}\) \{[\s\S]*if \(includeGuestTerms\) \{[\s\S]*requestJson\(\{ path \}\)/, 'guest legal-term reads must bypass the summary cache and fetch current HTML');

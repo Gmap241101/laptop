@@ -55,6 +55,8 @@ const mapRepositoryError = (error) => {
     faq_category_already_exists: ['faq_category_already_exists', 'FAQ category already exists.', 409],
     faq_category_duplicate_name: ['faq_category_duplicate_name', 'FAQ category name already exists.', 409],
     faq_category_in_use: ['faq_category_in_use', 'FAQ category is still used by posts.', 409],
+    notice_content_storage_roundtrip_mismatch: ['notice_content_storage_roundtrip_mismatch', 'Stored notice rich-text HTML did not match the submitted HTML.', 500],
+    faq_content_storage_roundtrip_mismatch: ['faq_content_storage_roundtrip_mismatch', 'Stored FAQ rich-text HTML did not match the submitted HTML.', 500],
   };
   const mapped = map[error?.code];
   if (!mapped) throw error;

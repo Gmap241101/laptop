@@ -9,6 +9,31 @@ const mapRow = (row) => ({
 });
 
 export const createSiteContentRepository = (pool) => {
+  const assertStoredRichTextDocuments = async (client, domain, documents = []) => {
+    const expected = (Array.isArray(documents) ? documents : [])
+      .filter((item) => item?.key && Object.prototype.hasOwnProperty.call(item?.payload || {}, 'contentHtml') && typeof item.payload.contentHtml === 'string')
+      .map((item) => ({ key: String(item.key).trim(), html: String(item.payload.contentHtml) }));
+    if (expected.length === 0) return;
+    const result = await client.query(
+      `SELECT document_key,payload->>'contentHtml' AS content_html
+         FROM app_site_content_documents
+        WHERE domain=$1 AND document_key=ANY($2::text[])`,
+      [domain, expected.map((item) => item.key)],
+    );
+    const stored = new Map(result.rows.map((row) => [String(row.document_key || ''), String(row.content_html || '')]));
+    for (const item of expected) {
+      if (stored.get(item.key) === item.html) continue;
+      const error = new Error('Stored site-content rich-text HTML did not match the submitted HTML.');
+      error.name = 'SiteContentRepositoryError';
+      error.code = 'site_content_rich_text_storage_roundtrip_mismatch';
+      error.status = 500;
+      error.domain = domain;
+      error.documentKey = item.key;
+      error.expectedLength = item.html.length;
+      error.actualLength = String(stored.get(item.key) || '').length;
+      throw error;
+    }
+  };
   const getRentalConfigBootstrapContext = async () => {
     const [teamResult, directoryStateResult, directoryCountResult] = await Promise.all([
       pool.query(`
@@ -284,6 +309,7 @@ export const createSiteContentRepository = (pool) => {
           [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, normalizedSourceMode, item.sourceUpdatedAt],
         );
       }
+      await assertStoredRichTextDocuments(client, domain, normalizedDocuments);
       await client.query('COMMIT');
       const state = await getDomain(domain);
       return state ? Object.freeze({ ...state, sourceMode: normalizedSourceMode }) : state;
@@ -377,6 +403,7 @@ export const createSiteContentRepository = (pool) => {
           [domain, item.key, JSON.stringify(item.payload), item.enabled, item.sortOrder, normalizedSourceMode, item.sourceUpdatedAt],
         );
       }
+      await assertStoredRichTextDocuments(client, domain, normalizedUpserts);
       await client.query('COMMIT');
       const state = await getDomain(domain);
       return state ? Object.freeze({ ...state, sourceMode: normalizedSourceMode }) : state;

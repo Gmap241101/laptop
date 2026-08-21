@@ -10,6 +10,16 @@ const repositoryError = (code, message, status = 409, details = {}) => {
   return error;
 };
 
+const assertStoredRichTextHtml = ({ expectedHtml = '', actualHtml = '', code = 'rich_text_storage_roundtrip_mismatch' } = {}) => {
+  const expected = String(expectedHtml || '');
+  const actual = String(actualHtml || '');
+  if (actual === expected) return;
+  throw repositoryError(code, 'Stored rich-text HTML did not match the submitted HTML.', 500, {
+    expectedLength: expected.length,
+    actualLength: actual.length,
+  });
+};
+
 const safeJsonArray = (value) => Array.isArray(value) ? value : [];
 
 const mapCategory = (row) => row ? Object.freeze({
@@ -343,24 +353,42 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
     },
 
     async saveInquiryTerm({ id, title, bodyHtml, bodyText, required, revision, contentHash, enabled, actorId }) {
-      const current = await pool.query(`SELECT term_id FROM app_inquiry_terms WHERE term_id=$1`, [trim(id)]);
-      if (current.rows[0]) {
-        await pool.query(
-          `UPDATE app_inquiry_terms
-              SET title=$2,body_html=$3,body_text=$4,required=$5,revision=$6,content_hash=$7,enabled=$8,
-                  updated_by=$9,updated_at=NOW(),deleted_at=NULL,deleted_by=''
-            WHERE term_id=$1`,
-          [trim(id), trim(title), String(bodyHtml || ''), String(bodyText || ''), Boolean(required), Math.max(1, Number(revision || 1)), trim(contentHash), Boolean(enabled), trim(actorId)],
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const current = await client.query(`SELECT term_id FROM app_inquiry_terms WHERE term_id=$1 FOR UPDATE`, [trim(id)]);
+        if (current.rows[0]) {
+          await client.query(
+            `UPDATE app_inquiry_terms
+                SET title=$2,body_html=$3,body_text=$4,required=$5,revision=$6,content_hash=$7,enabled=$8,
+                    updated_by=$9,updated_at=NOW(),deleted_at=NULL,deleted_by=''
+              WHERE term_id=$1`,
+            [trim(id), trim(title), String(bodyHtml || ''), String(bodyText || ''), Boolean(required), Math.max(1, Number(revision || 1)), trim(contentHash), Boolean(enabled), trim(actorId)],
+          );
+        } else {
+          await client.query(
+            `INSERT INTO app_inquiry_terms
+               (term_id,title,body_html,body_text,required,revision,content_hash,enabled,created_by,updated_by,created_at,updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,NOW(),NOW())`,
+            [trim(id), trim(title), String(bodyHtml || ''), String(bodyText || ''), Boolean(required), Math.max(1, Number(revision || 1)), trim(contentHash), Boolean(enabled), trim(actorId)],
+          );
+        }
+        const stored = await client.query(
+          `SELECT term_id,title,body_html,body_text,required,revision,content_hash,enabled,created_at,updated_at
+             FROM app_inquiry_terms
+            WHERE term_id=$1 AND deleted_at IS NULL`,
+          [trim(id)],
         );
-      } else {
-        await pool.query(
-          `INSERT INTO app_inquiry_terms
-             (term_id,title,body_html,body_text,required,revision,content_hash,enabled,created_by,updated_by,created_at,updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,NOW(),NOW())`,
-          [trim(id), trim(title), String(bodyHtml || ''), String(bodyText || ''), Boolean(required), Math.max(1, Number(revision || 1)), trim(contentHash), Boolean(enabled), trim(actorId)],
-        );
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_term_storage_roundtrip_mismatch' });
+        const mapped = mapInquiryTerm(stored.rows[0]);
+        await client.query('COMMIT');
+        return mapped;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
       }
-      return this.getInquiryTerm(id);
     },
 
     async deleteInquiryTerm({ termId, actorId }) {
@@ -433,6 +461,8 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         if (Array.isArray(attachments)) {
           await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: trim(inquiryId), attachments, createdBy: trim(member.memberUid) });
         }
+        const stored = await client.query(`SELECT body_html FROM app_inquiries WHERE inquiry_id=$1 AND deleted_at IS NULL`, [trim(inquiryId)]);
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_body_storage_roundtrip_mismatch' });
         await client.query('COMMIT');
         return this.getMemberInquiry({ memberUid: member.memberUid, publicId });
       } catch (error) {
@@ -489,8 +519,17 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         if (Array.isArray(attachments)) {
           await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: trim(inquiryId), attachments, createdBy: trim(author.email) });
         }
+        const stored = await client.query(
+          `SELECT public_id,body_html,body_text FROM app_inquiries WHERE inquiry_id=$1 AND deleted_at IS NULL`,
+          [trim(inquiryId)],
+        );
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_body_storage_roundtrip_mismatch' });
         await client.query('COMMIT');
-        return Object.freeze({ publicId: trim(publicId) });
+        return Object.freeze({
+          publicId: stored.rows[0]?.public_id || trim(publicId),
+          bodyHtml: stored.rows[0]?.body_html || '',
+          bodyText: stored.rows[0]?.body_text || '',
+        });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -573,6 +612,8 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         if (Array.isArray(attachments)) {
           await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry', ownerId: row.inquiry_id, attachments, createdBy: trim(memberUid) || ownerType });
         }
+        const stored = await client.query(`SELECT body_html FROM app_inquiries WHERE inquiry_id=$1 AND deleted_at IS NULL`, [row.inquiry_id]);
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_body_storage_roundtrip_mismatch' });
         await client.query('COMMIT');
         return ownerType === 'member'
           ? this.getMemberInquiry({ memberUid, publicId })
@@ -779,6 +820,8 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
           [trim(answerId), inquiry.rows[0].inquiry_id, String(bodyHtml || ''), String(bodyText || ''), trim(adminIdentityId), trim(adminDisplayName)],
         );
         await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry_answer', ownerId: trim(answerId), attachments, createdBy: trim(adminIdentityId) });
+        const stored = await client.query(`SELECT body_html FROM app_inquiry_answers WHERE answer_id=$1 AND deleted_at IS NULL`, [trim(answerId)]);
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_answer_storage_roundtrip_mismatch' });
         await client.query(`UPDATE app_inquiries SET updated_at=NOW() WHERE inquiry_id=$1`, [inquiry.rows[0].inquiry_id]);
         await client.query('COMMIT');
         return this.getAdminInquiry(publicId);
@@ -800,10 +843,11 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
              FROM app_inquiries i
             WHERE ans.answer_id=$1 AND ans.inquiry_id=i.inquiry_id AND i.public_id=$2
               AND i.deleted_at IS NULL AND ans.deleted_at IS NULL
-            RETURNING ans.answer_id`,
+            RETURNING ans.answer_id,ans.body_html`,
           [trim(answerId), trim(publicId), String(bodyHtml || ''), String(bodyText || '')],
         );
         if (!result.rows[0]) throw repositoryError('inquiry_answer_not_found', 'Inquiry answer was not found.', 404);
+        assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: result.rows[0]?.body_html, code: 'inquiry_answer_storage_roundtrip_mismatch' });
         if (Array.isArray(attachments)) {
           await attachmentRepository.syncOwnerAttachments(client, { ownerType: 'inquiry_answer', ownerId: trim(answerId), attachments, createdBy: trim(actorId) });
         }

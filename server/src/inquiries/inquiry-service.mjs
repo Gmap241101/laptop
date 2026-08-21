@@ -52,11 +52,6 @@ const normalizeBody = (input = {}) => ({
   bodyText: trim(input.bodyText || input.body || ''),
 });
 
-const assertRichTextRoundTrip = ({ expectedHtml = '', actualHtml = '', code = 'rich_text_storage_roundtrip_mismatch' } = {}) => {
-  if (String(actualHtml || '') === String(expectedHtml || '')) return;
-  throw serviceError(code, 'Stored rich-text HTML did not match the submitted HTML.', 500);
-};
-
 const validateInquiryContent = (input = {}) => {
   const categoryId = trim(input.categoryId);
   const title = trim(input.title);
@@ -287,7 +282,6 @@ export const createInquiryService = ({ repository }) => {
           member,
           ...content,
         });
-        assertRichTextRoundTrip({ expectedHtml: content.bodyHtml, actualHtml: created?.bodyHtml, code: 'inquiry_body_storage_roundtrip_mismatch' });
         return created;
       } catch (error) {
         return mapRepositoryError(error);
@@ -311,7 +305,6 @@ export const createInquiryService = ({ repository }) => {
       const content = validateInquiryContent(input);
       try {
         const updated = await repository.updateOwnedInquiry({ ownerType: 'member', memberUid: member.memberUid, publicId: trim(publicId), ...content });
-        assertRichTextRoundTrip({ expectedHtml: content.bodyHtml, actualHtml: updated?.bodyHtml, code: 'inquiry_body_storage_roundtrip_mismatch' });
         return updated;
       } catch (error) {
         return mapRepositoryError(error);
@@ -386,7 +379,6 @@ export const createInquiryService = ({ repository }) => {
           rotateIdentityPassword,
           consents,
         });
-        assertRichTextRoundTrip({ expectedHtml: content.bodyHtml, actualHtml: created?.bodyHtml, code: 'inquiry_body_storage_roundtrip_mismatch' });
         return Object.freeze({ ...created, passwordResetSupported: false });
       } catch (error) {
         return mapRepositoryError(error);
@@ -437,7 +429,6 @@ export const createInquiryService = ({ repository }) => {
       const content = validateInquiryContent(input);
       try {
         const updated = await repository.updateOwnedInquiry({ ownerType: 'guest', publicId: trim(publicId), ...content });
-        assertRichTextRoundTrip({ expectedHtml: content.bodyHtml, actualHtml: updated?.bodyHtml, code: 'inquiry_body_storage_roundtrip_mismatch' });
         return updated;
       } catch (error) {
         return mapRepositoryError(error);
@@ -494,7 +485,6 @@ export const createInquiryService = ({ repository }) => {
           attachments: normalizeSecureAttachmentInputs(input?.attachments),
         });
         const storedAnswer = Array.isArray(updated?.answers) ? updated.answers.find((answer) => trim(answer?.id) === answerId) : null;
-        assertRichTextRoundTrip({ expectedHtml: bodyHtml, actualHtml: storedAnswer?.bodyHtml, code: 'inquiry_answer_storage_roundtrip_mismatch' });
         return updated;
       } catch (error) {
         return mapRepositoryError(error);
@@ -518,7 +508,6 @@ export const createInquiryService = ({ repository }) => {
             : null,
         });
         const storedAnswer = Array.isArray(updated?.answers) ? updated.answers.find((answer) => trim(answer?.id) === normalizedAnswerId) : null;
-        assertRichTextRoundTrip({ expectedHtml: bodyHtml, actualHtml: storedAnswer?.bodyHtml, code: 'inquiry_answer_storage_roundtrip_mismatch' });
         return updated;
       } catch (error) {
         return mapRepositoryError(error);
@@ -623,7 +612,6 @@ export const createInquiryService = ({ repository }) => {
         enabled: input?.enabled !== false,
         actorId: actor.id,
       });
-      assertRichTextRoundTrip({ expectedHtml: bodyHtml, actualHtml: saved?.contentHtml, code: 'inquiry_term_storage_roundtrip_mismatch' });
       return saved;
     },
 

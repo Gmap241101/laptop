@@ -9,6 +9,17 @@ const repositoryError = (code, message, details = {}) => {
   return error;
 };
 
+const assertStoredRichTextHtml = ({ expectedHtml = '', actualHtml = '', code } = {}) => {
+  const expected = String(expectedHtml || '');
+  const actual = String(actualHtml || '');
+  if (actual === expected) return;
+  const error = repositoryError(code || 'board_rich_text_storage_roundtrip_mismatch', 'Stored board rich-text HTML did not match the submitted HTML.');
+  error.status = 500;
+  error.expectedLength = expected.length;
+  error.actualLength = actual.length;
+  throw error;
+};
+
 const mapPost = (row) => row ? Object.freeze({
   id: row.post_id,
   boardType: row.board_type,
@@ -411,6 +422,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
       }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const nextBase = mapPost(nextResult.rows[0]);
+      assertStoredRichTextHtml({ expectedHtml: post.contentHtml, actualHtml: nextBase?.contentHtml, code: 'notice_content_storage_roundtrip_mismatch' });
       const next = Object.freeze({ ...nextBase, attachments: await attachmentStore.listForOwner('notice', post.id, client) });
       await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');
@@ -470,6 +482,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
       }
       const nextResult = await client.query(`SELECT * FROM app_board_posts WHERE post_id=$1`, [post.id]);
       const nextBase = mapPost(nextResult.rows[0]);
+      assertStoredRichTextHtml({ expectedHtml: post.contentHtml, actualHtml: nextBase?.contentHtml, code: 'faq_content_storage_roundtrip_mismatch' });
       const next = Object.freeze({ ...nextBase, attachments: await attachmentStore.listForOwner('faq', post.id, client) });
       await client.query(`UPDATE app_board_posts SET mirror_state='retired',synced_at=NOW() WHERE post_id=$1`, [post.id]);
       await refreshSyncCounts(client, post.actorClerkUserId || '');

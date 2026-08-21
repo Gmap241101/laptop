@@ -86,7 +86,8 @@ const repository = {
       }
     }
     const row = { publicId: input.publicId, authorType: 'guest', memberUid: null, categoryId: input.categoryId, title: input.title, bodyHtml: input.bodyHtml, bodyText: input.bodyText, authorName: input.author.name, authorEmail: input.author.email, authorTeam: input.author.team, authorPhone: input.author.phone, passwordHash: input.passwordHash, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deleted: false, consents: input.consents };
-    state.inquiries.push(row); return toDetail(row);
+    state.inquiries.push(row);
+    return { publicId: row.publicId, bodyHtml: row.bodyHtml, bodyText: row.bodyText };
   },
   async findGuestIdentity({ name, email, phone }) {
     const matches = state.inquiries.filter((i) => !i.deleted && i.authorType === 'guest' && i.authorName.toLowerCase() === String(name).toLowerCase() && i.authorEmail.toLowerCase() === String(email).toLowerCase() && i.authorPhone === phone);
@@ -194,7 +195,9 @@ await assert.rejects(() => service.getMember({ clerkUserId:'clerkA', publicId:me
 
 await assert.rejects(() => service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'필수 약관 미동의', bodyText:'내용', termDecisions:[] } }), (error) => error.code === 'guest_inquiry_required_terms_missing');
 
-const guestA = await service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'비회원 A', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
+const styledGuestHtml = '<p><span style="color: #7c3aed; background-color: #f5f3ff; font-weight: 700">비회원 내용</span></p>';
+const guestA = await service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'비회원 A', bodyHtml:styledGuestHtml, bodyText:'비회원 내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
+assert.equal(guestA.bodyHtml, styledGuestHtml, 'guest inquiry create must return the stored rich-text HTML instead of only publicId');
 const guestA2 = await service.createGuest({ input:{ name:'홍길동', team:'총무팀', email:'hong@example.com', phone:'01012345678', password:'StrongPass!23', passwordConfirm:'StrongPass!23', categoryId:'rental', title:'비회원 A2', bodyText:'내용2', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
 const guestB = await service.createGuest({ input:{ name:'김철수', team:'인사팀', email:'kim@example.com', phone:'01099998888', password:'Different!23', passwordConfirm:'Different!23', categoryId:'rental', title:'비회원 B', bodyText:'내용', termDecisions:[{source:'inquiry',id:'privacy',accepted:true}] } });
 
@@ -283,6 +286,10 @@ assert.match(repositorySource, /if \(rotateIdentityPassword\) \{/);
 assert.match(repositorySource, /DELETE FROM app_inquiry_guest_sessions s/);
 assert.match(repositorySource, /s\.scope_public_ids \? i\.public_id/);
 assert.match(repositorySource, /SET guest_password_hash=\$1/);
+assert.match(repositorySource, /SELECT public_id,body_html,body_text FROM app_inquiries WHERE inquiry_id=\$1 AND deleted_at IS NULL/, 'guest create must re-read the stored body_html inside the transaction');
+assert.match(repositorySource, /return Object\.freeze\(\{[\s\S]*publicId: stored\.rows\[0\]\?\.public_id[\s\S]*bodyHtml: stored\.rows\[0\]\?\.body_html/, 'guest create return contract must include the stored bodyHtml used by callers');
+assert.match(repositorySource, /assertStoredRichTextHtml\(\{ expectedHtml: bodyHtml, actualHtml: stored\.rows\[0\]\?\.body_html, code: 'inquiry_body_storage_roundtrip_mismatch' \}\);[\s\S]*await client\.query\('COMMIT'\)/, 'inquiry body round-trip verification must run before COMMIT');
+assert.doesNotMatch(serviceSource, /assertRichTextRoundTrip/, 'service must not perform post-COMMIT rich-text verification');
 assert.match(serviceSource, /const publicIds = identityCheck\.publicIds/);
 assert.match(repositorySource, /ARRAY_AGG\(guest_password_hash ORDER BY created_at ASC,inquiry_id ASC\)/);
 assert.doesNotMatch(serviceSource, /findGuestCandidates|candidates\.slice|for \(const candidate/);
