@@ -172,6 +172,14 @@ for (const marker of [
 ]) assert.ok(adminPanel.includes(marker), `Admin inquiry marker missing: ${marker}`);
 assert.match(adminPanel, /제목, 본문, 작성자명, 이메일, 연락처 검색/);
 assert.ok(adminPanel.includes("<Field label=\"상태\"><Select value={status}") && adminPanel.includes("style={{ fontSize: '0.75rem', lineHeight: '1rem' }}"), 'admin inquiry status filter must match the compact search input text metrics');
+assert.match(adminPanel, /import ModalPortal from ['"]\.\.\/components\/ModalPortal\.jsx['"];/, 'admin inquiry modals must render through the shared document-body portal');
+assert.match(adminPanel, /<ModalPortal[\s\S]{0,320}fixed inset-0 z-\[120\][\s\S]{0,180}backdrop-blur-sm/, 'admin inquiry modal backdrop must cover and blur the full viewport');
+assert.doesNotMatch(adminPanel, /\{term\.required \? '\[필수\]' : '\[선택\]'\}/, 'inquiry settings terms must use badges instead of bracketed required/optional text');
+assert.ok((adminPanel.match(/rounded-full border px-2 py-0\.5 text-\[10px\] font-bold/g) || []).length >= 2, 'signup and inquiry terms must both use the existing required/optional badge style');
+assert.match(adminPanel, /className="!px-3 !py-2 !text-xs"[\s\S]{0,120}>\s*문의 전용 약관 등록\s*<\/Button>/, 'inquiry-only term registration button must use smaller text without a leading plus icon');
+assert.doesNotMatch(adminPanel, /<Plus[^>]*>[\s\S]{0,80}문의 전용 약관 등록|<Plus[^>]*\/>[\s\S]{0,80}문의 전용 약관 등록/, 'inquiry-only term registration button must not show a plus icon');
+assert.match(adminPanel, /variant="outline" className="!rounded-lg !px-2\.5 !py-1\.5 !text-\[11px\]"[\s\S]{0,180}>수정<\/Button>/, 'inquiry term edit action must use the compact button size');
+assert.match(adminPanel, /variant="dangerOutline" className="!rounded-lg !px-2\.5 !py-1\.5 !text-\[11px\]"[\s\S]{0,180}>삭제<\/Button>/, 'inquiry term delete action must use the compact button size');
 assert.match(adminPanel, /<th[^>]*>제목<\/th>/);
 assert.doesNotMatch(adminPanel, /<th[^>]*>이메일<\/th>/);
 assert.doesNotMatch(adminPanel, /<th[^>]*>연락처<\/th>/);

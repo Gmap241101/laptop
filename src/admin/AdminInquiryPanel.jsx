@@ -8,6 +8,7 @@ import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
 import PaginationControls from '../components/PaginationControls.jsx';
+import ModalPortal from '../components/ModalPortal.jsx';
 import AdminInquiryCategoryDialog from './AdminInquiryCategoryDialog.jsx';
 
 const STATUS_LABELS = Object.freeze({ waiting: '답변대기', answered: '답변완료', additional: '추가답변' });
@@ -41,7 +42,12 @@ const formatDateTime = (value) => {
 const StatusBadge = ({ status }) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${STATUS_CLASSES[status] || STATUS_CLASSES.waiting}`}>{STATUS_LABELS[status] || STATUS_LABELS.waiting}</span>;
 
 const ModalShell = ({ title, description = '', maxWidth = 'max-w-4xl', children, onClose }) => (
-  <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/45 p-3 sm:p-5">
+  <ModalPortal
+    className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-sm sm:p-5"
+    role="dialog"
+    aria-modal="true"
+    aria-label={title}
+  >
     <div className={`mk-modal-scroll-shell max-h-[94vh] w-full ${maxWidth} overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl`}>
       <div className="sticky top-0 z-20 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
         <div><h3 className="text-base font-bold text-slate-950">{title}</h3>{description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}</div>
@@ -49,7 +55,7 @@ const ModalShell = ({ title, description = '', maxWidth = 'max-w-4xl', children,
       </div>
       {children}
     </div>
-  </div>
+  </ModalPortal>
 );
 
 const Field = ({ label, children }) => <div><div className="mb-1.5 text-[11px] font-semibold text-slate-600">{label}</div>{children}</div>;
@@ -416,7 +422,105 @@ export default function AdminInquiryPanel({ ctx }) {
         onClose={() => setCategoryOpen(false)}
       />
 
-      {settingsOpen ? <ModalShell title="문의하기 설정" description="문의 가능 대상, 비회원 적용 약관, 페이지당 목록 표시 수를 설정합니다." maxWidth="max-w-4xl" onClose={() => !settingsSaving && setSettingsOpen(false)}><div className="space-y-6 p-5"><div><div className="text-sm font-bold text-slate-900">문의 가능 대상</div><div className="mt-3 flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="radio" name="inquiryAudience" checked={!settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: false }))} /> 회원만 문의 가능</label><label className="flex items-center gap-2"><input type="radio" name="inquiryAudience" checked={settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: true }))} /> 회원 + 비회원 문의 가능</label></div></div><Field label="페이지당 목록 표시 수"><Select value={settingsDraft.postsPerPage} onChange={(value) => setSettingsDraft((c) => ({ ...c, postsPerPage: Number(value) }))}>{PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}개</option>)}</Select></Field><div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-bold text-slate-900">비회원 문의 적용 약관</div><p className="mt-1 text-xs text-slate-500">회원가입 약관과 문의 전용 약관을 복수 선택할 수 있습니다.</p></div><Button type="button" variant="outline" onClick={() => openTermEditor()}><Plus size={14} /> 문의 전용 약관 등록</Button></div>{signupTerms.length ? <div className="rounded-xl border border-slate-200 p-4"><div className="mb-3 text-xs font-bold text-slate-700">기존 회원가입 약관</div><div className="space-y-2">{signupTerms.map((term) => <label key={`signup:${term.id}`} className="flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={isTermBound('signup', term.id)} onChange={(e) => toggleTermBinding('signup', term.id, e.target.checked)} /><span><strong>{term.required ? '[필수]' : '[선택]'} {term.title}</strong> <span className="text-slate-400">revision {term.revision}</span></span></label>)}</div></div> : null}<div className="rounded-xl border border-slate-200 p-4"><div className="mb-3 text-xs font-bold text-slate-700">문의 전용 약관</div>{inquiryTerms.length ? <div className="space-y-3">{inquiryTerms.map((term) => <div key={`inquiry:${term.id}`} className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-slate-50 p-3"><label className="flex min-w-0 flex-1 items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" disabled={term.enabled === false} checked={isTermBound('inquiry', term.id)} onChange={(e) => toggleTermBinding('inquiry', term.id, e.target.checked)} /><span><strong>{term.required ? '[필수]' : '[선택]'} {term.title}</strong> <span className="text-slate-400">revision {term.revision}{term.enabled === false ? ' · 사용 안 함' : ''}</span></span></label><div className="flex gap-1.5"><Button type="button" variant="outline" onClick={() => openTermEditor(term)}>수정</Button><Button type="button" variant="dangerOutline" onClick={() => confirmDeleteTerm(term)}>삭제</Button></div></div>)}</div> : <div className="text-xs text-slate-400">등록된 문의 전용 약관이 없습니다.</div>}</div></div></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={settingsSaving} onClick={() => setSettingsOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={settingsSaving} onClick={saveSettings}>{settingsSaving ? '저장 중' : '설정 저장'}</Button></div></ModalShell> : null}
+      {settingsOpen ? (
+        <ModalShell
+          title="문의하기 설정"
+          description="문의 가능 대상, 비회원 적용 약관, 페이지당 목록 표시 수를 설정합니다."
+          maxWidth="max-w-4xl"
+          onClose={() => !settingsSaving && setSettingsOpen(false)}
+        >
+          <div className="space-y-6 p-5">
+            <div>
+              <div className="text-sm font-bold text-slate-900">문의 가능 대상</div>
+              <div className="mt-3 flex flex-wrap gap-5 text-sm">
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="inquiryAudience" checked={!settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: false }))} />
+                  회원만 문의 가능
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="inquiryAudience" checked={settingsDraft.allowGuest} onChange={() => setSettingsDraft((c) => ({ ...c, allowGuest: true }))} />
+                  회원 + 비회원 문의 가능
+                </label>
+              </div>
+            </div>
+
+            <Field label="페이지당 목록 표시 수">
+              <Select value={settingsDraft.postsPerPage} onChange={(value) => setSettingsDraft((c) => ({ ...c, postsPerPage: Number(value) }))}>
+                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}개</option>)}
+              </Select>
+            </Field>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">비회원 문의 적용 약관</div>
+                  <p className="mt-1 text-xs text-slate-500">회원가입 약관과 문의 전용 약관을 복수 선택할 수 있습니다.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="!px-3 !py-2 !text-xs"
+                  onClick={() => openTermEditor()}
+                >
+                  문의 전용 약관 등록
+                </Button>
+              </div>
+
+              {signupTerms.length ? (
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="mb-3 text-xs font-bold text-slate-700">기존 회원가입 약관</div>
+                  <div className="space-y-2">
+                    {signupTerms.map((term) => (
+                      <label key={`signup:${term.id}`} className="flex items-start gap-2 text-xs">
+                        <input type="checkbox" className="mt-0.5" checked={isTermBound('signup', term.id)} onChange={(e) => toggleTermBinding('signup', term.id, e.target.checked)} />
+                        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                            {term.required ? '필수' : '선택'}
+                          </span>
+                          <strong className="text-slate-800">{term.title}</strong>
+                          <span className="text-slate-400">revision {term.revision}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="rounded-xl border border-slate-200 p-4">
+                <div className="mb-3 text-xs font-bold text-slate-700">문의 전용 약관</div>
+                {inquiryTerms.length ? (
+                  <div className="space-y-3">
+                    {inquiryTerms.map((term) => (
+                      <div key={`inquiry:${term.id}`} className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-slate-50 p-3">
+                        <label className="flex min-w-0 flex-1 items-start gap-2 text-xs">
+                          <input type="checkbox" className="mt-0.5" disabled={term.enabled === false} checked={isTermBound('inquiry', term.id)} onChange={(e) => toggleTermBinding('inquiry', term.id, e.target.checked)} />
+                          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${term.required ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                              {term.required ? '필수' : '선택'}
+                            </span>
+                            <strong className="text-slate-800">{term.title}</strong>
+                            <span className="text-slate-400">revision {term.revision}{term.enabled === false ? ' · 사용 안 함' : ''}</span>
+                          </span>
+                        </label>
+                        <div className="flex gap-1.5">
+                          <Button type="button" variant="outline" className="!rounded-lg !px-2.5 !py-1.5 !text-[11px]" onClick={() => openTermEditor(term)}>수정</Button>
+                          <Button type="button" variant="dangerOutline" className="!rounded-lg !px-2.5 !py-1.5 !text-[11px]" onClick={() => confirmDeleteTerm(term)}>삭제</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400">등록된 문의 전용 약관이 없습니다.</div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+            <Button type="button" variant="outline" disabled={settingsSaving} onClick={() => setSettingsOpen(false)}>취소</Button>
+            <Button type="button" variant="primary" disabled={settingsSaving} onClick={saveSettings}>{settingsSaving ? '저장 중' : '설정 저장'}</Button>
+          </div>
+        </ModalShell>
+      ) : null}
 
       {termOpen ? <ModalShell title={termForm.id ? '문의 전용 약관 수정' : '문의 전용 약관 등록'} description="비회원 문의에 별도로 적용할 약관을 관리합니다. 내용이 변경되면 revision이 증가합니다." maxWidth="max-w-4xl" onClose={() => !termSaving && setTermOpen(false)}><div className="space-y-4 p-5"><Field label="약관 제목"><Input value={termForm.title} onChange={(title) => setTermForm((c) => ({ ...c, title }))} /></Field><div className="flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.required} onChange={(e) => setTermForm((c) => ({ ...c, required: e.target.checked }))} /> 필수 약관</label><label className="flex items-center gap-2"><input type="checkbox" checked={termForm.enabled} onChange={(e) => setTermForm((c) => ({ ...c, enabled: e.target.checked }))} /> 사용</label></div><RichTextEditor label="약관 본문" value={termForm.bodyHtml} onChange={(bodyHtml) => setTermForm((c) => ({ ...c, bodyHtml }))} minHeight={320} disabled={termSaving} allowVideos={false} /></div><div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4"><Button type="button" variant="outline" disabled={termSaving} onClick={() => setTermOpen(false)}>취소</Button><Button type="button" variant="primary" disabled={termSaving} onClick={saveTerm}>{termSaving ? '저장 중' : '약관 저장'}</Button></div></ModalShell> : null}
     </div>
