@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
-import { normalizeSecureAttachmentInputs } from '../../server/src/attachments/attachment-service.mjs';
+import { createPinnedLookup, normalizeSecureAttachmentInputs } from '../../server/src/attachments/attachment-service.mjs';
 
 const read = (path) => readFileSync(path, 'utf8');
 
@@ -55,7 +55,22 @@ const publicMapper = repository.slice(repository.indexOf('const publicAttachment
 assert.doesNotMatch(publicMapper, /target_url|targetUrl/, 'public attachment metadata must never include the external target URL');
 assert.match(repository, /targetUrl: row\.target_url/);
 assert.match(service, /httpsRequest/);
-assert.match(service, /lookup: \(_hostname, _options, callback\) => callback\(null, resolved\.address, resolved\.family\)/);
+assert.match(service, /lookup: createPinnedLookup\(resolved\)/);
+
+// Node 22 invokes custom lookup with { all: true } for https.request().
+// Returning a scalar address in that mode raises ERR_INVALID_IP_ADDRESS before the upstream request is sent.
+const pinnedLookup = createPinnedLookup({ address: '93.184.216.34', family: 4 });
+await new Promise((resolve, reject) => pinnedLookup('files.example.com', { all: true }, (error, records) => {
+  if (error) return reject(error);
+  assert.deepEqual(records, [{ address: '93.184.216.34', family: 4 }]);
+  resolve();
+}));
+await new Promise((resolve, reject) => pinnedLookup('files.example.com', {}, (error, address, family) => {
+  if (error) return reject(error);
+  assert.equal(address, '93.184.216.34');
+  assert.equal(family, 4);
+  resolve();
+}));
 assert.match(service, /BlockList/);
 assert.match(service, /attachment_direct_file_required/);
 assert.match(service, /MAX_DOWNLOAD_BYTES = 50 \* 1024 \* 1024/);

@@ -91,6 +91,15 @@ const resolvePublicAddress = async (hostname) => {
   return records[0];
 };
 
+export const createPinnedLookup = (resolved) => (_hostname, options, callback) => {
+  const record = { address: resolved.address, family: resolved.family };
+  if (options?.all === true) {
+    callback(null, [record]);
+    return;
+  }
+  callback(null, record.address, record.family);
+};
+
 const openUpstream = async (targetUrl, redirects = 0) => {
   if (redirects > MAX_REDIRECTS) throw serviceError('attachment_redirect_limit', 'Attachment source redirected too many times.', 502);
   const parsed = parseTargetUrl(targetUrl);
@@ -104,7 +113,7 @@ const openUpstream = async (targetUrl, redirects = 0) => {
         'User-Agent': 'MK-Rental-Secure-Attachment-Proxy/1.0',
       },
       timeout: REQUEST_TIMEOUT_MS,
-      lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family),
+      lookup: createPinnedLookup(resolved),
     }, resolve);
     request.on('timeout', () => request.destroy(serviceError('attachment_source_timeout', 'Attachment source timed out.', 504)));
     request.on('error', reject);
