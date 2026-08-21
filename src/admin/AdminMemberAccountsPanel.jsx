@@ -281,7 +281,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
       </div>
 
       {activeTab === 'current' ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
           {[
             ['승인 대기', adminUserAccountStatusCounts.pending, 'border-amber-200 bg-amber-50 text-amber-700'],
             ['활성', adminUserAccountStatusCounts.active, 'border-emerald-200 bg-emerald-50 text-emerald-700'],
@@ -366,7 +366,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
             </div>
           ) : (
             <>
-              <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white xl:block">
+              <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white min-[1200px]:block">
                 <table className="w-full table-fixed border-collapse text-left">
                   <colgroup>
                     <col className="w-[50px]" />
@@ -440,7 +440,7 @@ export default function AdminMemberAccountsPanel({ ctx }) {
                 </table>
               </div>
 
-              <div className="space-y-3 xl:hidden">
+              <div className="space-y-3 min-[1200px]:hidden">
                 {filteredManagedUserAccounts.map((account, index) => {
                   const accountStatus = account.status || '';
                   const isSaving = adminUserAccountSavingUid === account.uid;

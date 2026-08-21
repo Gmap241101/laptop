@@ -705,7 +705,7 @@ export default function AdminDashboardPanel({ ctx }) {
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
           <MetricCard
             icon={ShieldAlert}
             label="연체자 현황"
@@ -803,7 +803,7 @@ export default function AdminDashboardPanel({ ctx }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 min-[1200px]:grid-cols-6">
           <StatusCard
             icon={Boxes}
             label="전체 자산"
@@ -843,7 +843,7 @@ export default function AdminDashboardPanel({ ctx }) {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
+      <div className="grid gap-5 min-[1200px]:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.75fr)]">
         <section
           aria-labelledby="dashboard-today-work-heading"
           className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
@@ -1121,7 +1121,7 @@ export default function AdminDashboardPanel({ ctx }) {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-5 min-[1200px]:grid-cols-2">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <div>
@@ -1188,7 +1188,7 @@ export default function AdminDashboardPanel({ ctx }) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4 min-[1200px]:grid-cols-2 2xl:grid-cols-4">
             {[
               {
                 label: '신규 신청',

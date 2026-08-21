@@ -54,6 +54,7 @@ export default function RentalStatusBoard({
   title = '',
   referenceLabel = '',
   className = '',
+  desktopGridClassName = 'xl:grid-cols-6',
 }) {
   return (
     <section
@@ -74,7 +75,7 @@ export default function RentalStatusBoard({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className={`grid grid-cols-3 gap-2 sm:gap-4 md:grid-cols-3 ${desktopGridClassName}`}>
         {RENTAL_STATUS_ITEMS.map(({ key, icon, label, tone }) => (
           <StatCard
             key={key}

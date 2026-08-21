@@ -253,7 +253,7 @@ export default function AdminAssetsPanel({ ctx }) {
                         </div>
                       )}
 
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="grid gap-4 sm:grid-cols-2 min-[1200px]:grid-cols-3">
                         {adminFilteredLaptops.map((l, index) => (
                           <React.Fragment key={l.id}>
                             <div

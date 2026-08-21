@@ -43,7 +43,7 @@ assert.match(panel, /<option value="owner">최고 관리자<\/option>/);
 assert.match(panel, /<option value="admin">일반 관리자<\/option>/);
 assert.match(panel, /const adminCount = .*adminRole.*!== 'owner'/);
 assert.match(panel, />일반 관리자<\/div>[\s\S]*\{adminCount\}/);
-assert.match(panel, /sm:grid-cols-2 xl:grid-cols-4/);
+assert.match(panel, /sm:grid-cols-2 min-\[1200px\]:grid-cols-4/);
 assert.doesNotMatch(panel, />로그인 이메일<\/th>/);
 assert.match(panel, /adminAccountPageSize/);
 for (const label of ['번호', '상태', '관리자 ID', '사용자명', '조직명', '권한', '등록일시', '계정 관리']) {

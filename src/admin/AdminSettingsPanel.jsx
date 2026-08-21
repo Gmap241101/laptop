@@ -484,7 +484,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   };
 
   const renderSiteTab = () => (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+    <div className="grid gap-5 min-[1200px]:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
       <div className="space-y-5">
         <SectionCard title="사이트 명칭" description="헤더, 로그인 화면과 브라우저 제목에 적용됩니다.">
           <div className="grid gap-4 md:grid-cols-2">
@@ -597,7 +597,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
   );
 
   const renderHomeContentTab = () => (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
+    <div className="grid gap-5 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(340px,0.8fr)]">
       <div className="space-y-5">
         <SectionCard title="기본 메인 비주얼" description="등록된 메인 비주얼 배너가 없을 때 사용자 홈 화면에 표시할 기본 콘텐츠입니다.">
           <div className="space-y-4">
@@ -899,7 +899,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
       {resetCounts ? (
         <SectionCard title="초기화 대상 SQL 레코드" description="PostgreSQL 서버가 선택 범위를 직접 집계한 값입니다. 실제 초기화 직전 전체 백업을 별도로 생성해야 합니다.">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 min-[1200px]:grid-cols-3">
             {resetCounts.scopes?.map((scope) => (
               <div key={scope} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3"><span className="text-sm font-black text-slate-900">{RESET_SCOPE_META[scope]?.label || scope}</span><span className="text-lg font-black text-rose-600">{resetCounts.counts?.[scope] || 0}건</span></div>

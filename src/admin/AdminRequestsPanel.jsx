@@ -807,7 +807,7 @@ export default function AdminRequestsPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="hidden w-full max-w-full overflow-hidden rounded-xl border border-slate-200 xl:block">
+                          <div className="hidden w-full max-w-full overflow-hidden rounded-xl border border-slate-200 min-[1200px]:block">
                             <table className="w-full table-fixed border-collapse text-left">
                               <colgroup>
                                 <col className="w-[5%]" />
@@ -932,7 +932,7 @@ export default function AdminRequestsPanel({ ctx }) {
                             </table>
                           </div>
 
-                          <div className="space-y-3 xl:hidden">
+                          <div className="space-y-3 min-[1200px]:hidden">
                             {paginatedAdminRequests.map((request, index) => {
                               const requestLogs =
                                 rentalRequestLogsByRequestId.get(request.id) || [];

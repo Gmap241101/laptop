@@ -96,7 +96,7 @@ export default function AdminAccountsPanel({ ctx }) {
       />
 
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
           <div className="text-xs font-semibold">전체 관리자</div>
           <div className="mt-1 text-2xl font-bold">{(registeredAdminAccounts || []).length}</div>
@@ -178,7 +178,7 @@ export default function AdminAccountsPanel({ ctx }) {
         </div>
       ) : (
         <>
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white xl:block">
+          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white min-[1200px]:block">
             <table className="w-full table-fixed border-collapse text-left">
               <colgroup>
                 <col className="w-[6%]" />
@@ -251,7 +251,7 @@ export default function AdminAccountsPanel({ ctx }) {
             </table>
           </div>
 
-          <div className="space-y-3 xl:hidden">
+          <div className="space-y-3 min-[1200px]:hidden">
             {paginatedAdminAccounts.map((account, index) => {
               const isCurrent = account.id === authenticatedAdminId;
               const locked = Number(account.lockUntil || 0) > Date.now();

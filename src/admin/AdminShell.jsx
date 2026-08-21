@@ -114,6 +114,7 @@ const AdminShell = ({
               stats={stats}
               loading={statsLoading}
               className="mb-6 sm:mb-8"
+              desktopGridClassName="min-[1200px]:grid-cols-6"
             />
           </DevRenderProfiler>
         ) : null}
