@@ -104,6 +104,11 @@ export const createBoardService = ({ repository }) => {
       try { return await repository.listFaq(query); }
       catch (error) { return mapRepositoryError(error); }
     },
+    async getFaq(postId) {
+      const post = await repository.getFaqPost(postId);
+      if (!post) throw serviceError('faq_post_not_found', 'FAQ post was not found.', 404);
+      return post;
+    },
     bootstrap,
 
     async saveNotice(identity, actorClerkUserId, input) {

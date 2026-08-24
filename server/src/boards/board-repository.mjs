@@ -20,7 +20,7 @@ const assertStoredRichTextHtml = ({ expectedHtml = '', actualHtml = '', code } =
   throw error;
 };
 
-const mapPost = (row) => row ? Object.freeze({
+const mapPost = (row) => row?.post_id ? Object.freeze({
   id: row.post_id,
   boardType: row.board_type,
   categoryId: row.category_id || '',
@@ -44,6 +44,54 @@ const mapPost = (row) => row ? Object.freeze({
   })).filter((attachment) => attachment.id && attachment.name)),
 }) : null;
 
+
+const mapPostSummary = (row) => row?.post_id ? Object.freeze({
+  id: row.post_id,
+  boardType: row.board_type,
+  categoryId: row.category_id || '',
+  title: row.title,
+  isPinned: Boolean(row.is_pinned),
+  authorUid: row.author_uid || '',
+  authorName: row.author_name || '',
+  viewCount: Number(row.view_count || 0),
+  createdAt: row.created_at || null,
+  updatedAt: row.updated_at || null,
+  sourceMode: row.source_mode || '',
+  mirrorState: row.mirror_state || '',
+}) : null;
+
+const NOTICE_SUMMARY_PROJECTION = `
+  p.post_id,
+  p.board_type,
+  p.category_id,
+  p.title,
+  p.is_pinned,
+  p.author_uid,
+  p.author_name,
+  p.view_count,
+  p.created_at,
+  p.updated_at,
+  p.source_mode,
+  p.mirror_state
+`;
+
+const FAQ_SUMMARY_PROJECTION = NOTICE_SUMMARY_PROJECTION;
+
+const richPostProjection = (ownerType) => `
+  p.*,
+  COALESCE((
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id',a.attachment_id,
+        'name',a.display_name,
+        'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+      ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+    )
+      FROM app_secure_attachments a
+     WHERE a.owner_type='${ownerType}' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
+  ), '[]'::jsonb) AS attachments
+`;
+
 const mapCategory = (row) => row ? Object.freeze({
   id: row.category_id,
   name: row.name,
@@ -60,12 +108,6 @@ const normalizePage = (value) => {
 const normalizePageSize = (value, fallback = 10, maximum = 50) => {
   const parsed = Math.trunc(Number(value));
   return Number.isFinite(parsed) && parsed >= 5 && parsed <= maximum ? parsed : fallback;
-};
-
-const ensureBootstrapped = async (client) => {
-  const result = await client.query(`SELECT scope, synced_at FROM app_board_status WHERE scope='all'`);
-  if (!result.rows[0]) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
-  return result.rows[0];
 };
 
 const refreshSyncCounts = async () => {};
@@ -86,15 +128,6 @@ const getConfig = async (client, boardType, fallback) => {
     [boardType],
   );
   return mapConfig(result.rows[0], boardType, fallback);
-};
-
-const searchClause = (search, startIndex) => {
-  const normalized = trim(search);
-  if (!normalized) return { sql: '', values: [] };
-  return {
-    sql: ` AND (lower(title) LIKE $${startIndex} OR lower(content_text) LIKE $${startIndex})`,
-    values: [`%${lower(normalized)}%`],
-  };
 };
 
 export const createBoardRepository = (pool, { attachmentRepository = null } = {}) => {
@@ -124,7 +157,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
     });
   },
 
-  async listNotice({ search = '', page = 1, pageSize = null, pinnedLimit = 20 } = {}) {
+  async listNotice({ search = '', page = 1, pageSize = null, pinnedLimit = 20, summaryOnly = false } = {}) {
     const safePage = normalizePage(page);
     const safePinnedLimit = Math.max(1, Math.min(20, Math.trunc(Number(pinnedLimit) || 20)));
     const normalizedSearch = trim(search);
@@ -134,6 +167,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
       ? requestedPageSize
       : null;
     const searchPattern = normalizedSearch ? `%${lower(normalizedSearch)}%` : null;
+    const postProjection = summaryOnly ? NOTICE_SUMMARY_PROJECTION : richPostProjection('notice');
 
     const result = await pool.query(
       `WITH board_meta AS (
@@ -151,18 +185,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
          LEFT JOIN app_board_configs config ON config.board_type='notice'
          WHERE sync.scope='all'
        ), filtered AS (
-         SELECT p.*,
-                COALESCE((
-                  SELECT jsonb_agg(
-                    jsonb_build_object(
-                      'id',a.attachment_id,
-                      'name',a.display_name,
-                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
-                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
-                  )
-                    FROM app_secure_attachments a
-                   WHERE a.owner_type='notice' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
-                ), '[]'::jsonb) AS attachments
+         SELECT ${postProjection}
            FROM app_board_posts p
           WHERE p.board_type='notice'
             AND ($3::text IS NULL OR lower(p.title) LIKE $3 OR lower(p.content_text) LIKE $3)
@@ -210,7 +233,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
     const totalCount = Number(row.total_regular_count || 0);
     return Object.freeze({
       source: 'postgresql', authoritative: true, boardType: 'notice', config,
-      pinnedPosts: pinnedRows.map(mapPost), regularPosts: regularRows.map(mapPost),
+      pinnedPosts: pinnedRows.map(summaryOnly ? mapPostSummary : mapPost), regularPosts: regularRows.map(summaryOnly ? mapPostSummary : mapPost),
       totalRegularCount: totalCount, page: safePage, pageSize: safePageSize,
       hasNextPage: offset + regularRows.length < totalCount,
       syncedAt: row.board_synced_at || null,
@@ -218,40 +241,69 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
   },
 
   async getNoticePost(postId) {
-    await ensureBootstrapped(pool);
     const result = await pool.query(
-      `WITH ordered AS (
-         SELECT *,
-                LAG(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_post_id,
-                LAG(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_title,
-                LAG(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_author_name,
-                LAG(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_created_at,
-                LAG(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_view_count,
-                LEAD(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_post_id,
-                LEAD(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_title,
-                LEAD(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_author_name,
-                LEAD(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_created_at,
-                LEAD(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_view_count
-           FROM app_board_posts
-          WHERE board_type='notice'
+      `WITH status AS (
+         SELECT synced_at
+           FROM app_board_status
+          WHERE scope='all'
+       ), ordered_meta AS (
+         SELECT
+           post_id,
+           title,
+           author_name,
+           created_at,
+           view_count,
+           is_pinned,
+           LAG(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_post_id,
+           LAG(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_title,
+           LAG(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_author_name,
+           LAG(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_created_at,
+           LAG(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS previous_view_count,
+           LEAD(post_id) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_post_id,
+           LEAD(title) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_title,
+           LEAD(author_name) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_author_name,
+           LEAD(created_at) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_created_at,
+           LEAD(view_count) OVER (ORDER BY is_pinned DESC, created_at DESC, post_id) AS next_view_count
+         FROM app_board_posts
+         WHERE board_type='notice'
+       ), nav AS (
+         SELECT * FROM ordered_meta WHERE post_id=$1
+       ), target AS (
+         SELECT p.*,
+                COALESCE((
+                  SELECT jsonb_agg(
+                    jsonb_build_object(
+                      'id',a.attachment_id,
+                      'name',a.display_name,
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+                  )
+                    FROM app_secure_attachments a
+                   WHERE a.owner_type='notice' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
+                ), '[]'::jsonb) AS attachments
+           FROM app_board_posts p
+          WHERE p.board_type='notice' AND p.post_id=$1
        )
-       SELECT ordered.*,
-              COALESCE((
-                SELECT jsonb_agg(
-                  jsonb_build_object(
-                    'id',a.attachment_id,
-                    'name',a.display_name,
-                    'downloadPath','/api/attachments/' || a.attachment_id || '/download'
-                  ) ORDER BY a.sort_order,a.created_at,a.attachment_id
-                )
-                  FROM app_secure_attachments a
-                 WHERE a.owner_type='notice' AND a.owner_id=ordered.post_id AND a.deleted_at IS NULL
-              ), '[]'::jsonb) AS attachments
-         FROM ordered
-        WHERE post_id=$1`,
+       SELECT
+         status.synced_at AS board_synced_at,
+         target.*,
+         nav.previous_post_id,
+         nav.previous_title,
+         nav.previous_author_name,
+         nav.previous_created_at,
+         nav.previous_view_count,
+         nav.next_post_id,
+         nav.next_title,
+         nav.next_author_name,
+         nav.next_created_at,
+         nav.next_view_count
+       FROM status
+       LEFT JOIN target ON TRUE
+       LEFT JOIN nav ON TRUE`,
       [trim(postId)],
     );
     const row = result.rows[0];
+    if (!row?.board_synced_at) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
     const post = mapPost(row);
     if (!post) return null;
     const mapNavigationItem = (prefix) => row?.[`${prefix}_post_id`] ? Object.freeze({
@@ -282,7 +334,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
     return Number(result.rows[0].view_count || 0);
   },
 
-  async listFaq({ search = '', page = 1, pageSize = null, categoryId = '', searchWithinCategory = false, pinnedLimit = 20 } = {}) {
+  async listFaq({ search = '', page = 1, pageSize = null, categoryId = '', searchWithinCategory = false, pinnedLimit = 20, summaryOnly = false } = {}) {
     const safePage = normalizePage(page);
     const safePinnedLimit = Math.max(1, Math.min(20, Math.trunc(Number(pinnedLimit) || 20)));
     const normalizedCategory = trim(categoryId);
@@ -293,6 +345,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
       ? requestedPageSize
       : null;
     const searchPattern = normalizedSearch ? `%${lower(normalizedSearch)}%` : null;
+    const postProjection = summaryOnly ? FAQ_SUMMARY_PROJECTION : richPostProjection('faq');
 
     const result = await pool.query(
       `WITH board_meta AS (
@@ -310,18 +363,7 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
          LEFT JOIN app_board_configs config ON config.board_type='faq'
          WHERE sync.scope='all'
        ), filtered AS (
-         SELECT p.*,
-                COALESCE((
-                  SELECT jsonb_agg(
-                    jsonb_build_object(
-                      'id',a.attachment_id,
-                      'name',a.display_name,
-                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
-                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
-                  )
-                    FROM app_secure_attachments a
-                   WHERE a.owner_type='faq' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
-                ), '[]'::jsonb) AS attachments
+         SELECT ${postProjection}
            FROM app_board_posts p
           WHERE p.board_type='faq'
             AND (
@@ -386,11 +428,43 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
     return Object.freeze({
       source: 'postgresql', authoritative: true, boardType: 'faq', config,
       categories: categoryRows.map(mapCategory),
-      pinnedPosts: pinnedRows.map(mapPost), regularPosts: regularRows.map(mapPost),
+      pinnedPosts: pinnedRows.map(summaryOnly ? mapPostSummary : mapPost), regularPosts: regularRows.map(summaryOnly ? mapPostSummary : mapPost),
       totalRegularCount: totalCount, page: safePage, pageSize: safePageSize,
       hasNextPage: offset + regularRows.length < totalCount,
       syncedAt: row.board_synced_at || null,
     });
+  },
+
+  async getFaqPost(postId) {
+    const result = await pool.query(
+      `WITH status AS (
+         SELECT synced_at
+           FROM app_board_status
+          WHERE scope='all'
+       ), target AS (
+         SELECT p.*,
+                COALESCE((
+                  SELECT jsonb_agg(
+                    jsonb_build_object(
+                      'id',a.attachment_id,
+                      'name',a.display_name,
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                    ) ORDER BY a.sort_order,a.created_at,a.attachment_id
+                  )
+                    FROM app_secure_attachments a
+                   WHERE a.owner_type='faq' AND a.owner_id=p.post_id AND a.deleted_at IS NULL
+                ), '[]'::jsonb) AS attachments
+           FROM app_board_posts p
+          WHERE p.board_type='faq' AND p.post_id=$1
+       )
+       SELECT status.synced_at AS board_synced_at, target.*
+         FROM status
+         LEFT JOIN target ON TRUE`,
+      [trim(postId)],
+    );
+    const row = result.rows[0];
+    if (!row?.board_synced_at) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
+    return mapPost(row);
   },
 
   async saveNoticePostAuthoritative({ post }) {

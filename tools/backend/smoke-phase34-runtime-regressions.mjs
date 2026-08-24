@@ -396,6 +396,7 @@ const boardPool = {
     }
     if (text.includes('previous_post_id') && text.includes('next_post_id')) {
       return { rowCount: 1, rows: [{
+        board_synced_at: '2026-08-13T01:00:00.000Z',
         post_id: params[0], board_type: 'notice', category_id: null, title: '현재 공지', content_text: '본문', content_html: '<p>본문</p>', content_format: 'rich-html-v1',
         is_pinned: false, author_uid: '', author_name: '관리자', view_count: 7, source_mode: 'postgresql-authoritative', mirror_state: 'retired',
         created_at: '2026-08-13T01:00:00.000Z', updated_at: '2026-08-13T01:00:00.000Z',
@@ -428,7 +429,7 @@ const listNoticeStart = boardRepositorySource.indexOf('async listNotice(');
 const listNoticeEnd = boardRepositorySource.indexOf('async getNoticePost', listNoticeStart);
 const listNoticeBlock = boardRepositorySource.slice(listNoticeStart, listNoticeEnd);
 const listFaqStart = boardRepositorySource.indexOf('async listFaq(');
-const listFaqEnd = boardRepositorySource.indexOf('async saveNoticePostAuthoritative', listFaqStart);
+const listFaqEnd = boardRepositorySource.indexOf('async getFaqPost', listFaqStart);
 const listFaqBlock = boardRepositorySource.slice(listFaqStart, listFaqEnd);
 assert.equal(listNoticeBlock.includes('pool.connect()'), false, 'public notice list reads must not hold a dedicated PostgreSQL client');
 assert.equal(listFaqBlock.includes('pool.connect()'), false, 'public FAQ list reads must not hold a dedicated PostgreSQL client');

@@ -20,6 +20,8 @@ import {
   deleteFaqBoardPost,
   deleteNoticeBoardPost,
   readBoardContentCutoverConfig,
+  requestFaqPost,
+  requestNoticePost,
   saveFaqBoardPost,
   saveNoticeBoardPost,
 } from './boardContentCutover.js';
@@ -110,7 +112,7 @@ export default function useAdminBoardPostController({
   triggerToast,
 }) {
   const boardWriteRequested = readBoardContentCutoverConfig().writeRequested;
-  const openNoticePostDialog = (post = null) => {
+  const openNoticePostDialog = async (post = null) => {
     if (!isAdminAuthenticated) {
       triggerToast(
         '관리자 인증 후 공지사항을 작성하거나 수정할 수 있습니다.',
@@ -119,21 +121,32 @@ export default function useAdminBoardPostController({
       return;
     }
 
+    let resolvedPost = post;
+    if (post?.id && typeof post.contentHtml === 'undefined') {
+      try {
+        resolvedPost = await requestNoticePost(post.id);
+      } catch (error) {
+        console.error('Notice detail load error:', error);
+        triggerToast('공지사항 본문을 불러오지 못했습니다.', 'error');
+        return;
+      }
+    }
+
     const nextForm = {
-      title: post?.title || '',
+      title: resolvedPost?.title || '',
       contentHtml: sanitizeRichTextHtml(
-        post?.contentHtml ||
+        resolvedPost?.contentHtml ||
           legacyTextToRichHtml(
-            post?.contentText || post?.content || ''
+            resolvedPost?.contentText || resolvedPost?.content || ''
           )
       ),
-      isPinned: Boolean(post?.isPinned),
-      attachments: (Array.isArray(post?.attachments) ? post.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
+      isPinned: Boolean(resolvedPost?.isPinned),
+      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
     };
 
     setNoticePostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
+      mode: resolvedPost ? 'edit' : 'create',
+      postId: resolvedPost?.id || '',
       initialForm: JSON.stringify(nextForm),
     });
     setNoticePostForm(nextForm);
@@ -332,7 +345,7 @@ export default function useAdminBoardPostController({
     );
   };
 
-  const openFaqPostDialog = (post = null) => {
+  const openFaqPostDialog = async (post = null) => {
     if (!isAdminAuthenticated) {
       triggerToast(
         '관리자 인증 후 FAQ를 작성하거나 수정할 수 있습니다.',
@@ -349,22 +362,33 @@ export default function useAdminBoardPostController({
       return;
     }
 
+    let resolvedPost = post;
+    if (post?.id && typeof post.contentHtml === 'undefined') {
+      try {
+        resolvedPost = await requestFaqPost(post.id);
+      } catch (error) {
+        console.error('FAQ detail load error:', error);
+        triggerToast('FAQ 본문을 불러오지 못했습니다.', 'error');
+        return;
+      }
+    }
+
     const nextForm = {
-      categoryId: post?.categoryId || faqCategories[0]?.id || '',
-      title: post?.title || '',
+      categoryId: resolvedPost?.categoryId || faqCategories[0]?.id || '',
+      title: resolvedPost?.title || '',
       contentHtml: sanitizeRichTextHtml(
-        post?.contentHtml ||
+        resolvedPost?.contentHtml ||
           legacyTextToRichHtml(
-            post?.contentText || post?.content || ''
+            resolvedPost?.contentText || resolvedPost?.content || ''
           )
       ),
-      isPinned: Boolean(post?.isPinned),
-      attachments: (Array.isArray(post?.attachments) ? post.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
+      isPinned: Boolean(resolvedPost?.isPinned),
+      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
     };
 
     setFaqPostDialog({
-      mode: post ? 'edit' : 'create',
-      postId: post?.id || '',
+      mode: resolvedPost ? 'edit' : 'create',
+      postId: resolvedPost?.id || '',
       initialForm: JSON.stringify(nextForm),
     });
     setFaqPostForm(nextForm);

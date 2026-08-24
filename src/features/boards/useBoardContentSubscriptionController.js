@@ -325,8 +325,8 @@ export default function useBoardContentSubscriptionController({
     const searchMode = Boolean(String(search || '').trim());
     const postsPerPage = shouldLoadUserHomeNotice ? 6 : getSafeNoticePostsPerPage(noticeBoardConfig.postsPerPage);
     const activePage = shouldLoadUserHomeNotice ? 1 : shouldLoadAdminNotice ? adminNoticePage : noticePage;
-    const requestPage = searchMode ? 1 : activePage;
-    const requestPageSize = searchMode
+    const requestPage = searchMode && !shouldLoadAdminNotice ? 1 : activePage;
+    const requestPageSize = searchMode && !shouldLoadAdminNotice
       ? Math.min(500, activePage * postsPerPage)
       : shouldLoadUserHomeNotice
         ? 6
@@ -337,6 +337,7 @@ export default function useBoardContentSubscriptionController({
       page: requestPage,
       pageSize: requestPageSize,
       home: shouldLoadUserHomeNotice,
+      summaryOnly: shouldLoadAdminNotice,
     });
     if (cachedNoticeBoard) {
       const safePostsPerPage = getSafeNoticePostsPerPage(cachedNoticeBoard?.config?.postsPerPage);
@@ -363,6 +364,7 @@ export default function useBoardContentSubscriptionController({
         page: requestPage,
         pageSize: requestPageSize,
         home: shouldLoadUserHomeNotice,
+        summaryOnly: shouldLoadAdminNotice,
         useCache: true,
       }).then((board) => {
         if (cancelled) return;
@@ -446,8 +448,8 @@ export default function useBoardContentSubscriptionController({
     const searchMode = Boolean(String(search || '').trim());
     const postsPerPage = getSafeFaqPostsPerPage(faqBoardConfig.postsPerPage);
     const activePage = shouldLoadAdminFaq ? adminFaqPage : faqPage;
-    const requestPage = searchMode ? 1 : activePage;
-    const requestPageSize = searchMode
+    const requestPage = searchMode && !shouldLoadAdminFaq ? 1 : activePage;
+    const requestPageSize = searchMode && !shouldLoadAdminFaq
       ? Math.min(500, activePage * postsPerPage)
       : undefined;
     let cancelled = false;
@@ -457,6 +459,7 @@ export default function useBoardContentSubscriptionController({
       pageSize: requestPageSize,
       categoryId: activeFaqCategoryId,
       searchWithinCategory: faqSearchWithinCategory,
+      summaryOnly: shouldLoadAdminFaq,
     });
     if (cachedFaqBoard) {
       const safePostsPerPage = getSafeFaqPostsPerPage(cachedFaqBoard?.config?.postsPerPage);
@@ -486,6 +489,7 @@ export default function useBoardContentSubscriptionController({
       pageSize: requestPageSize,
       categoryId: activeFaqCategoryId,
       searchWithinCategory: faqSearchWithinCategory,
+      summaryOnly: shouldLoadAdminFaq,
       useCache: true,
     }).then((board) => {
       if (cancelled) return;

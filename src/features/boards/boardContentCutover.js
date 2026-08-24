@@ -141,8 +141,9 @@ const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) =
   return payload;
 };
 
-const createNoticeBoardPath = ({ search = '', page = 1, pageSize = null, home = false } = {}) => {
+const createNoticeBoardPath = ({ search = '', page = 1, pageSize = null, home = false, summaryOnly = false } = {}) => {
   const params = new URLSearchParams();
+  if (summaryOnly) params.set('summary', '1');
   if (home) params.set('home', '1');
   else {
     if (trim(search)) params.set('search', trim(search));
@@ -157,8 +158,8 @@ export const getCachedNoticeBoard = (options = {}) => {
   return getFreshBoardReadValue(`notice|${path}`);
 };
 
-export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = null, home = false, useCache = true, fetchImpl = fetch } = {}) => {
-  const path = createNoticeBoardPath({ search, page, pageSize, home });
+export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = null, home = false, summaryOnly = false, useCache = true, fetchImpl = fetch } = {}) => {
+  const path = createNoticeBoardPath({ search, page, pageSize, home, summaryOnly });
   return withBoardReadCache({
     key: `notice|${path}`,
     useCache: useCache && fetchImpl === fetch,
@@ -172,11 +173,18 @@ export const requestNoticeBoard = async ({ search = '', page = 1, pageSize = nul
   });
 };
 
-export const requestNoticePost = async (postId, { fetchImpl = fetch } = {}) => {
-  const payload = await publicRequest(`/api/boards/notice/${encodeURIComponent(trim(postId))}`, { fetchImpl });
-  if (!payload?.boardPost?.id) throw Object.assign(new Error('Invalid notice post payload.'), { code: 'notice_post_payload_invalid' });
-  publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'notice', operation: 'detail-read', error: null });
-  return payload.boardPost;
+export const requestNoticePost = async (postId, { useCache = true, fetchImpl = fetch } = {}) => {
+  const normalizedId = trim(postId);
+  return withBoardReadCache({
+    key: `notice|detail|${normalizedId}`,
+    useCache: useCache && fetchImpl === fetch,
+    loader: async () => {
+      const payload = await publicRequest(`/api/boards/notice/${encodeURIComponent(normalizedId)}`, { fetchImpl });
+      if (!payload?.boardPost?.id) throw Object.assign(new Error('Invalid notice post payload.'), { code: 'notice_post_payload_invalid' });
+      publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'notice', operation: 'detail-read', error: null });
+      return payload.boardPost;
+    },
+  });
 };
 
 export const incrementNoticePostView = async (postId, { fetchImpl = fetch } = {}) => {
@@ -185,8 +193,9 @@ export const incrementNoticePostView = async (postId, { fetchImpl = fetch } = {}
   return Number(payload?.noticeView?.viewCount || 0);
 };
 
-const createFaqBoardPath = ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false } = {}) => {
+const createFaqBoardPath = ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, summaryOnly = false } = {}) => {
   const params = new URLSearchParams();
+  if (summaryOnly) params.set('summary', '1');
   if (trim(search)) params.set('search', trim(search));
   params.set('page', String(page));
   if (Number(pageSize) > 0) params.set('pageSize', String(pageSize));
@@ -200,8 +209,8 @@ export const getCachedFaqBoard = (options = {}) => {
   return getFreshBoardReadValue(`faq|${path}`);
 };
 
-export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, useCache = true, fetchImpl = fetch } = {}) => {
-  const path = createFaqBoardPath({ search, page, pageSize, categoryId, searchWithinCategory });
+export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, categoryId = 'all', searchWithinCategory = false, summaryOnly = false, useCache = true, fetchImpl = fetch } = {}) => {
+  const path = createFaqBoardPath({ search, page, pageSize, categoryId, searchWithinCategory, summaryOnly });
   return withBoardReadCache({
     key: `faq|${path}`,
     useCache: useCache && fetchImpl === fetch,
@@ -211,6 +220,21 @@ export const requestFaqBoard = async ({ search = '', page = 1, pageSize = null, 
       if (board?.source !== 'postgresql') throw Object.assign(new Error('Invalid FAQ board payload.'), { code: 'faq_board_payload_invalid' });
       publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'faq', operation: 'list-read', totalCount: board.totalRegularCount, itemCount: (board.pinnedPosts?.length || 0) + (board.regularPosts?.length || 0), categoryCount: board.categories?.length || 0, syncAt: board.syncedAt || null, error: null });
       return board;
+    },
+  });
+};
+
+
+export const requestFaqPost = async (postId, { useCache = true, fetchImpl = fetch } = {}) => {
+  const normalizedId = trim(postId);
+  return withBoardReadCache({
+    key: `faq|detail|${normalizedId}`,
+    useCache: useCache && fetchImpl === fetch,
+    loader: async () => {
+      const payload = await publicRequest(`/api/boards/faq/${encodeURIComponent(normalizedId)}`, { fetchImpl });
+      if (!payload?.boardPost?.id) throw Object.assign(new Error('Invalid FAQ post payload.'), { code: 'faq_post_payload_invalid' });
+      publishBoardContentObservation({ readRequested: true, readSource: 'postgresql', boardType: 'faq', operation: 'detail-read', error: null });
+      return payload.boardPost;
     },
   });
 };

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 
 import RichTextContent from '../components/RichTextContent.jsx';
 import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';
 import AdminFaqCategoryDialog from './AdminFaqCategoryDialog.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
+import { requestFaqPost, subscribeBoardContentRefresh } from '../features/boards/boardContentCutover.js';
 
 export default function AdminFaqPanel({ ctx }) {
   const {
@@ -60,12 +61,60 @@ export default function AdminFaqPanel({ ctx }) {
     setFaqSearchWithinCategory,
     setNewFaqCategoryName,
     startEditFaqCategory,
-    toggleAdminFaqPost,
   } = ctx;
 
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [faqDetailById, setFaqDetailById] = useState(() => new Map());
+  const [faqDetailLoadingId, setFaqDetailLoadingId] = useState('');
+  const [faqDetailErrorId, setFaqDetailErrorId] = useState('');
   const faqResultCount = adminPinnedFaqPosts.length + Number(faqRegularTotalCount || 0);
+
+  useEffect(() => subscribeBoardContentRefresh((detail) => {
+    if (detail?.boardType !== 'faq' && detail?.boardType !== 'all') return;
+    setFaqDetailById(new Map());
+    setFaqDetailLoadingId('');
+    setFaqDetailErrorId('');
+    setAdminExpandedFaqPostId('');
+  }), [setAdminExpandedFaqPostId]);
+
+  const loadFaqDetail = async (post) => {
+    if (!post?.id) return null;
+    const existing = faqDetailById.get(post.id);
+    if (existing) return existing;
+    setFaqDetailLoadingId(post.id);
+    setFaqDetailErrorId((current) => current === post.id ? '' : current);
+    try {
+      const detail = await requestFaqPost(post.id);
+      setFaqDetailById((current) => {
+        const next = new Map(current);
+        next.set(post.id, detail);
+        return next;
+      });
+      return detail;
+    } catch (error) {
+      console.error('FAQ detail load error:', error);
+      setFaqDetailErrorId(post.id);
+      return null;
+    } finally {
+      setFaqDetailLoadingId((current) => current === post.id ? '' : current);
+    }
+  };
+
+  const prefetchFaqDetail = (post) => {
+    if (!post?.id || faqDetailById.has(post.id)) return;
+    void loadFaqDetail(post);
+  };
+
+  const toggleFaqDetail = (post) => {
+    if (!post?.id) return;
+    if (adminExpandedFaqPostId === post.id) {
+      setAdminExpandedFaqPostId('');
+      return;
+    }
+    setAdminExpandedFaqPostId(post.id);
+    void loadFaqDetail(post);
+  };
 
   return (
                     <div className="space-y-6">
@@ -208,11 +257,10 @@ export default function AdminFaqPanel({ ctx }) {
 
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        toggleAdminFaqPost(
-                                          post.id
-                                        )
-                                      }
+                                      onPointerEnter={() => prefetchFaqDetail(post)}
+                                      onPointerDown={() => prefetchFaqDetail(post)}
+                                      onFocus={() => prefetchFaqDetail(post)}
+                                      onClick={() => toggleFaqDetail(post)}
                                       className="flex min-w-0 items-center gap-2 px-4 py-3 text-left hover:bg-slate-50"
                                     >
                                       <span className="w-6 shrink-0 text-sm font-black text-orange-600">
@@ -251,11 +299,10 @@ export default function AdminFaqPanel({ ctx }) {
                                         type="button"
                                         variant="outline"
                                         className="whitespace-nowrap px-2.5 py-2 text-xs"
-                                        onClick={() =>
-                                          openFaqPostDialog(
-                                            post
-                                          )
-                                        }
+                                        onPointerEnter={() => prefetchFaqDetail(post)}
+                                        onPointerDown={() => prefetchFaqDetail(post)}
+                                        onFocus={() => prefetchFaqDetail(post)}
+                                        onClick={() => { void openFaqPostDialog(post); }}
                                       >
                                         <Edit3 size={13} />
                                         수정
@@ -312,11 +359,26 @@ export default function AdminFaqPanel({ ctx }) {
                                               A.
                                             </span>
 
-                                            <RichTextContent
-                                              html={post.contentHtml}
-                                              text={post.contentText || post.content}
-                                              className="min-w-0 flex-1 text-sm leading-7 text-slate-700"
-                                            />
+                                            {faqDetailById.get(post.id) ? (
+                                              <RichTextContent
+                                                html={faqDetailById.get(post.id)?.contentHtml}
+                                                text={faqDetailById.get(post.id)?.contentText || faqDetailById.get(post.id)?.content}
+                                                className="min-w-0 flex-1 text-sm leading-7 text-slate-700"
+                                              />
+                                            ) : faqDetailErrorId === post.id ? (
+                                              <div className="min-w-0 flex-1 text-xs text-rose-600">
+                                                FAQ를 불러오지 못했습니다.
+                                              </div>
+                                            ) : (
+                                              <div
+                                                className="min-w-0 flex-1 space-y-2 py-1"
+                                                aria-busy={faqDetailLoadingId === post.id ? 'true' : 'false'}
+                                              >
+                                                <div className="h-3 w-11/12 animate-pulse rounded bg-slate-200" />
+                                                <div className="h-3 w-9/12 animate-pulse rounded bg-slate-200" />
+                                                <div className="h-3 w-7/12 animate-pulse rounded bg-slate-200" />
+                                              </div>
+                                            )}
                                           </div>
 
                                           <div aria-hidden="true" />

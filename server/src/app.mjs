@@ -1851,6 +1851,7 @@ export const createRequestHandler = ({
           page: home ? 1 : url.searchParams.get('page') || '1',
           pageSize: home ? 6 : url.searchParams.get('pageSize') || undefined,
           pinnedLimit: home ? 6 : 20,
+          summaryOnly: url.searchParams.get('summary') === '1',
         });
         writeJson(response, 200, { ...basePayload, board: result }, headers);
       } catch (error) {
@@ -1890,10 +1891,22 @@ export const createRequestHandler = ({
           categoryId: url.searchParams.get('categoryId') || '',
           searchWithinCategory: url.searchParams.get('searchWithinCategory') === '1',
           pinnedLimit: 20,
+          summaryOnly: url.searchParams.get('summary') === '1',
         });
         writeJson(response, 200, { ...basePayload, board: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'faq_board_unavailable' }, headers);
+      }
+      return;
+    }
+
+    const faqPostReadMatch = request.method === 'GET' ? url.pathname.match(/^\/api\/boards\/faq\/([^/]+)$/) : null;
+    if (faqPostReadMatch) {
+      try {
+        const post = await boardService.getFaq(decodeURIComponent(faqPostReadMatch[1]));
+        writeJson(response, 200, { ...basePayload, boardPost: post }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'faq_post_unavailable' }, headers);
       }
       return;
     }

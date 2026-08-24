@@ -55,12 +55,19 @@ export default function useBoardDerivedSelectors({
       ? adminNoticeSearchMode
       : userNoticeSearchMode;
 
+  const adminNoticeRowsAreServerSummaries = useMemo(
+    () => [...allPinnedNoticePosts, ...allRegularNoticePosts].some(
+      (post) => typeof post?.contentHtml === 'undefined'
+    ),
+    [allPinnedNoticePosts, allRegularNoticePosts]
+  );
+
   const noticeRegularPostNumberById = useMemo(
     () =>
       new Map(
         allRegularNoticePosts.map((post, index) => [
           post.id,
-          activeNoticeSearchMode
+          activeNoticeSearchMode && !adminNoticeRowsAreServerSummaries
             ? allRegularNoticePosts.length - index
             : Math.max(
                 1,
@@ -76,6 +83,7 @@ export default function useBoardDerivedSelectors({
       activeNoticeSearchMode,
       noticeRegularTotalCount,
       noticePostsPerPage,
+      adminNoticeRowsAreServerSummaries,
     ]
   );
 
@@ -90,13 +98,17 @@ export default function useBoardDerivedSelectors({
   );
 
   const adminPinnedNoticePosts = useMemo(
-    () => filterNoticePostsByQuery(allPinnedNoticePosts, adminNoticeQuery),
-    [allPinnedNoticePosts, adminNoticeQuery]
+    () => adminNoticeRowsAreServerSummaries
+      ? allPinnedNoticePosts
+      : filterNoticePostsByQuery(allPinnedNoticePosts, adminNoticeQuery),
+    [allPinnedNoticePosts, adminNoticeQuery, adminNoticeRowsAreServerSummaries]
   );
 
   const adminRegularNoticePosts = useMemo(
-    () => filterNoticePostsByQuery(allRegularNoticePosts, adminNoticeQuery),
-    [allRegularNoticePosts, adminNoticeQuery]
+    () => adminNoticeRowsAreServerSummaries
+      ? allRegularNoticePosts
+      : filterNoticePostsByQuery(allRegularNoticePosts, adminNoticeQuery),
+    [allRegularNoticePosts, adminNoticeQuery, adminNoticeRowsAreServerSummaries]
   );
 
   const noticeTotalPages = Math.max(
@@ -129,7 +141,7 @@ export default function useBoardDerivedSelectors({
   const adminNoticeTotalPages = Math.max(
     1,
     Math.ceil(
-      (adminNoticeSearchMode
+      (adminNoticeSearchMode && !adminNoticeRowsAreServerSummaries
         ? adminRegularNoticePosts.length
         : noticeRegularTotalCount) / noticePostsPerPage
     )
@@ -142,7 +154,7 @@ export default function useBoardDerivedSelectors({
 
   const paginatedAdminNoticePosts = useMemo(
     () =>
-      adminNoticeSearchMode
+      adminNoticeSearchMode && !adminNoticeRowsAreServerSummaries
         ? adminRegularNoticePosts.slice(
             (safeAdminNoticePage - 1) * noticePostsPerPage,
             safeAdminNoticePage * noticePostsPerPage
@@ -150,6 +162,7 @@ export default function useBoardDerivedSelectors({
         : adminRegularNoticePosts,
     [
       adminNoticeSearchMode,
+      adminNoticeRowsAreServerSummaries,
       adminRegularNoticePosts,
       safeAdminNoticePage,
       noticePostsPerPage,
@@ -293,6 +306,11 @@ export default function useBoardDerivedSelectors({
     [pinnedFaqPosts, paginatedFaqPosts, faqCategoryOrderById]
   );
 
+  const adminFaqRowsAreServerSummaries = useMemo(
+    () => (faqPosts || []).some((post) => typeof post?.contentHtml === 'undefined'),
+    [faqPosts]
+  );
+
   const adminPinnedFaqPosts = useMemo(
     () => (faqPosts || []).filter((post) => post.isPinned),
     [faqPosts]
@@ -309,7 +327,7 @@ export default function useBoardDerivedSelectors({
   );
 
   const safeAdminFaqPage = Math.min(adminFaqPage, adminFaqTotalPages);
-  const paginatedAdminFaqPosts = faqSearchMode
+  const paginatedAdminFaqPosts = faqSearchMode && !adminFaqRowsAreServerSummaries
     ? adminRegularFaqPosts.slice(
         (safeAdminFaqPage - 1) * faqPostsPerPage,
         safeAdminFaqPage * faqPostsPerPage

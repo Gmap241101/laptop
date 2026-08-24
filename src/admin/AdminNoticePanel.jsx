@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import AdminBoardListSettingsDialog from './AdminBoardListSettingsDialog.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
+import { requestNoticePost } from '../features/boards/boardContentCutover.js';
 
 export default function AdminNoticePanel({ ctx }) {
   const {
@@ -132,7 +133,15 @@ export default function AdminNoticePanel({ ctx }) {
                   <td className="px-3 py-3 text-center text-xs text-slate-500">{Number(item.post.viewCount) || 0}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-center gap-1.5">
-                      <Button type="button" variant="outline" className="whitespace-nowrap px-2.5 py-2 text-xs" onClick={() => openNoticePostDialog(item.post)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="whitespace-nowrap px-2.5 py-2 text-xs"
+                        onPointerEnter={() => { void requestNoticePost(item.post.id).catch(() => {}); }}
+                        onPointerDown={() => { void requestNoticePost(item.post.id).catch(() => {}); }}
+                        onFocus={() => { void requestNoticePost(item.post.id).catch(() => {}); }}
+                        onClick={() => { void openNoticePostDialog(item.post); }}
+                      >
                         <Edit3 size={13} /> 수정
                       </Button>
                       <Button type="button" variant="dangerOutline" className="whitespace-nowrap px-2.5 py-2 text-xs" disabled={noticePostDeletingId === item.post.id} onClick={() => confirmDeleteNoticePost(item.post)}>
