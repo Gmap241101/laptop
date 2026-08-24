@@ -174,8 +174,8 @@ export default function AdminAccountsPanel({ ctx }) {
                 <col className="w-[14%]" />
                 <col className="w-[12%]" />
                 <col className="w-[14%]" />
-                <col className="w-[9%]" />
-                <col className="w-[20%]" />
+                <col className="w-[11%]" />
+                <col className="w-[18%]" />
                 <col className="w-[19%]" />
               </colgroup>
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
@@ -207,7 +207,7 @@ export default function AdminAccountsPanel({ ctx }) {
                       <td className="truncate px-3 py-2.5 text-xs text-slate-700" title={account.userName}>{account.userName || '-'}</td>
                       <td className="truncate px-3 py-2.5 text-xs text-slate-600" title={account.organizationName}>{account.organizationName || '-'}</td>
                       <td className="px-2 py-2.5 text-center">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${(account.adminRole || 'admin') === 'owner' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                        <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${(account.adminRole || 'admin') === 'owner' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
                           {(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}
                         </span>
                       </td>
@@ -250,7 +250,7 @@ export default function AdminAccountsPanel({ ctx }) {
                     <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">#{sequence}</span>
                     <span className="text-sm font-bold text-slate-900">{account.adminLoginId || '-'}</span>
                     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${locked ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>{locked ? '잠금' : '활성'}</span>
-                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${(account.adminRole || 'admin') === 'owner' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}</span>
+                    <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${(account.adminRole || 'admin') === 'owner' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}</span>
                     {isCurrent ? <span className="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-600">현재 로그인</span> : null}
                   </div>
                   <div className="mt-3 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">

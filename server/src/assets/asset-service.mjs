@@ -102,6 +102,17 @@ export const createAssetService = ({ repository }) => {
       return getCatalog();
     },
 
+    async getCategories(adminIdentity) {
+      const admin = await verifyAdmin(adminIdentity);
+      const categoryCatalog = await repository.getCategoryCatalog();
+      return Object.freeze({
+        admin,
+        authority: 'postgresql',
+        categories: categoryCatalog.categories || [],
+        items: categoryCatalog.items || [],
+      });
+    },
+
     async bootstrap(adminIdentity) {
       const admin = await verifyAdmin(adminIdentity);
       const catalog = await getCatalog();

@@ -183,6 +183,24 @@ const readCatalogOnce = async (queryable, referenceDate) => {
   return Object.freeze({ categories, assets, availability, sync });
 };
 
+const readCategoryCatalog = async (queryable) => {
+  const result = await queryable.query(`
+    SELECT category.name, category.sort_order, COUNT(asset.asset_id)::int AS asset_count
+      FROM app_asset_categories category
+      LEFT JOIN app_rental_assets asset ON asset.category_id = category.id
+     GROUP BY category.id, category.name, category.sort_order
+     ORDER BY category.sort_order, category.id
+  `);
+  const items = result.rows.map((row) => Object.freeze({
+    name: row.name || '',
+    assetCount: Number(row.asset_count || 0),
+  })).filter((item) => item.name);
+  return Object.freeze({
+    categories: items.map((item) => item.name),
+    items,
+  });
+};
+
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const readCatalog = async (queryable, referenceDate, { retry = false } = {}) => {
@@ -244,6 +262,10 @@ export const createAssetRepository = (pool) => {
   return Object.freeze({
     async getCatalog(referenceDate) {
       return readCatalog(pool, referenceDate, { retry: true });
+    },
+
+    async getCategoryCatalog() {
+      return readCategoryCatalog(pool);
     },
 
     async createAuthoritative({ asset, referenceDate }) {

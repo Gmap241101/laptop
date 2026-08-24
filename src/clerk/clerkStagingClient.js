@@ -1445,6 +1445,24 @@ export const requestAdminAssetCreate = (args) => requestAdminAssetMutation({ ...
 export const requestAdminAssetEdit = (args) => requestAdminAssetMutation({ ...args, path: `/api/admin/assets/${encodeURIComponent(trim(args.assetId))}/edit`, body: { asset: args.asset || {} }, expectedOperation: 'edit' });
 export const requestAdminAssetDelete = (args) => requestAdminAssetMutation({ ...args, path: `/api/admin/assets/${encodeURIComponent(trim(args.assetId))}/delete`, body: {}, expectedOperation: 'delete' });
 export const requestAdminAssetBulkCreate = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/bulk', body: { assets: args.assets || [] }, expectedOperation: 'bulk-create' });
+export const requestAdminAssetCategoryCatalog = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl, path: '/api/admin/assets/categories', method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`Admin asset category catalog read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'admin_asset_categories_read_unavailable';
+    throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.adminAssetCategories?.authority !== 'postgresql' || !Array.isArray(payload?.adminAssetCategories?.categories)) {
+    const error = new Error('Backend returned an invalid PostgreSQL asset category catalog response.');
+    error.code = 'admin_asset_categories_payload_invalid';
+    throw error;
+  }
+  return payload;
+};
+
 export const requestAdminAssetCategories = (args) => requestAdminAssetMutation({ ...args, path: '/api/admin/assets/categories', body: { categories: args.categories || [], renameMap: args.renameMap || {} }, expectedOperation: 'categories' });
 
 export const requestCurrentUserRentalRestriction = async ({ clerk, apiBaseUrl, fetchImpl }) => {
@@ -2330,6 +2348,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     },
     async getAssetCatalog() {
       return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async getAdminAssetCategories() {
+      const clerk = await initialize();
+      return requestAdminAssetCategoryCatalog({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
     async bootstrapAdminAssets(firebaseIdToken) {
       const clerk = await initialize();

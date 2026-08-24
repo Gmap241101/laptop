@@ -85,6 +85,7 @@ export default function useAdminAssetCategoryController({
   currentAuthAdminAccount,
   dataAssetCategories,
   dataLaptops,
+  assetCategoryUsageCounts = {},
   editingAssetCategoryName,
   isSplitStorageReady,
   newAssetCategory,
@@ -193,7 +194,11 @@ export default function useAdminAssetCategoryController({
 
   const deleteTempAssetCategory = (category, index) => {
     const originalCategoryName = getOriginalAssetCategoryName(category);
-    const isCategoryInUse = dataLaptops.some((asset) => {
+    const serverUsageCount = Math.max(
+      Number(assetCategoryUsageCounts?.[originalCategoryName] || 0),
+      Number(assetCategoryUsageCounts?.[category] || 0)
+    );
+    const isCategoryInUse = serverUsageCount > 0 || dataLaptops.some((asset) => {
       const assetCategory = asset.category || '노트북';
       return (
         assetCategory === originalCategoryName || assetCategory === category

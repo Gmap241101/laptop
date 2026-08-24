@@ -38,7 +38,8 @@ for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'g
 }
 assert.ok(subscription.includes('authoritativeAssetCategoriesRef'), 'asset catalog must preserve a PostgreSQL-only authoritative category ref contract');
 assert.ok(!subscription.includes('    splitPublicConfig?.assetCategories,\n    userTab,'), 'asset catalog effect must not depend on the category array it updates');
-assert.match(subscription, /if \(!shouldLoadUserCatalog && !shouldLoadAdminAssets\)[\s\S]*setFirebaseReady\(true\)/, 'non-asset user tabs such as request history must not remain blocked by asset catalog readiness');
+assert.match(subscription, /if \(!shouldLoadUserCatalog && !shouldLoadAdminAssets && !shouldLoadAdminCategories\)[\s\S]*setFirebaseReady\(true\)/, 'non-asset tabs must not remain blocked by asset catalog readiness while the category tab uses its dedicated lightweight read');
+assert.match(subscription, /shouldLoadAdminCategories[\s\S]*getAdminAssetCategories\(\)/, 'category management must use its dedicated PostgreSQL category read instead of the full asset catalog');
 
 for (const marker of ['createAdminAsset', 'editAdminAsset', 'deleteAdminAsset', "writeSource: 'postgresql-authoritative'"]) assert.ok(crud.includes(marker), marker);
 assert.ok(!crud.includes("throw new Error('firebase-admin-session-missing')"), 'Phase 34 PostgreSQL asset CRUD must not require a Firebase administrator session');

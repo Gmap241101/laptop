@@ -2746,6 +2746,29 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/admin/assets/categories') {
+      const auth = await authenticate(request, response, headers, requestId);
+      if (!auth) return;
+      const adminIdentity = await authenticateAdminPostgresqlIdentity(request, response, headers, requestId, auth);
+      if (!adminIdentity) return;
+      try {
+        const result = await assetService.getCategories(adminIdentity);
+        writeJson(response, 200, {
+          ...basePayload, authenticated: true, authorized: true,
+          adminAssetCategories: {
+            authority: result.authority,
+            categories: result.categories,
+            items: result.items,
+          },
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, {
+          ...basePayload, authenticated: true, error: error?.code || 'admin_asset_categories_read_unavailable',
+        }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/admin/assets/categories') {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;

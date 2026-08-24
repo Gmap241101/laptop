@@ -813,8 +813,10 @@ assert.match(footerPanelSource, /aria-label="푸터 공통 정보 수정"[\s\S]*
 assert.match(footerPanelSource, /저장되지 않은 푸터 공통 정보 변경사항이 있습니다\. 저장하지 않고 닫으시겠습니까\?/, 'footer common-information editor must confirm before discarding unsaved changes');
 assert.match(rentalDataSubscriptionSource, /assetCutoverConfig\.readRequested[\s\S]*assetCategories: authoritativeAssetCategoriesRef\.current/, 'rental-config must not regain persistent asset-category authority after PostgreSQL cutover');
 assert.match(rentalDataSubscriptionSource, /authoritativeAssetCategoriesRef\.current = categories/, 'PostgreSQL asset catalog categories must become the sole authoritative category snapshot before merged runtime state catches up');
-assert.match(adminAppSource, /const assetCategoryCatalogReady = Boolean\([\s\S]*publicCatalogAssetsReady[\s\S]*JSON\.stringify\(data\.assetCategories \|\| \[\]\) === JSON\.stringify\(splitPublicConfig\.assetCategories \|\| \[\]\)/, 'administrator category UI must wait until the merged data snapshot matches the authoritative PostgreSQL catalog');
-assert.match(adminAssetCategoriesPanelSource, /PostgreSQL 자산 카테고리를 불러오는 중입니다\./, 'administrator category UI must show one loading state instead of a stale partial category list');
+assert.match(adminAppSource, /const \[assetCategoryCatalogReady, setAdminAssetCategoryCatalogReady\] = useState\(false\)/, 'administrator category UI must use dedicated category-read readiness instead of waiting for the full asset catalog');
+assert.match(adminAppSource, /const \[assetCategoryUsageCounts, setAdminAssetCategoryUsageCounts\] = useState\(\{\}\)/, 'administrator category UI must retain lightweight server usage counts for safe deletion checks');
+assert.match(adminAssetCategoriesPanelSource, /aria-label="자산 카테고리 불러오는 중"/, 'administrator category UI must show one neutral loading state instead of a stale partial category list');
+assert.doesNotMatch(adminAssetCategoriesPanelSource, /PostgreSQL 자산 카테고리를 불러오는 중입니다\./, 'administrator category loading UI must not expose backend implementation wording');
 assert.match(adminSettingsSource, /<div className="font-bold">💡 운영 안내<\/div>[\s\S]*<p>이 화면은[\s\S]*<p><b>• 기존 관리 메뉴 유지 항목:<\/b>[\s\S]*<p><b>• 관리 가능 범위:<\/b>/, 'home-management operating guidance must use structural block rows so line breaks render reliably');
 assert.equal(adminSettingsSource.includes('&nbsp;&nbsp; <b>• 기존 관리 메뉴 유지 항목:</b>'), false, 'home-management operating guidance must not fake line breaks with non-breaking spaces');
 

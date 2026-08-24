@@ -74,8 +74,10 @@ export default function AdminAssetCategoriesPanel({ ctx }) {
                           </div>
                           <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
                             {assetCategoryCatalogReady === false ? (
-                              <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">
-                                PostgreSQL 자산 카테고리를 불러오는 중입니다.
+                              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3" aria-busy="true" aria-label="자산 카테고리 불러오는 중">
+                                {[0, 1, 2].map((item) => (
+                                  <div key={item} className="h-9 animate-pulse rounded-xl bg-slate-200/70" />
+                                ))}
                               </div>
                             ) : (tempAssetCategories || []).length === 0 ? (
                               <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-200 py-10 text-center text-slate-400 text-xs">

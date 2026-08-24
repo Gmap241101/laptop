@@ -37,6 +37,8 @@ import {
 import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
 import useSiteContentRefreshRevision from '../content/useSiteContentRefreshRevision.js';
 
+const noop = () => {};
+
 const createDefaultSplitSourceReady = () => ({
   config: false,
   assets: false,
@@ -525,6 +527,9 @@ export default function useRentalDataSubscriptionController({
   publicCatalogAssets,
   publicCatalogAssetsReady,
   setData,
+  setAdminAssetCategoryCatalogReady = noop,
+  setAdminAssetCategoryTemp = noop,
+  setAdminAssetCategoryUsageCounts = noop,
   setFirebaseLoadErrorMessage,
   setFirebaseReady,
   setForm,
@@ -555,6 +560,8 @@ export default function useRentalDataSubscriptionController({
   // Runtime-only bridge from the PostgreSQL asset catalog into the merged app data.
   // Asset categories are no longer persisted/read from rental-config.
   const authoritativeAssetCategoriesRef = useRef([]);
+  const authoritativeAssetCategoryUsageRef = useRef({});
+  const authoritativeAssetCategoryReadyRef = useRef(false);
 
   useEffect(() => {
     setSplitSourceReady((previous) => ({
@@ -570,7 +577,12 @@ export default function useRentalDataSubscriptionController({
       if (!active) return;
       setSplitPublicConfig(() =>
         assetCutoverConfig.readRequested
-          ? { ...configData, assetCategories: authoritativeAssetCategoriesRef.current }
+          ? {
+              ...configData,
+              assetCategories: authoritativeAssetCategoriesRef.current,
+              assetCategoryUsageCounts: authoritativeAssetCategoryUsageRef.current,
+              assetCategoryCatalogReady: authoritativeAssetCategoryReadyRef.current,
+            }
           : configData
       );
       setSplitStorageVersion(Number(configData.storageVersion || 0));
@@ -670,9 +682,18 @@ export default function useRentalDataSubscriptionController({
       view === 'admin' &&
       Boolean(authenticatedAdminId) &&
       Boolean(currentAuthAdminAccount?.id) &&
-      ['laptops', 'requests', 'categories', 'dataManagement'].includes(adminTab);
+      ['laptops', 'requests', 'dataManagement'].includes(adminTab);
+    const shouldLoadAdminCategories =
+      view === 'admin' &&
+      Boolean(authenticatedAdminId) &&
+      Boolean(currentAuthAdminAccount?.id) &&
+      adminTab === 'categories';
 
-    if (!shouldLoadUserCatalog && !shouldLoadAdminAssets) {
+    if (!shouldLoadUserCatalog && !shouldLoadAdminAssets && !shouldLoadAdminCategories) {
+      if (view === 'admin') {
+        setAdminAssetCategoryCatalogReady(false);
+        setAdminAssetCategoryUsageCounts({});
+      }
       setPublicCatalogAssets([]);
       setPublicCatalogAssetsReady(false);
       setSplitRentalAssets([]);
@@ -689,6 +710,56 @@ export default function useRentalDataSubscriptionController({
     setSplitSourceReady((previous) => ({ ...previous, assets: false, availability: false }));
     setSplitSourceErrors((previous) => ({ ...previous, assets: '', availability: '' }));
 
+    if (shouldLoadAdminCategories) {
+      setAdminAssetCategoryCatalogReady(false);
+      setAdminAssetCategoryUsageCounts({});
+      void clerkStagingClient.getAdminAssetCategories()
+        .then((payload) => {
+          if (cancelled) return;
+          const categories = Array.isArray(payload?.adminAssetCategories?.categories)
+            ? payload.adminAssetCategories.categories.map((item) => String(item || '').trim()).filter(Boolean)
+            : [];
+          const usageCounts = Object.fromEntries(
+            (Array.isArray(payload?.adminAssetCategories?.items) ? payload.adminAssetCategories.items : [])
+              .map((item) => [String(item?.name || '').trim(), Number(item?.assetCount || 0)])
+              .filter(([name]) => Boolean(name))
+          );
+          authoritativeAssetCategoriesRef.current = categories;
+          authoritativeAssetCategoryUsageRef.current = usageCounts;
+          authoritativeAssetCategoryReadyRef.current = true;
+          setData((previous) => ({ ...previous, assetCategories: categories }));
+          setAdminAssetCategoryTemp(categories);
+          setAdminAssetCategoryUsageCounts(usageCounts);
+          setAdminAssetCategoryCatalogReady(true);
+          setPublicCatalogAssets([]);
+          setPublicCatalogAssetsReady(false);
+          setSplitRentalAssets([]);
+          setSplitRentalAvailability([]);
+          setSplitPublicConfig((previous) => previous ? {
+            ...previous,
+            assetCategories: categories,
+            assetCategoryUsageCounts: usageCounts,
+            assetCategoryCatalogReady: true,
+          } : previous);
+          setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
+          setSplitSourceErrors((previous) => ({ ...previous, assets: '', availability: '' }));
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          const errorCode = error?.code || error?.name || 'admin_asset_categories_read_unavailable';
+          const message = `자산 카테고리를 불러오지 못했습니다. 오류 코드: ${errorCode}`;
+          authoritativeAssetCategoryReadyRef.current = true;
+          setAdminAssetCategoryCatalogReady(true);
+          setAdminAssetCategoryUsageCounts({});
+          setSplitPublicConfig((previous) => previous ? { ...previous, assetCategoryCatalogReady: true } : previous);
+          setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
+          setSplitSourceErrors((previous) => ({ ...previous, assets: message, availability: '' }));
+          setToast({ message, type: 'error' });
+        });
+
+      return () => { cancelled = true; };
+    }
+
     const applyCatalogPayload = (catalog, source, bootstrapped = false) => {
       if (cancelled) return;
       const assets = Array.isArray(catalog?.assets) ? catalog.assets : [];
@@ -699,8 +770,19 @@ export default function useRentalDataSubscriptionController({
       setSplitRentalAssets(assets.map((asset) => ({ ...asset, reservations: normalizeAssetReservations(asset.reservations || []) })));
       setSplitRentalAvailability(availability);
       if (categories.length > 0) {
+        const usageCounts = Object.fromEntries(categories.map((category) => [
+          category,
+          assets.filter((asset) => String(asset?.category || '').trim() === category).length,
+        ]));
         authoritativeAssetCategoriesRef.current = categories;
-        setSplitPublicConfig((previous) => previous ? { ...previous, assetCategories: categories } : previous);
+        authoritativeAssetCategoryUsageRef.current = usageCounts;
+        authoritativeAssetCategoryReadyRef.current = true;
+        setSplitPublicConfig((previous) => previous ? {
+          ...previous,
+          assetCategories: categories,
+          assetCategoryUsageCounts: usageCounts,
+          assetCategoryCatalogReady: true,
+        } : previous);
       }
       setSplitSourceReady((previous) => ({ ...previous, assets: true, availability: true }));
       setSplitSourceErrors((previous) => ({ ...previous, assets: '', availability: '' }));
@@ -845,6 +927,10 @@ export default function useRentalDataSubscriptionController({
     adminTab,
     authenticatedAdminId,
     currentAuthAdminAccount?.id,
+    setAdminAssetCategoryCatalogReady,
+    setAdminAssetCategoryTemp,
+    setAdminAssetCategoryUsageCounts,
+    setData,
     setFirebaseReady,
     setPublicCatalogAssets,
     setPublicCatalogAssetsReady,

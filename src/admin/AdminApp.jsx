@@ -690,6 +690,9 @@ export default function AdminApp() {
     view: ADMIN_VIEW,
   });
 
+  const [assetCategoryCatalogReady, setAdminAssetCategoryCatalogReady] = useState(false);
+  const [assetCategoryUsageCounts, setAdminAssetCategoryUsageCounts] = useState({});
+
   useRentalDataSubscriptionController({
     adminTab,
     authenticatedAdminId,
@@ -702,6 +705,9 @@ export default function AdminApp() {
     publicCatalogAssets,
     publicCatalogAssetsReady,
     setData,
+    setAdminAssetCategoryCatalogReady,
+    setAdminAssetCategoryTemp: setTempAssetCategories,
+    setAdminAssetCategoryUsageCounts,
     setFirebaseLoadErrorMessage,
     setFirebaseReady,
     setForm,
@@ -725,12 +731,6 @@ export default function AdminApp() {
     userTab: INERT_USER_TAB,
     view: ADMIN_VIEW,
   });
-
-  const assetCategoryCatalogReady = Boolean(
-    publicCatalogAssetsReady &&
-    Array.isArray(splitPublicConfig?.assetCategories) &&
-    JSON.stringify(data.assetCategories || []) === JSON.stringify(splitPublicConfig.assetCategories || [])
-  );
 
 
   const orphanedRentalAvailabilityRequests = [];
@@ -1040,6 +1040,7 @@ export default function AdminApp() {
     currentAuthAdminAccount,
     dataAssetCategories: data.assetCategories,
     dataLaptops: data.laptops,
+    assetCategoryUsageCounts,
     editingAssetCategoryName,
     isSplitStorageReady,
     newAssetCategory,
