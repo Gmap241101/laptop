@@ -13,6 +13,8 @@ import { createRentalRestrictionRepository } from './restrictions/rental-restric
 import { createRentalRestrictionService } from './restrictions/rental-restriction-service.mjs';
 import { createRentalRequestRepository } from './rentals/rental-request-repository.mjs';
 import { createRentalRequestService } from './rentals/rental-request-service.mjs';
+import { createMemberRentalStatusRepository } from './rentals/member-rental-status-repository.mjs';
+import { createMemberRentalStatusService } from './rentals/member-rental-status-service.mjs';
 import { createRentalRequestWriteRepository } from './rentals/rental-request-write-repository.mjs';
 import { createRentalRequestWriteService } from './rentals/rental-request-write-service.mjs';
 import { createRentalRequestUserActionRepository } from './rentals/rental-request-user-action-repository.mjs';
@@ -128,6 +130,8 @@ const rentalRestrictionService = createRentalRestrictionService({
   rentalRestrictionRepository,
 });
 const rentalRequestRepository = createRentalRequestRepository(pool);
+const memberRentalStatusRepository = createMemberRentalStatusRepository(pool);
+const memberRentalStatusService = createMemberRentalStatusService({ repository: memberRentalStatusRepository });
 const adminRentalRequestRepository = createAdminRentalRequestRepository(pool);
 const rentalPostgresqlSource = createRentalPostgresqlSource({
   assetRepository,
@@ -180,6 +184,7 @@ const server = createServer(
     userClerkAuthService,
     rentalRestrictionService,
     rentalRequestService,
+    memberRentalStatusService,
     rentalRequestWriteService,
     rentalRequestUserActionService,
     adminRentalRequestService,

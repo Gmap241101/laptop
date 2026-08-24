@@ -8,6 +8,7 @@ import {
 export const USER_ROUTE_PATHS = {
   home: '',
   rental: '/rental',
+  rentalStatus: '/rental-status',
   history: '/history',
   notice: '/board/notice',
   faq: '/board/faq',
@@ -71,12 +72,14 @@ export const writeUserAccountStatusView = (nextView) => {
 
 export const PROTECTED_USER_TABS = new Set([
   'rental',
+  'rentalStatus',
   'history',
 ]);
 
 export const LOGIN_RETURN_USER_TABS = new Set([
   'home',
   'rental',
+  'rentalStatus',
   'history',
   'notice',
   'faq',
@@ -199,6 +202,10 @@ export const getRouteStateFromPath = () => {
 
   if (pathname === '/rental') {
     return { view: 'user', userTab: 'rental' };
+  }
+
+  if (pathname === '/rental-status') {
+    return { view: 'user', userTab: 'rentalStatus' };
   }
 
   if (pathname === '/history') {

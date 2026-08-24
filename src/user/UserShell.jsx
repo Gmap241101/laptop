@@ -215,7 +215,7 @@ const UserShell = ({
 
             <nav
               ref={communityMenuRef}
-              className="relative hidden w-full flex-wrap items-center justify-end gap-5 lg:flex lg:w-auto lg:gap-12 xl:gap-14"
+              className="relative hidden w-full flex-wrap items-center justify-end gap-2 lg:flex lg:w-auto xl:gap-3"
             >
               <button
                 type="button"
@@ -228,6 +228,20 @@ const UserShell = ({
               >
                 대여신청
               </button>
+
+              {normalizedSiteSettings.memberRentalStatusEnabled !== false ? (
+                <button
+                  type="button"
+                  onClick={() => goToProtectedUserTab('rentalStatus')}
+                  className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                    userTab === 'rentalStatus'
+                      ? 'bg-orange-50 font-semibold mk-brand-text'
+                      : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                  }`}
+                >
+                  대여현황
+                </button>
+              ) : null}
 
               <button
                 type="button"
@@ -311,7 +325,7 @@ const UserShell = ({
                 </AnimatePresence>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="ml-6 flex items-center gap-2 xl:ml-8">
                 {firebaseAuthUser ? (
                   <>
                     {!currentAuthRoleErrorMessage ? (
@@ -461,6 +475,17 @@ const UserShell = ({
               >
                 대여신청
               </button>
+              {normalizedSiteSettings.memberRentalStatusEnabled !== false ? (
+                <button
+                  type="button"
+                  onClick={() => runMobileNavigation(() => goToProtectedUserTab('rentalStatus'))}
+                  className={`mt-1 block w-full rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
+                    userTab === 'rentalStatus' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  대여현황
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => runMobileNavigation(() => goToProtectedUserTab('history'))}

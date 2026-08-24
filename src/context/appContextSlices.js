@@ -10,6 +10,7 @@ export const APP_CONTEXT_GROUP_KEYS = Object.freeze({
   user: Object.freeze({
     shell: contextKeys('Button currentAuthRoleReady firebaseAuthReady firebaseAuthUser hasFirebaseAuthSession isUserDirectoryAccessRestricted triggerToast userProfile userProfileReady userTab'),
     home: contextKeys('formatFirestoreDate goToProtectedUserTab goToUserFaq goToUserHome goToUserLogin goToUserMypage goToUserNotice goToUserSignup hasFirebaseAuthSession noticePosts noticePostsLoadErrorMessage noticePostsReady openNoticePost siteSettings stats'),
+    rentalStatus: contextKeys('data goToProtectedUserTab siteSettings triggerToast'),
     rental: contextKeys('Badge Button Card CardContent Info LockIcon STATUS Search availabilityFilter availableFilterLabel currentAuthRoleErrorMessage currentAuthRoleReady currentUserRentalRestrictionStatus currentUserRestrictionReady data filteredLaptops firebaseAuthReady firebaseAuthUser form formatDateWithKoreanWeekday getLaptopRentalAvailability getSafeMaxRentalDays getUserLaptopStatusLabel goToUserLogin goToUserMypage isCurrentFirebaseAuthGeneralUser isPeriodBasedRentalMode motion query rentalDeviceSectionDescription rentalDeviceSectionTitle rentalStartAdjustmentInfo requestSubmitLoading selectedAssetCategory selectedLaptop selectedLaptopAvailability selectedLaptopId setAvailabilityFilter setForm setQuery setSelectedAssetCategory setSelectedLaptopId submitRequest triggerToast unavailableFilterLabel userProfile userProfileReady'),
     myPage: contextKeys('Button Card CardContent Input Users adminMyProfileForm adminMyProfileSaving cancelWithdrawal currentAuthAdminAccount currentAuthRoleReady data firebaseAuthUser goToUserHome goToUserLogin goToUserSignup isAdminAuthenticated isCurrentFirebaseAuthGeneralUser logoutAdmin openWithdrawalDialog pushAppPath saveMyAdminProfile saveMyUserProfile setAdminMyProfileForm setUserProfileForm setView setWithdrawalPassword submitMembershipWithdrawal userDirectoryVerificationLoading userProfile userProfileForm userProfileReady userProfileSaving withdrawalBlockMessage withdrawalDialogOpen withdrawalLoading withdrawalPassword triggerToast'),
     auth: contextKeys('Button Card CardContent Input Users accountRecoveryForm accountRecoveryLoading accountRecoveryResult cancelUserSignup data firebaseAuthReady firebaseAuthUser hasEstablishedUserSession goToProtectedUserTab goToUserEmailRecovery goToUserLogin goToUserPasswordReset goToUserSignup logoutUser passwordResetForm passwordResetLoading passwordResetStage passwordResetVerificationResult resetAccountRecoverySearch setAccountRecoveryForm siteSettings submitAccountRecovery submitPasswordReset submitUserAuthForm triggerToast updatePasswordResetForm setUserAuthForm userAuthForm userAuthLoading userTab'),
@@ -53,6 +54,7 @@ export const APP_CONTEXT_GROUP_KEYS = Object.freeze({
 const USER_TAB_CONTEXT_KEY = Object.freeze({
   home: 'home',
   rental: 'rental',
+  rentalStatus: 'rentalStatus',
   mypage: 'myPage',
   login: 'auth',
   signup: 'auth',

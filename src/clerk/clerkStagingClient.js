@@ -1386,6 +1386,43 @@ export const requestAdminSystemDataExport = async ({ clerk, apiBaseUrl, fetchImp
   return payload;
 };
 
+export const requestMemberRentalStatusMonth = async ({ clerk, apiBaseUrl, fetchImpl, month }) => {
+  const normalizedMonth = String(month || '').trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(normalizedMonth)) {
+    const error = new Error('Monthly rental status requires a valid YYYY-MM value.');
+    error.code = 'member_rental_status_month_invalid';
+    throw error;
+  }
+  const { response, payload } = await requestWithSession({
+    clerk,
+    apiBaseUrl,
+    fetchImpl,
+    path: `/api/users/me/rental-status?month=${encodeURIComponent(normalizedMonth)}`,
+    method: 'GET',
+  });
+  if (!response.ok) {
+    const error = new Error(`Member rental status read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'member_rental_status_read_failed';
+    throw error;
+  }
+  const result = payload?.memberRentalStatus;
+  if (
+    !payload?.authenticated ||
+    !payload?.authorized ||
+    result?.authority !== 'postgresql' ||
+    !Array.isArray(result?.assets) ||
+    !Array.isArray(result?.events) ||
+    !Array.isArray(result?.categories) ||
+    !result?.currentSummary || typeof result.currentSummary !== 'object'
+  ) {
+    const error = new Error('Backend returned an invalid member rental status payload.');
+    error.code = 'member_rental_status_payload_invalid';
+    throw error;
+  }
+  return payload;
+};
+
 export const requestAssetCatalog = async ({ apiBaseUrl, fetchImpl }) => {
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -2345,6 +2382,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async resetAdminSystemData({ scopes = [], confirmText = '', backupConfirmed = false } = {}) {
       const clerk = await initialize();
       return requestAdminSystemDataReset({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, scopes, confirmText, backupConfirmed });
+    },
+    async getMemberRentalStatusMonth(month) {
+      const clerk = await initialize();
+      return requestMemberRentalStatusMonth({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, month });
     },
     async getAssetCatalog() {
       return requestAssetCatalog({ apiBaseUrl: config.apiBaseUrl, fetchImpl });

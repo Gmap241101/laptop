@@ -90,6 +90,7 @@ const SERVICE_OPERATION_SETTING_FIELDS = [
   'maintenanceStartAt',
   'maintenanceEndAt',
   'allowNewRentalRequests',
+  'memberRentalStatusEnabled',
   'allowNewMemberSignup',
   'allowRequestChanges',
   'allowExtensionRequests',
@@ -669,6 +670,15 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           <ToggleSwitch checked={siteDraft.allowExtensionRequests} onChange={(value) => setSiteDraft({ ...siteDraft, allowExtensionRequests: value })} label="대여 연장 요청" />
           <ToggleSwitch checked={siteDraft.allowReturnRequests} onChange={(value) => setSiteDraft({ ...siteDraft, allowReturnRequests: value })} label="반납 요청" />
         </div>
+      </SectionCard>
+
+      <SectionCard title="회원 조회 기능" description="회원에게 제공하는 조회 기능의 공개 여부를 관리합니다.">
+        <ToggleSwitch
+          checked={siteDraft.memberRentalStatusEnabled}
+          onChange={(value) => setSiteDraft({ ...siteDraft, memberRentalStatusEnabled: value })}
+          label="회원용 대여현황 공개"
+          description="켜면 로그인한 활성 회원이 월간 기기 대여현황과 과거 대여 이력을 조회할 수 있습니다."
+        />
       </SectionCard>
 
       <SectionCard title="전역 시스템 안내" description="현재 안내 1건만 유지하며 저장할 때 기존 안내를 즉시 덮어씁니다. 변경 이력에는 안내 문구·URL 원문을 보관하지 않습니다.">

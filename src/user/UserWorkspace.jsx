@@ -12,6 +12,7 @@ const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
 const UserInquiryPanel = memo(lazy(() => import('./UserInquiryPanel.jsx')));
 const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
 const UserRentalPanel = memo(lazy(() => import('./UserRentalPanel.jsx')));
+const UserRentalStatusPanel = memo(lazy(() => import('./UserRentalStatusPanel.jsx')));
 const UserRequestHistoryPanel = memo(
   lazy(() => import('./UserRequestHistoryPanel.jsx'))
 );
@@ -159,6 +160,12 @@ function UserWorkspace({ ctx, panelCtx }) {
     return renderProfiledPanel(
       'rental',
       <UserRentalPanel ctx={panelCtx} />
+    );
+  }
+  if (userTab === 'rentalStatus') {
+    return renderProfiledPanel(
+      'rentalStatus',
+      <UserRentalStatusPanel ctx={panelCtx} />
     );
   }
   if (userTab === 'mypage') {

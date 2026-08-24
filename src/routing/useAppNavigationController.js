@@ -440,7 +440,7 @@ export default function useAppNavigationController({
 
       if (
         nextRouteState.view === 'user' &&
-        !['login', 'signup', 'rental', 'history'].includes(
+        !['login', 'signup', 'rental', 'rentalStatus', 'history'].includes(
           nextRouteState.userTab
         )
       ) {

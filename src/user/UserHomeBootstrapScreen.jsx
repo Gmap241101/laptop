@@ -114,11 +114,12 @@ export default function UserHomeBootstrapScreen() {
               <Menu size={23} />
             </button>
           </div>
-          <nav className="hidden flex-wrap items-center justify-end gap-6 text-sm font-semibold text-slate-700 lg:flex">
+          <nav className="hidden flex-wrap items-center justify-end gap-2 text-sm font-semibold text-slate-700 lg:flex xl:gap-3">
             <a href="/rental" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여신청</a>
+            {siteSettings.memberRentalStatusEnabled !== false ? <a href="/rental-status" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여현황</a> : null}
             <a href="/history" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">신청내역</a>
             <a href="/board/notice" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">커뮤니티</a>
-            <a href="/signup" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs">회원가입</a>
+            <a href="/signup" className="ml-6 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs xl:ml-8">회원가입</a>
             <a href="/login" className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white">로그인</a>
           </nav>
         </div>
@@ -153,6 +154,7 @@ export default function UserHomeBootstrapScreen() {
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto p-3" aria-label="모바일 사용자 메뉴">
             <a href="/rental" className="block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">대여신청</a>
+            {siteSettings.memberRentalStatusEnabled !== false ? <a href="/rental-status" className="mt-1 block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">대여현황</a> : null}
             <a href="/history" className="mt-1 block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">신청내역</a>
             <button
               type="button"

@@ -291,6 +291,9 @@ export const createRequestHandler = ({
     async syncCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
     async compareCurrent() { const error = new Error('Rental request service is not configured.'); error.code = 'rental_request_not_configured'; throw error; },
   },
+  memberRentalStatusService = {
+    async getMonth() { const error = new Error('Member rental status service is not configured.'); error.code = 'member_rental_status_not_configured'; throw error; },
+  },
   rentalRequestWriteService = {
     async createCurrent() { const error = new Error('Rental request write service is not configured.'); error.code = 'rental_request_write_not_configured'; throw error; },
   },
@@ -840,6 +843,7 @@ export const createRequestHandler = ({
           rentalRestrictionFallback: '/api/legacy/rental-restriction-firestore-fallback',
           rentalRestrictionWriteThrough: '/api/legacy/rental-restriction-shadow/write-through',
           rentalRequestCandidate: '/api/users/me/rental-requests',
+          memberRentalStatus: '/api/users/me/rental-status?month=YYYY-MM',
           rentalRequestCreate: '/api/users/me/rental-requests',
           rentalRequestUserEdit: '/api/users/me/rental-requests/:id/edit',
           rentalRequestUserCancel: '/api/users/me/rental-requests/:id/cancel',
@@ -1238,6 +1242,53 @@ export const createRequestHandler = ({
       } catch (error) {
         console.warn('[user-auth] signup Clerk provision failed', { requestId, code: error?.code, name: error?.name });
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'user_clerk_provision_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/users/me/rental-status') {
+      const userAuthority = await authenticateUserAuthority(request, response, headers, requestId);
+      if (!userAuthority) return;
+      try {
+        const userAuth = userAuthority.userAuth || await userClerkAuthService.getCurrent({ clerkUserId: userAuthority.auth.userId });
+        const account = userAuth?.account || {};
+        const memberStatus = String(account.memberStatus || account.status || '').trim().toLowerCase();
+        if (memberStatus !== 'active') {
+          writeJson(response, 403, { ...basePayload, authenticated: true, authorized: false, error: 'member_rental_status_access_denied' }, headers);
+          return;
+        }
+        if (!account.appUserId) {
+          writeJson(response, 409, { ...basePayload, authenticated: true, authorized: false, error: 'member_rental_status_account_unavailable' }, headers);
+          return;
+        }
+
+        const siteSettingsDomain = await siteContentService.getDomain('site-settings');
+        const siteSettingsDocument = (Array.isArray(siteSettingsDomain?.documents) ? siteSettingsDomain.documents : [])
+          .find((document) => document?.key === 'siteSettings/config');
+        const memberRentalStatusEnabled = siteSettingsDocument?.payload?.memberRentalStatusEnabled !== false;
+        if (!memberRentalStatusEnabled) {
+          writeJson(response, 403, { ...basePayload, authenticated: true, authorized: false, error: 'member_rental_status_disabled' }, headers);
+          return;
+        }
+
+        const result = await memberRentalStatusService.getMonth({
+          appUserId: account.appUserId,
+          month: url.searchParams.get('month'),
+        });
+        writeJson(response, 200, {
+          ...basePayload,
+          authenticated: true,
+          authorized: true,
+          memberRentalStatus: result,
+        }, headers);
+      } catch (error) {
+        console.warn('[member-rental-status] monthly read failed', { requestId, code: error?.code, name: error?.name });
+        writeJson(response, error?.status || 503, {
+          ...basePayload,
+          authenticated: true,
+          authorized: false,
+          error: error?.code || 'member_rental_status_read_failed',
+        }, headers);
       }
       return;
     }
