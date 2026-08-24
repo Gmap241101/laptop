@@ -21,6 +21,7 @@ import {
 } from '../features/content/siteContentCutover.js';
 import ModalPortal from '../components/ModalPortal.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 
 const HOME_BANNER_PAGE_SIZE = 10;
 
@@ -101,18 +102,7 @@ const toDateTimeLocal = (value) => {
   return localDate.toISOString().slice(0, 16);
 };
 
-const formatDateTime = (value) => {
-  const millis = getMillis(value);
-  if (!millis) return '-';
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(millis));
-};
+const formatDateTime = (value) => formatKoreanDateTime(value, '-');
 
 const getDisplayStatus = (banner, now = Date.now()) => {
   if (!banner?.enabled) return { key: 'disabled', label: '사용안함' };

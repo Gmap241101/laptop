@@ -6,6 +6,42 @@ import {
 const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
 const KOREAN_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
+const parseLegacyKoreanDateTimeText = (value) => {
+  const text = String(value || '').trim();
+  const match = text.match(
+    /^(\d{2,4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(AM|PM|오전|오후)\s*(\d{1,2}):(\d{2})(?::(\d{2}))?$/i
+  );
+  if (!match) return 0;
+
+  let year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const period = String(match[4] || '').toUpperCase();
+  let hour = Number(match[5]);
+  const minute = Number(match[6]);
+  const second = Number(match[7] || 0);
+
+  if (year < 100) year += 2000;
+  const isPm = period === 'PM' || match[4] === '오후';
+  const isAm = period === 'AM' || match[4] === '오전';
+  if (isPm && hour < 12) hour += 12;
+  if (isAm && hour === 12) hour = 0;
+
+  if (
+    !Number.isFinite(year) ||
+    month < 1 || month > 12 ||
+    day < 1 || day > 31 ||
+    hour < 0 || hour > 23 ||
+    minute < 0 || minute > 59 ||
+    second < 0 || second > 59
+  ) {
+    return 0;
+  }
+
+  // The legacy text was formatted in Asia/Seoul without an explicit offset.
+  return Date.UTC(year, month - 1, day, hour - 9, minute, second);
+};
+
 export const getFirestoreTimestampMillis = (value) => {
   if (typeof value?.toMillis === 'function') {
     return value.toMillis();
@@ -15,9 +51,28 @@ export const getFirestoreTimestampMillis = (value) => {
     return value.toDate().getTime();
   }
 
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
   if (typeof value === 'number') {
     return value;
   }
+
+  if (Number.isFinite(Number(value?.millis))) {
+    return Number(value.millis);
+  }
+
+  if (Number.isFinite(Number(value?.milliseconds))) {
+    return Number(value.milliseconds);
+  }
+
+  if (Number.isFinite(Number(value?.seconds))) {
+    return Number(value.seconds) * 1000;
+  }
+
+  const legacyTime = parseLegacyKoreanDateTimeText(value);
+  if (legacyTime) return legacyTime;
 
   const parsedTime = Date.parse(value || '');
 
@@ -26,18 +81,24 @@ export const getFirestoreTimestampMillis = (value) => {
     : parsedTime;
 };
 
-export const formatFirestoreTimestamp = (value) => {
-  const timestampMillis =
-    getFirestoreTimestampMillis(value);
+export const formatKoreanDateTime = (value, fallback = '-') => {
+  const timestampMillis = getFirestoreTimestampMillis(value);
+  if (!timestampMillis) return fallback;
 
-  if (!timestampMillis) {
-    return '-';
-  }
-
-  return new Date(
-    timestampMillis
-  ).toLocaleString('ko-KR');
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(new Date(timestampMillis));
 };
+
+export const formatFirestoreTimestamp = (value) =>
+  formatKoreanDateTime(value, '-');
 
 export const formatFirestoreDate = (value) => {
   const timestampMillis =

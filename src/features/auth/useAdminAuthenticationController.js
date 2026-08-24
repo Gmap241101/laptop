@@ -24,6 +24,7 @@ import {
   writeAdminRouteIntent,
 } from '../../routing/appRoutes.js';
 import { normalizeSystemAdminSettings } from '../../utils/systemSettings.js';
+import { formatKoreanDateTime } from '../../utils/appUtils.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { getClerkPasswordSignInErrorMessage } from './loginErrorMessages.js';
 import {
@@ -261,7 +262,7 @@ export default function useAdminAuthenticationController({
       clerkLinkState: authority.clerkLinkState || 'linked',
       authProvider: 'clerk',
       authAuthorityMode: 'clerk-postgresql',
-      lastLoginAt: new Date().toLocaleString('ko-KR'),
+      lastLoginAt: formatKoreanDateTime(new Date(), '-'),
       updatedAt: new Date().toISOString(),
     }])[0];
     setCurrentAuthAdminAccount(nextAccount);
@@ -707,7 +708,7 @@ export default function useAdminAuthenticationController({
       });
     }
 
-    const nowText = new Date().toLocaleString('ko-KR');
+    const nowText = formatKoreanDateTime(new Date(), '-');
     const nextAdminAccount = {
       ...matchedAdminAccount,
       id: firebaseUser.uid,

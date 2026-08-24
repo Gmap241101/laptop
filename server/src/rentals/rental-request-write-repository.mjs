@@ -212,7 +212,17 @@ export const createRentalRequestWriteRepository = (pool) => {
           `INSERT INTO app_rental_request_events (
              rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload
            ) VALUES ($1,'request-created',$2,$3,$4::jsonb)`,
-          [internalId, appUserId, firebaseUid, JSON.stringify({ requestId, laptopId, startDate, dueDate, source: 'phase16-postgresql' })],
+          [internalId, appUserId, firebaseUid, JSON.stringify({
+            requestId,
+            laptopId,
+            startDate,
+            dueDate,
+            source: 'phase16-postgresql',
+            actorType: 'requester',
+            actorUid: firebaseUid,
+            actorName: requesterName,
+            actorEmail: requesterEmail,
+          })],
         );
 
         const preparedResult = await client.query(

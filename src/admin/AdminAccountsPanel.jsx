@@ -3,24 +3,12 @@ import AdminAccountCreateDialog from './AdminAccountCreateDialog.jsx';
 import AdminAccountEditDialog from './AdminAccountEditDialog.jsx';
 import AdminManagedPasswordDialog from './AdminManagedPasswordDialog.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 
 const compactActionButtonClass = '!gap-1 !rounded-lg !px-2 !py-1 !text-[10px]';
 const ADMIN_ACCOUNT_PAGE_SIZE_OPTIONS = [10, 30, 50];
 
-const formatAdminCreatedAt = (value) => {
-  if (!value) return '-';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Seoul',
-  }).format(date);
-};
+const formatAdminCreatedAt = (value) => formatKoreanDateTime(value, '-');
 
 export default function AdminAccountsPanel({ ctx }) {
   const {

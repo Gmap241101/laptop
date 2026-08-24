@@ -1,3 +1,4 @@
+import { formatKoreanDateTime } from '../../utils/appUtils.js';
 import { readPolicyContentCutoverConfig } from '../content/policyContentCutover.js';
 import { normalizeActiveTerm, normalizeTermsPolicy } from './termsConstants.js';
 
@@ -292,9 +293,5 @@ export const loadSignupTermContents = async (terms = []) =>
   preloadSignupTermContents(terms);
 
 export function formatTermsTimestamp(value) {
-  const millis = Number(value?.millis || value?.milliseconds || 0);
-  const date = value?.toDate?.()
-    || (millis > 0 ? new Date(millis) : value ? new Date(value) : null);
-  if (!date || Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('ko-KR');
+  return formatKoreanDateTime(value, '-');
 }

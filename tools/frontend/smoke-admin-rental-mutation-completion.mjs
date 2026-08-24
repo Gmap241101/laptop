@@ -31,6 +31,11 @@ assert.match(adminPanel, /if \(status === STATUS\.APPROVED\) return '대여승�
 assert.match(adminPanel, /if \(status === STATUS\.DENIED\) return '대여불허'/);
 assert.match(adminPanel, /getAdminRequestAuditActionLabel\(log\)/);
 assert.doesNotMatch(adminPanel, /: '사용자 요청 검토'\}/, 'unknown audit actions must not be mislabeled as a user-request review');
+assert.match(adminPanel, /RENTAL_REQUEST_AUDIT_ACTION\.REQUEST_CREATED/);
+assert.match(adminPanel, /\? '신청자'\s*:\s*'처리 관리자'/);
+assert.match(detail, /신청 상태 복구 사유를 입력해주세요\./);
+assert.match(mutation, /신청 상태 복구 사유를 입력해주세요\./);
+assert.match(detail, /if \(!String\(restoreReason \|\| ''\)\.trim\(\)\)/);
 
 for (const marker of [
   'syncAdminRentalRequest', 'readAdminRentalRequestCutoverConfig', 'Admin rental request targeted PostgreSQL sync error:',

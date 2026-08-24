@@ -37,15 +37,17 @@ export const formatPopupDateTime = (value, dateOnly = false) => {
   if (!millis) return '-';
 
   return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+    month: 'numeric',
+    day: 'numeric',
     ...(dateOnly
       ? {}
       : {
-          hour: '2-digit',
+          hour: 'numeric',
           minute: '2-digit',
-          hour12: false,
+          second: '2-digit',
+          hour12: true,
         }),
   }).format(new Date(millis));
 };

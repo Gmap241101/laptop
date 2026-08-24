@@ -17,6 +17,7 @@ import {
   normalizeTermsPolicy,
 } from '../features/terms/termsConstants.js';
 import { createTermsContentHash } from '../features/terms/termsService.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 import {
   preloadAdminSignupTermContent,
   preloadAdminSignupTermsCatalog,
@@ -79,14 +80,7 @@ const toActiveTermSnapshot = (term) => ({
   displayOrder: Number(term.displayOrder) || 0,
 });
 
-const formatDateParts = (value) => {
-  const date = value?.toDate?.() || (value instanceof Date ? value : null);
-  if (!date) return { date: '-', time: '' };
-  return {
-    date: date.toLocaleDateString('ko-KR'),
-    time: date.toLocaleTimeString('ko-KR'),
-  };
-};
+const formatDateTime = (value) => formatKoreanDateTime(value, '-');
 
 export default function AdminSignupTermsManager({ Button, triggerConfirm, triggerToast }) {
   const [terms, setTerms] = useState([]);
@@ -506,7 +500,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
               <col className="w-[74px]" />
               <col className="w-[340px]" />
               <col className="w-[64px]" />
-              <col className="w-[126px]" />
+              <col className="w-[190px]" />
               <col className="w-[96px]" />
             </colgroup>
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
@@ -523,7 +517,7 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
             <tbody>
               {filteredTerms.map((term) => {
                 const globalIndex = terms.findIndex((item) => item.id === term.id);
-                const updatedAt = formatDateParts(term.updatedAt);
+                const updatedAt = formatDateTime(term.updatedAt);
                 return (
                   <tr key={term.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
                     <td className="px-3 py-3">
@@ -554,9 +548,8 @@ export default function AdminSignupTermsManager({ Button, triggerConfirm, trigge
                       </button>
                     </td>
                     <td className="px-3 py-3 text-center text-xs text-slate-600">v{term.currentVersion}</td>
-                    <td className="px-3 py-3 text-center text-[11px] leading-5 text-slate-500">
-                      <div className="whitespace-nowrap">{updatedAt.date}</div>
-                      <div className="whitespace-nowrap">{updatedAt.time}</div>
+                    <td className="whitespace-nowrap px-3 py-3 text-center text-[11px] leading-5 text-slate-500">
+                      {updatedAt}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-center gap-1">

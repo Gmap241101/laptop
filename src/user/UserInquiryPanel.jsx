@@ -7,6 +7,7 @@ import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { isRichTextEmpty, richTextHtmlToText, sanitizeRichTextHtml } from '../utils/richTextCore.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -55,15 +56,7 @@ const parseDomesticPhoneDraft = (value) => {
   };
 };
 
-const formatDateTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(date);
-};
+const formatDateTime = (value) => formatKoreanDateTime(value, '-');
 
 const formatDate = (value) => {
   if (!value) return '-';

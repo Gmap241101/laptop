@@ -5,6 +5,7 @@ import { AdminPageHeader, Button, Input, Select } from '../components/CommonUI.j
 import RichTextContent from '../components/RichTextContent.jsx';
 import { RichTextEditor } from '../components/RichTextEditor.jsx';
 import { isRichTextEmpty, richTextHtmlToText, sanitizeRichTextHtml } from '../utils/richTextCore.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 import SecureAttachmentEditor from '../components/SecureAttachmentEditor.jsx';
 import SecureAttachmentList from '../components/SecureAttachmentList.jsx';
 import { inquiryApi } from '../features/inquiries/inquiryApi.js';
@@ -21,15 +22,7 @@ const STATUS_CLASSES = Object.freeze({
 const ADMIN_LIST_PAGE_SIZE = 10;
 
 const trim = (value) => String(value ?? '').trim();
-const formatDateTime = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return new Intl.DateTimeFormat('ko-KR', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(date);
-};
+const formatDateTime = (value) => formatKoreanDateTime(value, '-');
 
 const StatusBadge = ({ status }) => <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${STATUS_CLASSES[status] || STATUS_CLASSES.waiting}`}>{STATUS_LABELS[status] || STATUS_LABELS.waiting}</span>;
 

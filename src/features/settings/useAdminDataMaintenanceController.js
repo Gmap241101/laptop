@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { SYSTEM_RESET_SCOPE } from '../../utils/systemSettings.js';
 import { RESTORE_CONFIRM_TEXT, RESTORE_MODE, RESTORE_SCOPE_META } from '../../utils/systemRestore.js';
+import { formatKoreanDateTime } from '../../utils/appUtils.js';
 
 export const RESET_SCOPE_META = {
   [SYSTEM_RESET_SCOPE.ASSETS]: { label: '자산', description: 'PostgreSQL 자산 데이터를 관리합니다.', collections: [] },
@@ -24,7 +25,7 @@ export const getAdminRole = (account) => account?.adminRole || 'owner';
 
 const retiredOperation = async () => Object.freeze({ retired: true, source: 'postgresql-operations' });
 const RESET_PROGRESS_IDLE = null;
-const formatCheckedAt = (value) => value ? new Date(value).toLocaleString('ko-KR') : '기록 없음';
+const formatCheckedAt = (value) => formatKoreanDateTime(value, '기록 없음');
 
 export default function useAdminDataMaintenanceController({ authenticatedAdminAccount, mode, triggerToast }) {
   const [backupIncludeOperations, setBackupIncludeOperations] = useState(true);

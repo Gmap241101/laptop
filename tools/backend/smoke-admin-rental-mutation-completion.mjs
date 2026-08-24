@@ -114,5 +114,12 @@ assert.match(appSource, /adminUserActionReviewMatch[\s\S]*authenticateAdminPostg
 assert.match(appSource, /adminStatusMatch[\s\S]*authenticateAdminPostgresqlIdentity/);
 assert.match(repositorySource, /eventType = 'status-changed'/);
 assert.match(repositorySource, /=== 'admin-status-changed'[\s\S]*\? 'status-changed'/);
+assert.match(repositorySource, /request\.requester_name, request\.requester_email/);
+assert.match(repositorySource, /actorType: payload\.actorType \|\| \(isRequestCreated \? 'requester' : 'admin'\)/);
+assert.match(repositorySource, /actorName: payload\.actorName \|\| \(isRequestCreated \? row\.requester_name : ''\)/);
+const writeRepositorySource = await readFile(new URL('../../server/src/rentals/rental-request-write-repository.mjs', import.meta.url), 'utf8');
+assert.match(writeRepositorySource, /actorType: 'requester'/);
+assert.match(writeRepositorySource, /actorName: requesterName/);
+assert.match(writeRepositorySource, /actorEmail: requesterEmail/);
 
 console.log('[admin-rental-mutation-completion-backend-smoke] PASS (PostgreSQL edit/memo/status-restore/user-action review current contracts)');

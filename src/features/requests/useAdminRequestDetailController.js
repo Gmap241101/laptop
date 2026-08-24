@@ -290,6 +290,14 @@ export default function useAdminRequestDetailController({
   const restoreAdminRequestStatus = useCallback(async () => {
     if (restoreSaving || !restoreDialog?.requestId) return false;
 
+    if (!String(restoreReason || '').trim()) {
+      triggerToastRef.current?.(
+        '신청 상태 복구 사유를 입력해주세요.',
+        'error'
+      );
+      return false;
+    }
+
     if (typeof commitAdminRequestStatusRestore !== 'function') {
       triggerToastRef.current?.(
         '신청 상태 복구 기능을 불러오지 못했습니다.',

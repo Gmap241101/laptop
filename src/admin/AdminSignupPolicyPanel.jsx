@@ -4,6 +4,7 @@ import useAdminMemberDirectoryAuditActions from '../features/members/useAdminMem
 import useAdminSignupPolicyActions from '../features/members/useAdminSignupPolicyActions.js';
 import AdminSignupTermsManager from './AdminSignupTermsManager.jsx';
 import { getCachedAdminSignupTermsCatalog, preloadAdminSignupTermsCatalog } from '../features/terms/adminTermsService.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 
 function PolicySwitch({ checked, disabled = false, label, description, onChange }) {
   return (
@@ -288,9 +289,9 @@ export default function AdminSignupPolicyPanel({ ctx }) {
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">
-                  {memberDirectoryAudit?.completedAtText ? (
+                  {memberDirectoryAudit?.completedAt || memberDirectoryAudit?.completedAtText ? (
                     <>
-                      최근 전체 검사: {memberDirectoryAudit.completedAtText} · 정상 {memberDirectoryAudit.normal || 0}명 · 정보 수정 필요 {memberDirectoryAudit.profileRequired || 0}명 · 중복 {memberDirectoryAudit.duplicates || 0}명
+                      최근 전체 검사: {formatKoreanDateTime(memberDirectoryAudit.completedAt || memberDirectoryAudit.completedAtText, '-')} · 정상 {memberDirectoryAudit.normal || 0}명 · 정보 수정 필요 {memberDirectoryAudit.profileRequired || 0}명 · 중복 {memberDirectoryAudit.duplicates || 0}명
                     </>
                   ) : (
                     '아직 전체 회원 명부 검사를 실행하지 않았습니다.'

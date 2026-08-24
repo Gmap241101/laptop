@@ -1,6 +1,7 @@
 import {
   USER_PROFILE_STATUS,
 } from '../../constants/memberConstants.js';
+import { formatKoreanDateTime } from '../../utils/appUtils.js';
 
 export const getSafeMemberDirectoryVersion = (settings = {}) => {
   const parsedVersion = Math.trunc(
@@ -42,16 +43,8 @@ export const getRestorableUserProfileStatus = (status) =>
     : USER_PROFILE_STATUS.ACTIVE;
 
 
-export const formatUserAccountCreatedAt = (account = {}, locale = 'ko-KR') => {
-  if (typeof account?.createdAt?.toDate === 'function') {
-    return account.createdAt.toDate().toLocaleString(locale);
-  }
-
-  const parsed = account?.createdAt ? new Date(account.createdAt) : null;
-  return parsed && !Number.isNaN(parsed.getTime())
-    ? parsed.toLocaleString(locale)
-    : '-';
-};
+export const formatUserAccountCreatedAt = (account = {}) =>
+  formatKoreanDateTime(account?.createdAt, '-');
 
 export const getUserAccountStatusLabel = (status) => {
   if (status === USER_PROFILE_STATUS.PENDING) {

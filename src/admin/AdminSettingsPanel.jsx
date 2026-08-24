@@ -32,6 +32,7 @@ import {
   RESTORE_SCOPE_META,
 } from '../utils/systemRestore.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 import useAdminDataMaintenanceController, {
   FULL_RESET_PRESET,
   RESET_CONFIRM_TEXT,
@@ -131,12 +132,8 @@ const getEditableSiteSettingFields = (mode) => {
   return [];
 };
 
-const formatTimestampValue = (value) => {
-  if (!value) return '기록 없음';
-  if (typeof value?.toDate === 'function') return value.toDate().toLocaleString('ko-KR');
-  if (typeof value === 'string') return value;
-  return new Date(value).toLocaleString('ko-KR');
-};
+const formatTimestampValue = (value) =>
+  formatKoreanDateTime(value, '기록 없음');
 const formatByteSize = (value) => {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';

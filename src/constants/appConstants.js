@@ -34,6 +34,7 @@ export const RENTAL_BLOCKING_REQUEST_STATUSES = [
 ];
 
 export const RENTAL_REQUEST_AUDIT_ACTION = {
+  REQUEST_CREATED: 'request-created',
   STATUS_CHANGED: 'status-changed',
   STATUS_RESTORED: 'status-restored',
   REQUEST_EDITED: 'request-edited',

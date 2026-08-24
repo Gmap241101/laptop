@@ -429,7 +429,7 @@ export default function useAdminRequestMutationController({
         ['restore-reason-missing', 'restore_reason_missing'].includes(error?.message || error?.code)
       ) {
         triggerToast(
-          '상태 복구 사유를 입력해 주세요.',
+          '신청 상태 복구 사유를 입력해주세요.',
           'error'
         );
         return false;

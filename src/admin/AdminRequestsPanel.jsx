@@ -799,9 +799,17 @@ export default function AdminRequestsPanel({ ctx }) {
                                             </div>
 
                                             <div className="mt-1 text-[10px] text-slate-500">
-                                              처리 관리자:{' '}
+                                              {log.actorType === 'requester' ||
+                                              [
+                                                RENTAL_REQUEST_AUDIT_ACTION.REQUEST_CREATED,
+                                                'created',
+                                                'rental-request-created',
+                                              ].includes(log.action)
+                                                ? '신청자'
+                                                : '처리 관리자'}:{' '}
                                               {log.actorName ||
                                                 log.actorAdminId ||
+                                                log.actorEmail ||
                                                 log.actorUid ||
                                                 '-'}
                                             </div>

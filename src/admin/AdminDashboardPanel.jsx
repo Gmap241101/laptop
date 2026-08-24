@@ -17,6 +17,7 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -557,29 +558,13 @@ export default function AdminDashboardPanel({ ctx }) {
   const defaultDueDate = getMaxRentalDueDate(defaultStartDate, settings);
   const maxRentalDays = getSafeMaxRentalDays(settings);
 
-  const currentTimeLabel = new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(nowMillis));
+  const currentTimeLabel = formatKoreanDateTime(nowMillis, '-');
 
   const summaryGeneratedAtMillis = getTimestampMillis(
     dashboardSummary?.generatedAtClientMs || dashboardSummary?.generatedAt
   );
   const summaryUpdatedLabel = summaryGeneratedAtMillis
-    ? new Intl.DateTimeFormat('ko-KR', {
-        timeZone: 'Asia/Seoul',
-        month: 'numeric',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).format(new Date(summaryGeneratedAtMillis))
+    ? formatKoreanDateTime(summaryGeneratedAtMillis, '요약 생성 전')
     : '요약 생성 전';
 
   const openRequestList = (requestTab, quickFilter) => {

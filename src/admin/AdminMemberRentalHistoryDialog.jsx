@@ -3,21 +3,9 @@ import { History, X } from 'lucide-react';
 
 import ModalPortal from '../components/ModalPortal.jsx';
 import { loadMemberAccountRentalHistory } from '../features/members/memberAccountHistoryService.js';
+import { formatKoreanDateTime } from '../utils/appUtils.js';
 
-const formatTimestamp = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
-};
+const formatTimestamp = (value) => formatKoreanDateTime(value, '-');
 
 const statusClassName = (status) => {
   if (status === '대여중') return 'border-emerald-200 bg-emerald-50 text-emerald-700';

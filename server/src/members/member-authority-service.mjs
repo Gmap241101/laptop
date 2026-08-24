@@ -712,7 +712,7 @@ export const createMemberAuthorityService = ({
         directoryVersion,
         configuredDirectoryVersion,
         directoryVersionReconciled,
-        completedAtText: new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Seoul' }).format(new Date()),
+        completedAtText: new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }).format(new Date()),
         completedBy: admin.uid,
         completedAt: new Date().toISOString(),
       });

@@ -15,6 +15,7 @@ import {
 import { toRentalAvailabilityRequest } from '../../services/publicAssetCatalog.js';
 import {
   formatDateWithKoreanWeekday,
+  formatKoreanDateTime,
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
@@ -281,7 +282,7 @@ export default function useUserRentalRequestController({
     }
 
     const requestId = createRentalRequestId();
-    const requestedAt = new Date().toLocaleString('ko-KR');
+    const requestedAt = formatKoreanDateTime(new Date(), '-');
 
     const nextRequest = {
       id: requestId,

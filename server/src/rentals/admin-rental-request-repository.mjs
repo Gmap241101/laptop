@@ -265,7 +265,8 @@ export const createAdminRentalRequestRepository = (pool) => {
       const result = await pool.query(
         `SELECT event.id, event.event_type, event.actor_firebase_uid,
                 event.event_payload, event.created_at, event.source_event_id,
-                event.source_mode
+                event.source_mode, request.requester_name, request.requester_email,
+                request.firebase_uid AS requester_firebase_uid
            FROM app_rental_request_events event
            JOIN app_rental_requests request ON request.id = event.rental_request_id
           WHERE request.request_id = $1
@@ -275,18 +276,21 @@ export const createAdminRentalRequestRepository = (pool) => {
       );
       return result.rows.map((row) => {
         const payload = asJson(row.event_payload, {}) || {};
+        const rawAction = payload.action || row.event_type || '';
+        const action = rawAction === 'admin-status-changed' ? 'status-changed' : rawAction;
+        const isRequestCreated = ['created', 'request-created', 'rental-request-created'].includes(action);
         return Object.freeze({
           id: row.source_event_id || `PG-EVT-${row.id}`,
-          action: (payload.action || row.event_type || '') === 'admin-status-changed'
-            ? 'status-changed'
-            : (payload.action || row.event_type || ''),
+          action,
           previousStatus: payload.previousStatus || '',
           nextStatus: payload.nextStatus || '',
           previousMemo: payload.previousMemo || '',
           nextMemo: payload.nextMemo || '',
-          actorUid: payload.actorUid || row.actor_firebase_uid || '',
+          actorType: payload.actorType || (isRequestCreated ? 'requester' : 'admin'),
+          actorUid: payload.actorUid || row.actor_firebase_uid || (isRequestCreated ? row.requester_firebase_uid : '') || '',
           actorAdminId: payload.actorAdminId || '',
-          actorName: payload.actorName || '',
+          actorName: payload.actorName || (isRequestCreated ? row.requester_name : '') || '',
+          actorEmail: payload.actorEmail || (isRequestCreated ? row.requester_email : '') || '',
           detail: payload.detail || '',
           createdAt: row.created_at,
           sourceMode: row.source_mode || 'postgresql-authoritative',
