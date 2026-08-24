@@ -97,6 +97,21 @@ export const formatKoreanDateTime = (value, fallback = '-') => {
   }).format(new Date(timestampMillis));
 };
 
+export const formatKoreanDateTimeMinute = (value, fallback = '-') => {
+  const timestampMillis = getFirestoreTimestampMillis(value);
+  if (!timestampMillis) return fallback;
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(timestampMillis));
+};
+
 export const formatFirestoreTimestamp = (value) =>
   formatKoreanDateTime(value, '-');
 

@@ -34,6 +34,8 @@ assert.doesNotMatch(workspace, /\['adminAccounts',\s*ShieldCheck,\s*'관리자 I
 assert.match(panel, /title="관리자 계정 관리"/);
 assert.match(panel, /관리자 계정 신규 등록/);
 assert.match(panel, /<table className="w-full table-fixed border-collapse text-left">/);
+assert.match(panel, /<col className="w-\[5%\]" \/>[\s\S]*<col className="w-\[7%\]" \/>[\s\S]*<col className="w-\[14%\]" \/>[\s\S]*<col className="w-\[12%\]" \/>[\s\S]*<col className="w-\[14%\]" \/>[\s\S]*<col className="w-\[9%\]" \/>[\s\S]*<col className="w-\[20%\]" \/>[\s\S]*<col className="w-\[19%\]" \/>/);
+assert.match(panel, /whitespace-nowrap px-3 py-2\.5 text-center text-\[11px\] leading-4 text-slate-500/);
 assert.doesNotMatch(panel, /신규 관리자 계정은 별도 등록 모달에서 생성하며 인증은 Clerk/);
 assert.match(panel, /md:grid-cols-\[minmax\(0,1fr\)_160px_140px\]/);
 assert.match(panel, />관리자 검색</);

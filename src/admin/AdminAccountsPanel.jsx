@@ -169,14 +169,14 @@ export default function AdminAccountsPanel({ ctx }) {
           <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white min-[1200px]:block">
             <table className="w-full table-fixed border-collapse text-left">
               <colgroup>
-                <col className="w-[6%]" />
-                <col className="w-[8%]" />
+                <col className="w-[5%]" />
+                <col className="w-[7%]" />
                 <col className="w-[14%]" />
                 <col className="w-[12%]" />
-                <col className="w-[16%]" />
-                <col className="w-[11%]" />
-                <col className="w-[16%]" />
-                <col className="w-[17%]" />
+                <col className="w-[14%]" />
+                <col className="w-[9%]" />
+                <col className="w-[20%]" />
+                <col className="w-[19%]" />
               </colgroup>
               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                 <tr>
@@ -211,7 +211,7 @@ export default function AdminAccountsPanel({ ctx }) {
                           {(account.adminRole || 'admin') === 'owner' ? '최고 관리자' : '일반 관리자'}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-center text-[11px] leading-4 text-slate-500">{formatAdminCreatedAt(account.createdAt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-center text-[11px] leading-4 text-slate-500">{formatAdminCreatedAt(account.createdAt)}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex flex-wrap items-center justify-center gap-1">
                           {(authenticatedAdminAccount?.adminRole || 'owner') === 'owner' && !isCurrent ? (

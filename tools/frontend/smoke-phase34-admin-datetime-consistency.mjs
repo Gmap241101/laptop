@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { formatKoreanDateTime } from '../../src/utils/appUtils.js';
+import { formatKoreanDateTime, formatKoreanDateTimeMinute } from '../../src/utils/appUtils.js';
+import { formatPopupDateTime } from '../../src/utils/popupUtils.js';
 
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
 
@@ -13,6 +14,18 @@ assert.equal(
   formatKoreanDateTime('26. 8. 16. PM 10:57:12'),
   '2026. 8. 16. 오후 10:57:12',
   'Legacy short-year AM/PM timestamps must normalize into the canonical Korean format',
+);
+
+assert.equal(
+  formatPopupDateTime('2026-07-22T06:09:00.000Z'),
+  '2026. 7. 22. 오후 3:09',
+  'Popup exposure schedule must reflect its minute-only datetime-local input and must not invent seconds',
+);
+
+assert.equal(
+  formatKoreanDateTimeMinute('2026-07-22T06:09:00.000Z'),
+  '2026. 7. 22. 오후 3:09',
+  'Minute-precision administrator schedules must not display synthetic seconds',
 );
 
 const [
@@ -53,7 +66,7 @@ assert.match(memberHistory, /formatTimestamp = \(value\) => formatKoreanDateTime
 assert.match(signupTerms, /formatDateTime = \(value\) => formatKoreanDateTime\(value, '-'\)/);
 assert.match(dashboardPanel, /currentTimeLabel = formatKoreanDateTime\(nowMillis, '-'\)/);
 assert.match(dashboardPanel, /formatKoreanDateTime\(summaryGeneratedAtMillis, '요약 생성 전'\)/);
-assert.match(homeBannerPanel, /formatDateTime = \(value\) => formatKoreanDateTime\(value, '-'\)/);
+assert.match(homeBannerPanel, /formatDateTime = \(value\) => formatKoreanDateTimeMinute\(value, '-'\)/);
 assert.match(dataMaintenance, /formatCheckedAt = \(value\) => formatKoreanDateTime\(value, '기록 없음'\)/);
 assert.match(memberAccountPolicy, /formatUserAccountCreatedAt = \(account = \{\}\) =>[\s\S]*formatKoreanDateTime\(account\?\.createdAt, '-'\)/);
 assert.match(termsService, /return formatKoreanDateTime\(value, '-'\)/);
