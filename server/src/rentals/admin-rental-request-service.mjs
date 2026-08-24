@@ -227,7 +227,14 @@ export const createAdminRentalRequestService = ({ repository, restrictionAuthori
     if (identity?.source !== 'clerk-postgresql') {
       throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
     }
-    return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
+    return Object.freeze({
+      uid: identity.uid,
+      adminId: String(identity.adminId || ''),
+      name: String(identity.name || ''),
+      email: String(identity.email || ''),
+      role: 'admin',
+      source: 'postgresql-admin-registry',
+    });
   };
 
 
@@ -459,6 +466,7 @@ export const createAdminRentalRequestService = ({ repository, restrictionAuthori
         returnFields: returnResult.requestFields || {},
         allowNonOverlappingSameAssetRequests: Boolean(settings.allowNonOverlappingSameAssetRequests ?? false),
         relatedRequestUpdates,
+        eventType: 'status-changed',
       });
 
       if (returnResult.restrictionFields?.uid && restrictionAuthorityRepository) {

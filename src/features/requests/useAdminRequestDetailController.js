@@ -7,7 +7,7 @@ import {
   where,
 } from '../../platform/retiredLegacyDataCompat.js';
 
-import { RENTAL_REQUEST_LOGS_COLLECTION_REF, firebaseAuth } from '../../platform/appDataRefs.js';
+import { RENTAL_REQUEST_LOGS_COLLECTION_REF } from '../../platform/appDataRefs.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import {
   publishAdminRentalRequestCutoverObservation,
@@ -103,11 +103,8 @@ export default function useAdminRequestDetailController({
       let cancelled = false;
       const loadPostgresEvents = async () => {
         try {
-          const firebaseUser = firebaseAuth.currentUser;
-          if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
-          const firebaseIdToken = await firebaseUser.getIdToken();
           const payload = await clerkStagingClient.getAdminRentalRequestEvents(
-            firebaseIdToken,
+            '',
             selectedRequestId
           );
           if (cancelled) return;

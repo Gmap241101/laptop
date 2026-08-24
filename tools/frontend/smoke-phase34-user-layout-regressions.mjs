@@ -9,6 +9,10 @@ const homePanel = read('src/user/UserHomePanel.jsx');
 const homeBootstrapService = read('src/user/userHomeBootstrapService.js');
 const authPanel = read('src/user/UserAuthPanel.jsx');
 const footerPagePanel = read('src/user/UserFooterPagePanel.jsx');
+const myPagePanel = read('src/user/UserMyPagePanel.jsx');
+const accountStatusPanel = read('src/user/UserAccountStatusPanel.jsx');
+const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
+const appShell = read('src/shell/AppShell.jsx');
 
 assert.equal(
   renderUserRoot.includes('await preloadUserHomeBootstrap()'),
@@ -32,6 +36,27 @@ assert.ok(
 assert.ok(
   authPanel.includes('mx-auto w-full max-w-xl overflow-hidden'),
   'the user auth card must fill the available flex width up to its original max-w-xl limit',
+);
+
+assert.ok(
+  myPagePanel.includes('mx-auto w-full max-w-xl space-y-4'),
+  'the my-page password re-verification surface must retain the full max-w-xl authentication width',
+);
+assert.ok(
+  myPagePanel.includes('mx-auto w-full max-w-3xl space-y-6'),
+  'the my-page root must explicitly fill available width before the max-w-3xl cap',
+);
+assert.ok(
+  accountStatusPanel.includes('mx-auto w-full max-w-2xl overflow-hidden'),
+  'account-status authentication-adjacent surfaces must explicitly fill available width',
+);
+assert.ok(
+  (adminWorkspace.match(/mx-auto w-full max-w-xl overflow-hidden/g) || []).length >= 3,
+  'administrator loading, error, and login cards must consistently use the full max-w-xl authentication width',
+);
+assert.ok(
+  appShell.includes('mx-auto w-full max-w-xl border-slate-200 bg-white shadow-sm'),
+  'the administrator lazy fallback must use the same explicit full-width authentication surface contract',
 );
 
 assert.ok(

@@ -277,7 +277,9 @@ export const createAdminRentalRequestRepository = (pool) => {
         const payload = asJson(row.event_payload, {}) || {};
         return Object.freeze({
           id: row.source_event_id || `PG-EVT-${row.id}`,
-          action: payload.action || row.event_type || '',
+          action: (payload.action || row.event_type || '') === 'admin-status-changed'
+            ? 'status-changed'
+            : (payload.action || row.event_type || ''),
           previousStatus: payload.previousStatus || '',
           nextStatus: payload.nextStatus || '',
           previousMemo: payload.previousMemo || '',
@@ -560,7 +562,7 @@ export const createAdminRentalRequestRepository = (pool) => {
       } finally { client.release(); }
     },
 
-    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], eventType = 'admin-status-changed', eventPayload = {}, clearUserActionRequest = false }) {
+    async changeStatus({ requestId, nextStatus, auditActor, returnFields = {}, allowNonOverlappingSameAssetRequests = false, relatedRequestUpdates = [], eventType = 'status-changed', eventPayload = {}, clearUserActionRequest = false }) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');

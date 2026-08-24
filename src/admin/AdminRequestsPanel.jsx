@@ -113,6 +113,46 @@ export default function AdminRequestsPanel({ ctx }) {
     triggerToast,
   });
 
+  const getRentalAuditStatusLabel = (status) => {
+    if (!status) return '-';
+    if (status === STATUS.APPROVED) return '대여승인';
+    if (status === STATUS.DENIED) return '대여불허';
+    return status;
+  };
+
+  const getAdminRequestAuditActionLabel = (log = {}) => {
+    const action = String(log.action || '');
+    const previousStatus = getRentalAuditStatusLabel(log.previousStatus);
+    const nextStatus = getRentalAuditStatusLabel(log.nextStatus);
+
+    if (
+      action === RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED ||
+      action === 'admin-status-changed'
+    ) {
+      return `${previousStatus} → ${nextStatus}`;
+    }
+    if (action === RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED) {
+      return `상태 복구: ${previousStatus} → ${nextStatus}`;
+    }
+    if (action === RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED) {
+      return '신청정보 수정';
+    }
+    if (action === RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED) {
+      return '관리자 메모 변경';
+    }
+    if (action === RENTAL_REQUEST_AUDIT_ACTION.USER_ACTION_REVIEWED) {
+      if (log.previousStatus && log.nextStatus && log.previousStatus !== log.nextStatus) {
+        return `사용자 요청 처리: ${previousStatus} → ${nextStatus}`;
+      }
+      return log.detail || '사용자 요청 처리';
+    }
+    if (['created', 'request-created', 'rental-request-created'].includes(action)) {
+      return '대여 신청 등록';
+    }
+
+    return log.detail || action || '처리 이력';
+  };
+
   const getAdminRequestReferenceDate = (request, requestLogs) => {
     if (request.status === STATUS.RETURNED) {
       if (request.returnedAt) {
@@ -748,19 +788,7 @@ export default function AdminRequestsPanel({ ctx }) {
                                           >
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                               <span className="font-semibold text-slate-800">
-                                                {log.action ===
-                                                RENTAL_REQUEST_AUDIT_ACTION.STATUS_CHANGED
-                                                  ? `${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
-                                                  : log.action ===
-                                                      RENTAL_REQUEST_AUDIT_ACTION.STATUS_RESTORED
-                                                    ? `상태 복구: ${log.previousStatus || '-'} → ${log.nextStatus || '-'}`
-                                                    : log.action ===
-                                                        RENTAL_REQUEST_AUDIT_ACTION.REQUEST_EDITED
-                                                      ? '신청정보 수정'
-                                                      : log.action ===
-                                                          RENTAL_REQUEST_AUDIT_ACTION.MEMO_CHANGED
-                                                        ? '관리자 메모 변경'
-                                                        : '사용자 요청 검토'}
+                                                {getAdminRequestAuditActionLabel(log)}
                                               </span>
 
                                               <span className="text-[10px] text-slate-400">

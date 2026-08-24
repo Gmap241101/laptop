@@ -637,6 +637,38 @@ export const createRequestHandler = ({
     }
   };
 
+  const authenticateAdminPostgresqlIdentity = async (request, response, headers, requestId, existingAuth = null) => {
+    const auth = existingAuth || await authenticate(request, response, headers, requestId);
+    if (!auth) return null;
+    try {
+      const adminAuth = await adminClerkAuthService.authorizeCurrent({ clerkUserId: auth.userId });
+      const admin = adminAuth?.admin || adminAuth?.account || {};
+      return Object.freeze({
+        uid: String(admin.legacyAdminKey || admin.firebaseUid || admin.id || ''),
+        email: String(admin.authEmail || admin.email || ''),
+        adminId: String(admin.adminLoginId || ''),
+        name: String(admin.userName || ''),
+        emailVerified: true,
+        signInProvider: 'clerk-postgresql-admin',
+        authTime: Number(auth.issuedAt || 0),
+        idToken: '',
+        source: 'clerk-postgresql',
+        clerkUserId: auth.userId,
+      });
+    } catch (error) {
+      console.warn('[auth] Clerk/PostgreSQL administrator identity rejected', {
+        requestId,
+        code: error?.code || 'admin_postgresql_identity_unauthorized',
+      });
+      writeJson(response, error?.status || 403, {
+        ...basePayload,
+        authenticated: true,
+        error: error?.code || 'admin_postgresql_identity_unauthorized',
+      }, headers);
+      return null;
+    }
+  };
+
   const authenticateUserAuthority = async (request, response, headers, requestId) => {
     const auth = await authenticate(request, response, headers, requestId);
     if (!auth) return null;
@@ -2855,7 +2887,9 @@ export const createRequestHandler = ({
       if (isGet || isPost) {
         const auth = await authenticate(request, response, headers, requestId);
         if (!auth) return;
-        const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
+        const firebaseIdentity = await authenticateAdminPostgresqlIdentity(
+          request, response, headers, requestId, auth
+        );
         if (!firebaseIdentity) return;
         const rentalRequestId = decodeURIComponent(adminRequestActionMatch[1]);
         let body = {};
@@ -2952,7 +2986,9 @@ export const createRequestHandler = ({
     if (adminUserActionReviewMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateAdminPostgresqlIdentity(
+        request, response, headers, requestId, auth
+      );
       if (!firebaseIdentity) return;
       let body;
       try {
@@ -3000,7 +3036,9 @@ export const createRequestHandler = ({
     if (adminStatusMatch) {
       const auth = await authenticate(request, response, headers, requestId);
       if (!auth) return;
-      const firebaseIdentity = await authenticateCompatibilityIdentity(request, response, headers, requestId);
+      const firebaseIdentity = await authenticateAdminPostgresqlIdentity(
+        request, response, headers, requestId, auth
+      );
       if (!firebaseIdentity) return;
       let body;
       try {

@@ -212,11 +212,8 @@ export default function useAdminUserActionReviewController({
     const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
     if (adminCutoverConfig.writeRequested) {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
-        const firebaseIdToken = await firebaseUser.getIdToken();
         const payload = await clerkStagingClient.reviewAdminRentalUserAction(
-          firebaseIdToken,
+          '',
           id,
           approved
         );
@@ -966,10 +963,7 @@ export default function useAdminUserActionReviewController({
       const rentalWriteMirrorRetirementConfig = readRentalRequestWriteMirrorRetirementConfig();
       if (adminCutoverConfig.readRequested && !rentalWriteMirrorRetirementConfig.enabled) {
         try {
-          const firebaseUser = firebaseAuth.currentUser;
-          if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
-          const firebaseIdToken = await firebaseUser.getIdToken();
-          await clerkStagingClient.syncAdminRentalRequest(firebaseIdToken, id);
+          await clerkStagingClient.syncAdminRentalRequest('', id);
         } catch (syncError) {
           console.error('Admin rental request targeted PostgreSQL sync error:', syncError);
           triggerToast(

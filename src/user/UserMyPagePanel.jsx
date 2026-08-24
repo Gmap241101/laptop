@@ -114,7 +114,7 @@ export default function UserMyPagePanel({ ctx }) {
   const requiresMyPageVerification = Boolean(firebaseAuthUser?.uid);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-6">
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white">
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
@@ -150,7 +150,7 @@ export default function UserMyPagePanel({ ctx }) {
               </div>
             </div>
           ) : requiresMyPageVerification && !security.isVerified ? (
-            <form className="mx-auto max-w-md space-y-4" onSubmit={security.verifyCurrentPassword}>
+            <form className="mx-auto w-full max-w-xl space-y-4" onSubmit={security.verifyCurrentPassword}>
               <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
                 <h3 className="text-base font-bold text-slate-900">마이페이지 본인 확인</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">

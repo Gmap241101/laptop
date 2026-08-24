@@ -33,7 +33,7 @@ const MemoizedAppDialogs = React.memo(AppDialogs);
 const MemoizedUserPopupLayer = React.memo(UserPopupLayer);
 
 const AdminWorkspaceFallback = () => (
-  <Card className="mx-auto max-w-xl border-slate-200 bg-white shadow-sm">
+  <Card className="mx-auto w-full max-w-xl border-slate-200 bg-white shadow-sm">
     <CardContent className="p-8 text-center">
       <div className="text-sm font-bold text-slate-700">
         관리자 화면을 불러오는 중입니다.

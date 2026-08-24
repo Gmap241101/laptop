@@ -122,15 +122,8 @@ export default function useAdminRequestMutationController({
       let shouldKeepAvailability = false;
 
       if (adminCutoverConfig.writeRequested) {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) {
-          const authError = new Error('admin-firebase-sign-in-required');
-          authError.code = 'admin_firebase_sign_in_required';
-          throw authError;
-        }
-        const firebaseIdToken = await firebaseUser.getIdToken();
         const payload = await clerkStagingClient.editAdminRentalRequest(
-          firebaseIdToken,
+          '',
           requestId,
           form
         );
@@ -345,15 +338,8 @@ export default function useAdminRequestMutationController({
       let shouldKeepAvailability = false;
 
       if (adminCutoverConfig.writeRequested) {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) {
-          const authError = new Error('admin-firebase-sign-in-required');
-          authError.code = 'admin_firebase_sign_in_required';
-          throw authError;
-        }
-        const firebaseIdToken = await firebaseUser.getIdToken();
         const payload = await clerkStagingClient.restoreAdminRentalRequestStatus(
-          firebaseIdToken,
+          '',
           requestId,
           nextStatus,
           restoreReason
@@ -581,15 +567,8 @@ export default function useAdminRequestMutationController({
       let shouldKeepAvailability;
 
       if (adminCutoverConfig.writeRequested) {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) {
-          const authError = new Error('admin-firebase-sign-in-required');
-          authError.code = 'admin_firebase_sign_in_required';
-          throw authError;
-        }
-        const firebaseIdToken = await firebaseUser.getIdToken();
         const payload = await clerkStagingClient.changeAdminRentalRequestStatus(
-          firebaseIdToken,
+          '',
           id,
           status
         );
@@ -809,11 +788,8 @@ export default function useAdminRequestMutationController({
     const adminCutoverConfig = readAdminRentalRequestCutoverConfig();
     if (adminCutoverConfig.writeRequested) {
       try {
-        const firebaseUser = firebaseAuth.currentUser;
-        if (!firebaseUser) throw new Error('admin-firebase-sign-in-required');
-        const firebaseIdToken = await firebaseUser.getIdToken();
         const payload = await clerkStagingClient.saveAdminRentalRequestMemo(
-          firebaseIdToken,
+          '',
           id,
           memo
         );

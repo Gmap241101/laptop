@@ -829,9 +829,9 @@ export const requestAdminRentalRequestSync = async ({ clerk, apiBaseUrl, fetchIm
 };
 
 export const requestAdminRentalRequestEvents = async ({ clerk, apiBaseUrl, fetchImpl, firebaseIdToken, requestId }) => {
-  const token = trim(firebaseIdToken);
+  void firebaseIdToken;
   const id = trim(requestId);
-  if ((!token && !firebaseRuntimeRetired()) || !id) throw new Error('Firebase admin sign-in and rental request ID are required.');
+  if (!id) throw new Error('Rental request ID is required.');
   const { response, payload } = await requestWithSession({
     clerk, apiBaseUrl, fetchImpl,
     path: `/api/admin/rental-requests/${encodeURIComponent(id)}/events`,

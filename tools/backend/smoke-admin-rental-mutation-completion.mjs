@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 
 const identity = { uid: 'admin-uid', source: 'clerk-postgresql' };
@@ -76,6 +77,14 @@ assert.equal(memo.authority, 'postgresql');
 assert.equal(memo.request.adminMemo, 'phase18 memo');
 assert.equal(lastMutation.type, 'memo');
 
+const approved = await service.changeStatus(identity, {
+  requestId: current.id, nextStatus: '대여중',
+});
+assert.equal(approved.authority, 'postgresql');
+assert.equal(approved.request.status, '대여중');
+assert.equal(lastMutation.type, 'status');
+assert.equal(lastMutation.args.eventType, 'status-changed');
+
 const restored = await service.restoreStatus(identity, {
   requestId: current.id, nextStatus: '보류', restoreReason: 'Phase18 restore smoke',
 });
@@ -93,5 +102,17 @@ assert.equal(denied.authority, 'postgresql');
 assert.equal(denied.restrictionUpdated, false);
 assert.equal(lastMutation.type, 'review');
 assert.equal(lastMutation.args.nextRequest.userActionRequest.status, 'denied');
+
+
+const [appSource, repositorySource] = await Promise.all([
+  readFile(new URL('../../server/src/app.mjs', import.meta.url), 'utf8'),
+  readFile(new URL('../../server/src/rentals/admin-rental-request-repository.mjs', import.meta.url), 'utf8'),
+]);
+assert.match(appSource, /authenticateAdminPostgresqlIdentity[\s\S]*adminClerkAuthService\.authorizeCurrent/);
+assert.match(appSource, /adminRequestActionMatch[\s\S]*authenticateAdminPostgresqlIdentity/);
+assert.match(appSource, /adminUserActionReviewMatch[\s\S]*authenticateAdminPostgresqlIdentity/);
+assert.match(appSource, /adminStatusMatch[\s\S]*authenticateAdminPostgresqlIdentity/);
+assert.match(repositorySource, /eventType = 'status-changed'/);
+assert.match(repositorySource, /=== 'admin-status-changed'[\s\S]*\? 'status-changed'/);
 
 console.log('[admin-rental-mutation-completion-backend-smoke] PASS (PostgreSQL edit/memo/status-restore/user-action review current contracts)');
