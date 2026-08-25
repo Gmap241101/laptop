@@ -62,7 +62,7 @@ export const createSecureAttachmentRepository = (pool) => Object.freeze({
       keepIds.push(attachmentId);
       const metadataChecked = Boolean(attachment?.metadataChecked && suppliedTargetUrl);
       const fileSizeBytes = safeMetricNumber(attachment?.fileSizeBytes);
-      const displayName = trim(attachment?.name) || trim(existing?.display_name) || '첨부파일';
+      const displayName = trim(attachment?.name) || (suppliedTargetUrl ? '' : trim(existing?.display_name)) || '첨부파일';
       if (existing) {
         await client.query(
           `UPDATE app_secure_attachments

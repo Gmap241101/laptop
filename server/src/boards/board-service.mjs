@@ -111,6 +111,18 @@ export const createBoardService = ({ repository, attachmentService = null }) => 
       if (!post) throw serviceError('faq_post_not_found', 'FAQ post was not found.', 404);
       return post;
     },
+    async getAdminNotice(identity, postId) {
+      const admin = await verifyAdmin(identity);
+      const post = await repository.getAdminPost('notice', postId);
+      if (!post) throw serviceError('notice_post_not_found', 'Notice post was not found.', 404);
+      return Object.freeze({ admin, post });
+    },
+    async getAdminFaq(identity, postId) {
+      const admin = await verifyAdmin(identity);
+      const post = await repository.getAdminPost('faq', postId);
+      if (!post) throw serviceError('faq_post_not_found', 'FAQ post was not found.', 404);
+      return Object.freeze({ admin, post });
+    },
     bootstrap,
 
     async saveNotice(identity, actorClerkUserId, input) {

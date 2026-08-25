@@ -1994,6 +1994,31 @@ export const createRequestHandler = ({
       return;
     }
 
+    const adminBoardPostReadMatch = request.method === 'GET'
+      ? url.pathname.match(/^\/api\/admin\/boards\/(notice|faq)\/posts\/([^/]+)$/)
+      : null;
+    if (adminBoardPostReadMatch) {
+      const admin = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!admin) return;
+      const boardType = adminBoardPostReadMatch[1];
+      const postId = decodeURIComponent(adminBoardPostReadMatch[2]);
+      try {
+        const result = boardType === 'notice'
+          ? await boardService.getAdminNotice(admin.firebaseIdentity, postId)
+          : await boardService.getAdminFaq(admin.firebaseIdentity, postId);
+        writeJson(response, 200, {
+          ...basePayload, authenticated: true, authorized: true,
+          adminBoardPost: { boardType, post: result.post },
+        }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, {
+          ...basePayload, authenticated: true,
+          error: error?.code || `admin_${boardType}_post_unavailable`,
+        }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/admin/boards/bootstrap') {
       const admin = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!admin) return;

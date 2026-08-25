@@ -1225,8 +1225,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                             'id',att.attachment_id,
                             'name',att.display_name,
                             'downloadPath','/api/attachments/' || att.attachment_id || '/download',
-                    'fileSizeBytes',att.file_size_bytes,
-                    'downloadCount',att.download_count
+                            'fileSizeBytes',att.file_size_bytes,
+                            'downloadCount',att.download_count,
+                            'targetUrl',att.target_url
                           ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                         )
                           FROM app_secure_attachments att

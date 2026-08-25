@@ -247,6 +247,29 @@ const getAdminTokens = async () => {
   return { clerkToken };
 };
 
+const adminReadRequest = async (path, { fetchImpl = fetch } = {}) => {
+  const config = readBoardContentCutoverConfig();
+  if (!config.writeRequested) return null;
+  requireApi(config);
+  const { clerkToken } = await getAdminTokens();
+  const response = await fetchImpl(`${config.apiBaseUrl}${path}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${clerkToken}`,
+    },
+    cache: 'no-store',
+  });
+  const payload = await readJson(response);
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL board administrator read failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    error.code = payload?.error || 'admin_board_read_failed';
+    throw error;
+  }
+  return payload;
+};
+
 const adminRequest = async (path, body = {}, { fetchImpl = fetch } = {}) => {
   const config = readBoardContentCutoverConfig();
   if (!config.writeRequested) return null;
@@ -295,6 +318,19 @@ export const bootstrapBoardContent = async ({ fetchImpl = fetch } = {}) => {
   publishBoardContentObservation({ writeRequested: true, writeSource: 'firestore-server-bootstrap', firestoreMirror: 'source', boardType: 'all', operation: 'bootstrap', noticeCount: result?.noticeCount ?? null, faqCount: result?.faqCount ?? null, itemCount: Number(result?.noticeCount || 0) + Number(result?.faqCount || 0), categoryCount: result?.faqCategoryCount ?? null, syncAt: result?.status?.syncedAt || null, error: null });
   publishBoardContentRefresh({ boardType: 'all', operation: 'bootstrap' });
   return result;
+};
+
+export const requestAdminNoticePost = async (postId, options = {}) => {
+  const payload = await adminReadRequest(`/api/admin/boards/notice/posts/${encodeURIComponent(trim(postId))}`, options);
+  const post = payload?.adminBoardPost?.post || null;
+  if (!post?.id) throw Object.assign(new Error('Invalid administrator notice post payload.'), { code: 'admin_notice_post_payload_invalid' });
+  return post;
+};
+export const requestAdminFaqPost = async (postId, options = {}) => {
+  const payload = await adminReadRequest(`/api/admin/boards/faq/posts/${encodeURIComponent(trim(postId))}`, options);
+  const post = payload?.adminBoardPost?.post || null;
+  if (!post?.id) throw Object.assign(new Error('Invalid administrator FAQ post payload.'), { code: 'admin_faq_post_payload_invalid' });
+  return post;
 };
 
 export const saveNoticeBoardPost = async (post, options = {}) => observeMutation(await adminRequest('/api/admin/boards/notice/posts', { post }, options), { boardType: 'notice' });

@@ -20,6 +20,8 @@ import {
   deleteFaqBoardPost,
   deleteNoticeBoardPost,
   readBoardContentCutoverConfig,
+  requestAdminFaqPost,
+  requestAdminNoticePost,
   requestFaqPost,
   requestNoticePost,
   saveFaqBoardPost,
@@ -122,9 +124,11 @@ export default function useAdminBoardPostController({
     }
 
     let resolvedPost = post;
-    if (post?.id && typeof post.contentHtml === 'undefined') {
+    if (post?.id) {
       try {
-        resolvedPost = await requestNoticePost(post.id);
+        resolvedPost = boardWriteRequested
+          ? await requestAdminNoticePost(post.id)
+          : (typeof post.contentHtml === 'undefined' ? await requestNoticePost(post.id) : post);
       } catch (error) {
         console.error('Notice detail load error:', error);
         triggerToast('공지사항 본문을 불러오지 못했습니다.', 'error');
@@ -141,7 +145,7 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(resolvedPost?.isPinned),
-      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
+      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: attachment?.targetUrl || '' })),
     };
 
     setNoticePostDialog({
@@ -363,9 +367,11 @@ export default function useAdminBoardPostController({
     }
 
     let resolvedPost = post;
-    if (post?.id && typeof post.contentHtml === 'undefined') {
+    if (post?.id) {
       try {
-        resolvedPost = await requestFaqPost(post.id);
+        resolvedPost = boardWriteRequested
+          ? await requestAdminFaqPost(post.id)
+          : (typeof post.contentHtml === 'undefined' ? await requestFaqPost(post.id) : post);
       } catch (error) {
         console.error('FAQ detail load error:', error);
         triggerToast('FAQ 본문을 불러오지 못했습니다.', 'error');
@@ -383,7 +389,7 @@ export default function useAdminBoardPostController({
           )
       ),
       isPinned: Boolean(resolvedPost?.isPinned),
-      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: '' })),
+      attachments: (Array.isArray(resolvedPost?.attachments) ? resolvedPost.attachments : []).map((attachment) => ({ ...attachment, targetUrl: attachment?.targetUrl || '' })),
     };
 
     setFaqPostDialog({

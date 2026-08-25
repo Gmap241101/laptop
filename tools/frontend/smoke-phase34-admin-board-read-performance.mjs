@@ -21,6 +21,8 @@ assert.ok(subscription.includes('summaryOnly: shouldLoadAdminNotice'), 'admin no
 assert.ok(subscription.includes('summaryOnly: shouldLoadAdminFaq'), 'admin FAQ list must request summary payload outside search mode');
 
 for (const marker of [
+  'requestAdminNoticePost',
+  'requestAdminFaqPost',
   'requestNoticePost',
   'requestFaqPost',
   "typeof post.contentHtml === 'undefined'",

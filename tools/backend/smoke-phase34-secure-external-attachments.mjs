@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 import { createPinnedLookup, inferSecureAttachmentFilename, normalizeSecureAttachmentInputs } from '../../server/src/attachments/attachment-service.mjs';
+import { createSecureAttachmentRepository } from '../../server/src/attachments/attachment-repository.mjs';
 
 const read = (path) => readFileSync(path, 'utf8');
 
@@ -80,7 +81,7 @@ assert.match(repository, /recordCompletedDownload/);
 assert.match(repository, /download_count=download_count\+1/);
 assert.match(repository, /last_downloaded_at=NOW\(\)/);
 assert.match(repository, /file_size_bytes=CASE WHEN/);
-assert.match(repository, /const displayName = trim\(attachment\?\.name\) \|\| trim\(existing\?\.display_name\) \|\| '첨부파일'/);
+assert.match(repository, /const displayName = trim\(attachment\?\.name\) \|\| \(suppliedTargetUrl \? '' : trim\(existing\?\.display_name\)\) \|\| '첨부파일'/);
 assert.match(service, /httpsRequest/);
 assert.match(service, /lookup: createPinnedLookup\(resolved\)/);
 assert.match(service, /probeSecureAttachmentMetadata/);
@@ -123,11 +124,50 @@ assert.match(index, /backfillMissingMetadata\(\{ limit: 25, concurrency: 3 \}\)/
 assert.match(index, /attachmentService: secureAttachmentService/);
 assert.match(boardRepository, /app_secure_attachments/);
 assert.match(boardRepository, /jsonb_build_object\([\s\S]*'fileSizeBytes'[\s\S]*'downloadCount'/);
+assert.match(boardRepository, /async getAdminPost\(boardType, postId\)/);
+assert.match(boardRepository, /includeTargetUrl: true/);
+assert.match(boardRepository, /'targetUrl', a\.target_url/);
+assert.match(app, /\/api\\\/admin\\\/boards\\\/\(notice\|faq\)\\\/posts/);
+assert.match(app, /boardService\.getAdminNotice/);
+assert.match(app, /boardService\.getAdminFaq/);
+assert.match(inquiryRepository, /async getAdminInquiry\(publicId\)[\s\S]*'targetUrl',att\.target_url/);
 assert.match(boardService, /await prepareAttachments\(input\?\.attachments\)/);
 assert.match(inquiryRepository, /ownerType: 'inquiry_answer'/);
 assert.match(inquiryRepository, /ownerType: 'inquiry'/);
 assert.match(inquiryRepository, /'fileSizeBytes',att\.file_size_bytes/);
 assert.match(inquiryRepository, /'downloadCount',att\.download_count/);
 assert.match(inquiryService, /await prepareAttachments\(input\?\.attachments\)/);
+
+
+let attachmentUpdateParams = null;
+const attachmentRepoForRename = createSecureAttachmentRepository({ async query() { return { rows: [] }; } });
+const renameClient = {
+  async query(sql, params = []) {
+    const text = String(sql);
+    if (text.includes('SELECT attachment_id,display_name,target_url')) {
+      return { rows: [{
+        attachment_id: 'att-existing',
+        display_name: '관리자지정파일명.jpg',
+        target_url: 'https://files.example.com/server-file.jpg',
+        file_size_bytes: 123,
+        download_count: 0,
+        metadata_checked_at: new Date('2026-08-25T00:00:00.000Z'),
+      }] };
+    }
+    if (text.includes('UPDATE app_secure_attachments') && text.includes('SET display_name=$4')) {
+      attachmentUpdateParams = params;
+      return { rows: [] };
+    }
+    return { rows: [] };
+  },
+};
+await attachmentRepoForRename.syncOwnerAttachments(renameClient, {
+  ownerType: 'notice',
+  ownerId: 'notice-1',
+  attachments: [{ id: 'att-existing', name: '', targetUrl: 'https://files.example.com/server-file.jpg' }],
+  createdBy: 'admin-1',
+});
+assert.ok(attachmentUpdateParams, 'existing attachment update must execute');
+assert.equal(attachmentUpdateParams[3], '첨부파일', 'clearing a custom display name with a supplied source URL must not restore the previous custom name');
 
 console.log('[phase34-secure-external-attachments-backend-smoke] PASS');

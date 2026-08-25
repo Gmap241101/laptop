@@ -48,6 +48,9 @@ const mapPost = (row) => row?.post_id ? Object.freeze({
     fileSizeBytes: nullableMetricNumber(attachment?.fileSizeBytes ?? attachment?.file_size_bytes),
     downloadCount: Math.max(0, Number(attachment?.downloadCount ?? attachment?.download_count) || 0),
     downloadPath: attachment?.downloadPath || attachment?.download_path || '',
+    ...(trim(attachment?.targetUrl || attachment?.target_url)
+      ? { targetUrl: trim(attachment?.targetUrl || attachment?.target_url) }
+      : {}),
   })).filter((attachment) => attachment.id && attachment.name)),
 }) : null;
 
@@ -84,7 +87,7 @@ const NOTICE_SUMMARY_PROJECTION = `
 
 const FAQ_SUMMARY_PROJECTION = NOTICE_SUMMARY_PROJECTION;
 
-const richPostProjection = (ownerType) => `
+const richPostProjection = (ownerType, { includeTargetUrl = false } = {}) => `
   p.*,
   COALESCE((
     SELECT jsonb_agg(
@@ -92,8 +95,9 @@ const richPostProjection = (ownerType) => `
         'id',a.attachment_id,
         'name',a.display_name,
         'downloadPath','/api/attachments/' || a.attachment_id || '/download',
-                    'fileSizeBytes',a.file_size_bytes,
-                    'downloadCount',a.download_count
+        'fileSizeBytes',a.file_size_bytes,
+        'downloadCount',a.download_count
+        ${includeTargetUrl ? ", 'targetUrl', a.target_url" : ''}
       ) ORDER BY a.sort_order,a.created_at,a.attachment_id
     )
       FROM app_secure_attachments a
@@ -474,6 +478,29 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
          FROM status
          LEFT JOIN target ON TRUE`,
       [trim(postId)],
+    );
+    const row = result.rows[0];
+    if (!row?.board_synced_at) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');
+    return mapPost(row);
+  },
+
+  async getAdminPost(boardType, postId) {
+    const normalizedType = trim(boardType).toLowerCase();
+    if (!['notice', 'faq'].includes(normalizedType)) throw repositoryError('board_type_invalid', 'Unsupported board type.');
+    const result = await pool.query(
+      `WITH status AS (
+         SELECT synced_at
+           FROM app_board_status
+          WHERE scope='all'
+       ), target AS (
+         SELECT ${richPostProjection(normalizedType, { includeTargetUrl: true })}
+           FROM app_board_posts p
+          WHERE p.board_type=$1 AND p.post_id=$2
+       )
+       SELECT status.synced_at AS board_synced_at, target.*
+         FROM status
+         LEFT JOIN target ON TRUE`,
+      [normalizedType, trim(postId)],
     );
     const row = result.rows[0];
     if (!row?.board_synced_at) throw repositoryError('board_not_bootstrapped', 'Board domain has not been bootstrapped to PostgreSQL.');

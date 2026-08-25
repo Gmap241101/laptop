@@ -176,7 +176,7 @@ export default function AdminInquiryPanel({ ctx }) {
     setAnswerEditing(answer);
     setAnswerHtml(sanitizeRichTextHtml(answer?.bodyHtml || ''));
     setAnswerAttachments(Array.isArray(answer?.attachments)
-      ? answer.attachments.map((attachment) => ({ ...attachment, targetUrl: '' }))
+      ? answer.attachments.map((attachment) => ({ ...attachment, targetUrl: attachment?.targetUrl || '' }))
       : []);
     setAnswerOpen(true);
   };

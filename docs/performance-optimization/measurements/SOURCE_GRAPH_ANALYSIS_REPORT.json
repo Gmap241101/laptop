@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T12:43:13.810Z",
+  "generatedAt": "2026-08-25T13:01:15.377Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1473243,
+        "sourceBytes": 1474810,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -143,6 +143,10 @@
             "bytes": 17219
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 17218
+          },
+          {
             "file": "src/user/UserDialogs.jsx",
             "bytes": 16815
           },
@@ -153,10 +157,6 @@
           {
             "file": "src/user/UserMyPagePanel.jsx",
             "bytes": 16384
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15651
           },
           {
             "file": "src/features/requests/useUserRentalRequestController.js",
@@ -554,7 +554,7 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 94,
-        "sourceBytes": 1056734,
+        "sourceBytes": 1058577,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -633,8 +633,16 @@
             "bytes": 17219
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 17218
+          },
+          {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
             "bytes": 16984
+          },
+          {
+            "file": "src/features/boards/useAdminBoardPostController.js",
+            "bytes": 16786
           },
           {
             "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -643,14 +651,6 @@
           {
             "file": "src/features/assets/useAdminAssetCategoryController.js",
             "bytes": 16627
-          },
-          {
-            "file": "src/features/boards/useAdminBoardPostController.js",
-            "bytes": 16510
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15651
           },
           {
             "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2045249,
+        "sourceBytes": 2047117,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -984,7 +984,7 @@
           },
           {
             "file": "src/admin/AdminInquiryPanel.jsx",
-            "bytes": 37292
+            "bytes": 37317
           },
           {
             "file": "src/admin/AdminHolidayManagementPanel.jsx",
@@ -1087,8 +1087,16 @@
             "bytes": 17219
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 17218
+          },
+          {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
             "bytes": 16984
+          },
+          {
+            "file": "src/features/boards/useAdminBoardPostController.js",
+            "bytes": 16786
           },
           {
             "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -1107,10 +1115,6 @@
             "bytes": 16569
           },
           {
-            "file": "src/features/boards/useAdminBoardPostController.js",
-            "bytes": 16510
-          },
-          {
             "file": "src/admin/AdminPopupPanel.jsx",
             "bytes": 16398
           },
@@ -1121,10 +1125,6 @@
           {
             "file": "src/features/settings/useAdminDataMaintenanceController.js",
             "bytes": 15937
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15651
           },
           {
             "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 601930,
+    "sourceBytes": 603497,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1661,12 +1661,12 @@
         "bytes": 17219
       },
       {
-        "file": "src/features/requests/useRentalDerivedSelectors.js",
-        "bytes": 16763
+        "file": "src/features/boards/boardContentCutover.js",
+        "bytes": 17218
       },
       {
-        "file": "src/features/boards/boardContentCutover.js",
-        "bytes": 15651
+        "file": "src/features/requests/useRentalDerivedSelectors.js",
+        "bytes": 16763
       },
       {
         "file": "src/index.css",
@@ -2142,7 +2142,7 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 92,
-    "sourceBytes": 1443319,
+    "sourceBytes": 1443620,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
@@ -2178,7 +2178,7 @@
       },
       {
         "file": "src/admin/AdminInquiryPanel.jsx",
-        "bytes": 37292
+        "bytes": 37317
       },
       {
         "file": "src/admin/AdminHolidayManagementPanel.jsx",
@@ -2261,6 +2261,10 @@
         "bytes": 16984
       },
       {
+        "file": "src/features/boards/useAdminBoardPostController.js",
+        "bytes": 16786
+      },
+      {
         "file": "src/features/members/useAdminMemberAccountEditActions.js",
         "bytes": 16669
       },
@@ -2271,10 +2275,6 @@
       {
         "file": "src/utils/systemRestore.js",
         "bytes": 16569
-      },
-      {
-        "file": "src/features/boards/useAdminBoardPostController.js",
-        "bytes": 16510
       },
       {
         "file": "src/admin/AdminPopupPanel.jsx",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2903908,
+      "sourceBytes": 2905776,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2585,7 +2585,7 @@
         },
         {
           "file": "src/admin/AdminInquiryPanel.jsx",
-          "bytes": 37292
+          "bytes": 37317
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
@@ -2740,12 +2740,20 @@
           "bytes": 17219
         },
         {
+          "file": "src/features/boards/boardContentCutover.js",
+          "bytes": 17218
+        },
+        {
           "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
           "bytes": 16984
         },
         {
           "file": "src/user/UserDialogs.jsx",
           "bytes": 16815
+        },
+        {
+          "file": "src/features/boards/useAdminBoardPostController.js",
+          "bytes": 16786
         },
         {
           "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -2764,10 +2772,6 @@
           "bytes": 16569
         },
         {
-          "file": "src/features/boards/useAdminBoardPostController.js",
-          "bytes": 16510
-        },
-        {
           "file": "src/admin/AdminPopupPanel.jsx",
           "bytes": 16398
         },
@@ -2782,10 +2786,6 @@
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
           "bytes": 15937
-        },
-        {
-          "file": "src/features/boards/boardContentCutover.js",
-          "bytes": 15651
         },
         {
           "file": "src/features/requests/useUserRentalRequestController.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2916562,
+      "sourceBytes": 2918430,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3463,7 +3463,7 @@
         },
         {
           "file": "src/admin/AdminInquiryPanel.jsx",
-          "bytes": 37292
+          "bytes": 37317
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
@@ -3618,12 +3618,20 @@
           "bytes": 17219
         },
         {
+          "file": "src/features/boards/boardContentCutover.js",
+          "bytes": 17218
+        },
+        {
           "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
           "bytes": 16984
         },
         {
           "file": "src/user/UserDialogs.jsx",
           "bytes": 16815
+        },
+        {
+          "file": "src/features/boards/useAdminBoardPostController.js",
+          "bytes": 16786
         },
         {
           "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -3642,10 +3650,6 @@
           "bytes": 16569
         },
         {
-          "file": "src/features/boards/useAdminBoardPostController.js",
-          "bytes": 16510
-        },
-        {
           "file": "src/admin/AdminPopupPanel.jsx",
           "bytes": 16398
         },
@@ -3660,10 +3664,6 @@
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
           "bytes": 15937
-        },
-        {
-          "file": "src/features/boards/boardContentCutover.js",
-          "bytes": 15651
         },
         {
           "file": "src/features/requests/useUserRentalRequestController.js",
