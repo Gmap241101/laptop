@@ -12,7 +12,7 @@ const userBoard = read('src/user/UserBoardPanel.jsx');
 const userInquiry = read('src/user/UserInquiryPanel.jsx');
 const adminInquiry = read('src/admin/AdminInquiryPanel.jsx');
 
-for (const marker of ['첨부파일', '외부 HTTPS 직접 다운로드 파일 주소', '기존 보안 링크 유지', '최대 {MAX_ATTACHMENTS}개']) {
+for (const marker of ['첨부파일', '외부 HTTPS 직접 다운로드 파일 주소', '기존 보안 링크 유지', '최대 {MAX_ATTACHMENTS}개', '표시 파일명', '(선택)', '비워두면 서버 파일명 자동 사용']) {
   assert.ok(editor.includes(marker), `secure attachment editor marker missing: ${marker}`);
 }
 assert.match(editor, /targetUrl/);
@@ -24,6 +24,9 @@ assert.match(list, /formatFileSize/);
 assert.match(list, /fileSizeBytes/);
 assert.match(list, /downloadCount/);
 assert.match(list, /다운로드 \{normalizeDownloadCount\(attachment\.downloadCount\)\}회/);
+assert.match(list, /flex min-w-0 flex-1 items-center gap-1\.5/);
+assert.match(list, /shrink-0 text-\[10px\]/);
+assert.doesNotMatch(list, /mt-0\.5 block/, 'attachment metadata must remain inline with the file name');
 assert.match(list, /용량 미확인/);
 assert.doesNotMatch(list, /targetUrl|\.url\b/, 'reader attachment list must not receive or render the external target URL');
 assert.match(api, /\/api\/attachments\/\$\{encodeURIComponent\(trim\(attachmentId\)\)\}\/download/);

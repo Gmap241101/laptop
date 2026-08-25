@@ -59,6 +59,47 @@ const parseTargetUrl = (raw) => {
   return parsed;
 };
 
+const decodeFilenameValue = (value) => {
+  const text = trim(value);
+  if (!text) return '';
+  try { return decodeURIComponent(text); }
+  catch { return text; }
+};
+
+const normalizeSourceFilename = (value) => {
+  const decoded = decodeFilenameValue(value)
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim();
+  const leaf = decoded.split(/[\\/]/).pop()?.replace(/^[\"']+|[\"']+$/g, '').trim() || '';
+  return leaf.slice(0, MAX_NAME_LENGTH);
+};
+
+const filenameFromContentDisposition = (value) => {
+  const header = trim(value);
+  if (!header) return '';
+  const extended = header.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'[^']*')([^;]+)/i);
+  if (extended?.[1]) {
+    const candidate = normalizeSourceFilename(extended[1].replace(/^\"|\"$/g, ''));
+    if (candidate) return candidate;
+  }
+  const regular = header.match(/filename\s*=\s*(?:\"([^\"]*)\"|([^;]+))/i);
+  return normalizeSourceFilename(regular?.[1] || regular?.[2] || '');
+};
+
+const filenameFromUrl = (value) => {
+  try {
+    const parsed = parseTargetUrl(value);
+    const segment = parsed.pathname.split('/').filter(Boolean).pop() || '';
+    return normalizeSourceFilename(segment);
+  } catch {
+    return '';
+  }
+};
+
+export const inferSecureAttachmentFilename = ({ contentDisposition = '', targetUrl = '' } = {}) => (
+  filenameFromContentDisposition(contentDisposition) || filenameFromUrl(targetUrl)
+);
+
 export const normalizeSecureAttachmentInputs = (input = []) => {
   const items = Array.isArray(input) ? input : [];
   if (items.length > MAX_ATTACHMENTS) throw serviceError('attachment_count_exceeded', `A maximum of ${MAX_ATTACHMENTS} attachments is allowed.`);
@@ -66,7 +107,6 @@ export const normalizeSecureAttachmentInputs = (input = []) => {
     const id = trim(item?.id);
     const name = trim(item?.name || item?.displayName);
     const rawTargetUrl = trim(item?.targetUrl || item?.url);
-    if (!name) throw serviceError('attachment_name_required', 'Attachment display name is required.');
     if (name.length > MAX_NAME_LENGTH) throw serviceError('attachment_name_too_long', 'Attachment display name is too long.');
     const targetUrl = rawTargetUrl ? parseTargetUrl(rawTargetUrl).toString() : '';
     if (!id && !targetUrl) throw serviceError('attachment_url_required', 'New attachments require an external HTTPS file URL.');
@@ -147,6 +187,12 @@ const openUpstreamRequest = async (targetUrl, { method = 'GET', requestHeaders =
     throw serviceError('attachment_source_unavailable', 'Attachment source is unavailable.', 502);
   }
   validateUpstreamHeaders(upstream);
+  Object.defineProperty(upstream, 'secureAttachmentFinalUrl', {
+    value: parsed.toString(),
+    configurable: false,
+    enumerable: false,
+    writable: false,
+  });
   return upstream;
 };
 
@@ -168,13 +214,22 @@ const assertMetadataSizeAllowed = (size) => {
 
 export const probeSecureAttachmentMetadata = async (targetUrl) => {
   let head = null;
+  let detectedFileName = filenameFromUrl(targetUrl);
   try {
     head = await openUpstreamRequest(targetUrl, { method: 'HEAD' });
+    detectedFileName = inferSecureAttachmentFilename({
+      contentDisposition: head.headers['content-disposition'],
+      targetUrl: head.secureAttachmentFinalUrl || targetUrl,
+    }) || detectedFileName;
     const rawContentLength = head.headers['content-length'];
     const contentLength = rawContentLength === undefined ? null : Number(rawContentLength);
     head.resume();
     if (Number.isSafeInteger(contentLength) && contentLength >= 0) {
-      return Object.freeze({ fileSizeBytes: assertMetadataSizeAllowed(contentLength), checked: true });
+      return Object.freeze({
+        fileSizeBytes: assertMetadataSizeAllowed(contentLength),
+        fileName: detectedFileName,
+        checked: true,
+      });
     }
   } catch (error) {
     if (['attachment_url_host_forbidden', 'attachment_direct_file_required', 'attachment_file_too_large'].includes(error?.code)) throw error;
@@ -183,6 +238,10 @@ export const probeSecureAttachmentMetadata = async (targetUrl) => {
   let ranged = null;
   try {
     ranged = await openUpstreamRequest(targetUrl, { method: 'GET', requestHeaders: { Range: 'bytes=0-0' } });
+    detectedFileName = inferSecureAttachmentFilename({
+      contentDisposition: ranged.headers['content-disposition'],
+      targetUrl: ranged.secureAttachmentFinalUrl || targetUrl,
+    }) || detectedFileName;
     const status = Number(ranged.statusCode || 0);
     let size = null;
     if (status === 206) size = parseContentRangeTotal(ranged.headers['content-range']);
@@ -192,11 +251,15 @@ export const probeSecureAttachmentMetadata = async (targetUrl) => {
       if (Number.isSafeInteger(contentLength) && contentLength >= 0) size = contentLength;
     }
     if (ranged && !ranged.destroyed) ranged.destroy();
-    return Object.freeze({ fileSizeBytes: assertMetadataSizeAllowed(size), checked: true });
+    return Object.freeze({
+      fileSizeBytes: assertMetadataSizeAllowed(size),
+      fileName: detectedFileName,
+      checked: true,
+    });
   } catch (error) {
     if (ranged && !ranged.destroyed) ranged.destroy();
     if (['attachment_url_host_forbidden', 'attachment_direct_file_required', 'attachment_file_too_large'].includes(error?.code)) throw error;
-    return Object.freeze({ fileSizeBytes: null, checked: false });
+    return Object.freeze({ fileSizeBytes: null, fileName: detectedFileName, checked: false });
   }
 };
 
@@ -205,8 +268,10 @@ export const prepareSecureAttachmentInputs = async (input = []) => {
   return Object.freeze(await Promise.all(normalized.map(async (attachment) => {
     if (!attachment.targetUrl) return attachment;
     const metadata = await probeSecureAttachmentMetadata(attachment.targetUrl);
+    const resolvedName = attachment.name || metadata.fileName || filenameFromUrl(attachment.targetUrl) || '첨부파일';
     return Object.freeze({
       ...attachment,
+      name: resolvedName.slice(0, MAX_NAME_LENGTH),
       fileSizeBytes: metadata.fileSizeBytes,
       metadataChecked: metadata.checked,
     });

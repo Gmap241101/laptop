@@ -13,10 +13,10 @@ const formatFileSize = (value) => {
 const normalizeDownloadCount = (value) => Math.max(0, Math.trunc(Number(value) || 0));
 
 const AttachmentLabel = ({ attachment }) => (
-  <span className="min-w-0">
-    <span className="block truncate font-semibold text-slate-700">{attachment.name}</span>
-    <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
-      {formatFileSize(attachment.fileSizeBytes)} · 다운로드 {normalizeDownloadCount(attachment.downloadCount)}회
+  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+    <span className="min-w-0 truncate font-semibold text-slate-700" title={attachment.name}>{attachment.name}</span>
+    <span className="shrink-0 text-[10px] font-normal text-slate-500">
+      · {formatFileSize(attachment.fileSizeBytes)} · 다운로드 {normalizeDownloadCount(attachment.downloadCount)}회
     </span>
   </span>
 );

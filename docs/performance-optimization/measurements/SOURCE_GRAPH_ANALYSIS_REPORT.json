@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T12:18:25.855Z",
+  "generatedAt": "2026-08-25T12:43:13.810Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1473099,
+        "sourceBytes": 1473243,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -336,7 +336,7 @@
           },
           {
             "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4141
+            "bytes": 4227
           },
           {
             "file": "src/platform/appDataRefs.js",
@@ -375,12 +375,12 @@
             "bytes": 3338
           },
           {
-            "file": "src/services/publicAssetCatalog.js",
-            "bytes": 3257
+            "file": "src/components/SecureAttachmentList.jsx",
+            "bytes": 3312
           },
           {
-            "file": "src/components/SecureAttachmentList.jsx",
-            "bytes": 3254
+            "file": "src/services/publicAssetCatalog.js",
+            "bytes": 3257
           },
           {
             "file": "src/hooks/useStableContextGroups.js",
@@ -554,7 +554,7 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 94,
-        "sourceBytes": 1056648,
+        "sourceBytes": 1056734,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -770,7 +770,7 @@
           },
           {
             "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4141
+            "bytes": 4227
           },
           {
             "file": "src/platform/appDataRefs.js",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2045105,
+        "sourceBytes": 2045249,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1364,7 +1364,7 @@
           },
           {
             "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4141
+            "bytes": 4227
           },
           {
             "file": "src/services/adminRequestQuery.js",
@@ -1407,12 +1407,12 @@
             "bytes": 3338
           },
           {
-            "file": "src/services/publicAssetCatalog.js",
-            "bytes": 3257
+            "file": "src/components/SecureAttachmentList.jsx",
+            "bytes": 3312
           },
           {
-            "file": "src/components/SecureAttachmentList.jsx",
-            "bytes": 3254
+            "file": "src/services/publicAssetCatalog.js",
+            "bytes": 3257
           },
           {
             "file": "src/hooks/useStableContextGroups.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 601786,
+    "sourceBytes": 601930,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1778,7 +1778,7 @@
       },
       {
         "file": "src/components/SecureAttachmentEditor.jsx",
-        "bytes": 4141
+        "bytes": 4227
       },
       {
         "file": "src/platform/appDataRefs.js",
@@ -1801,12 +1801,12 @@
         "bytes": 3338
       },
       {
-        "file": "src/services/publicAssetCatalog.js",
-        "bytes": 3257
+        "file": "src/components/SecureAttachmentList.jsx",
+        "bytes": 3312
       },
       {
-        "file": "src/components/SecureAttachmentList.jsx",
-        "bytes": 3254
+        "file": "src/services/publicAssetCatalog.js",
+        "bytes": 3257
       },
       {
         "file": "src/hooks/useStableContextGroups.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2903764,
+      "sourceBytes": 2903908,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3089,7 +3089,7 @@
         },
         {
           "file": "src/components/SecureAttachmentEditor.jsx",
-          "bytes": 4141
+          "bytes": 4227
         },
         {
           "file": "src/services/adminRequestQuery.js",
@@ -3148,12 +3148,12 @@
           "bytes": 3338
         },
         {
-          "file": "src/services/publicAssetCatalog.js",
-          "bytes": 3257
+          "file": "src/components/SecureAttachmentList.jsx",
+          "bytes": 3312
         },
         {
-          "file": "src/components/SecureAttachmentList.jsx",
-          "bytes": 3254
+          "file": "src/services/publicAssetCatalog.js",
+          "bytes": 3257
         },
         {
           "file": "src/hooks/useStableContextGroups.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2916418,
+      "sourceBytes": 2916562,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3971,7 +3971,7 @@
         },
         {
           "file": "src/components/SecureAttachmentEditor.jsx",
-          "bytes": 4141
+          "bytes": 4227
         },
         {
           "file": "src/services/adminRequestQuery.js",
@@ -4030,12 +4030,12 @@
           "bytes": 3338
         },
         {
-          "file": "src/services/publicAssetCatalog.js",
-          "bytes": 3257
+          "file": "src/components/SecureAttachmentList.jsx",
+          "bytes": 3312
         },
         {
-          "file": "src/components/SecureAttachmentList.jsx",
-          "bytes": 3254
+          "file": "src/services/publicAssetCatalog.js",
+          "bytes": 3257
         },
         {
           "file": "src/hooks/useStableContextGroups.js",

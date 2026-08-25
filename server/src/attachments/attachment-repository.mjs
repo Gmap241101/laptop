@@ -42,7 +42,7 @@ export const createSecureAttachmentRepository = (pool) => Object.freeze({
     const normalizedOwnerType = trim(ownerType);
     const normalizedOwnerId = trim(ownerId);
     const current = await client.query(
-      `SELECT attachment_id,target_url,file_size_bytes,download_count,metadata_checked_at
+      `SELECT attachment_id,display_name,target_url,file_size_bytes,download_count,metadata_checked_at
          FROM app_secure_attachments
         WHERE owner_type=$1 AND owner_id=$2 AND deleted_at IS NULL
         FOR UPDATE`,
@@ -62,6 +62,7 @@ export const createSecureAttachmentRepository = (pool) => Object.freeze({
       keepIds.push(attachmentId);
       const metadataChecked = Boolean(attachment?.metadataChecked && suppliedTargetUrl);
       const fileSizeBytes = safeMetricNumber(attachment?.fileSizeBytes);
+      const displayName = trim(attachment?.name) || trim(existing?.display_name) || '첨부파일';
       if (existing) {
         await client.query(
           `UPDATE app_secure_attachments
@@ -72,14 +73,14 @@ export const createSecureAttachmentRepository = (pool) => Object.freeze({
                   metadata_checked_at=CASE WHEN $7::boolean THEN NOW() ELSE metadata_checked_at END,
                   updated_at=NOW()
             WHERE owner_type=$1 AND owner_id=$2 AND attachment_id=$3 AND deleted_at IS NULL`,
-          [normalizedOwnerType, normalizedOwnerId, attachmentId, trim(attachment?.name), targetUrl, index, metadataChecked, fileSizeBytes],
+          [normalizedOwnerType, normalizedOwnerId, attachmentId, displayName, targetUrl, index, metadataChecked, fileSizeBytes],
         );
       } else {
         await client.query(
           `INSERT INTO app_secure_attachments
              (attachment_id,owner_type,owner_id,display_name,target_url,file_size_bytes,download_count,metadata_checked_at,sort_order,created_by,created_at,updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,0,CASE WHEN $7::boolean THEN NOW() ELSE NULL END,$8,$9,NOW(),NOW())`,
-          [attachmentId, normalizedOwnerType, normalizedOwnerId, trim(attachment?.name), targetUrl, fileSizeBytes, Boolean(attachment?.metadataChecked), index, trim(createdBy)],
+          [attachmentId, normalizedOwnerType, normalizedOwnerId, displayName, targetUrl, fileSizeBytes, Boolean(attachment?.metadataChecked), index, trim(createdBy)],
         );
       }
     }

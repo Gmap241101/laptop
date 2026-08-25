@@ -32,8 +32,8 @@ export default function SecureAttachmentEditor({ value = [], onChange, disabled 
             return (
               <div key={attachment?.id || attachment?.clientKey || index} className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto]">
                 <div>
-                  <div className="mb-1 text-[10px] font-semibold text-slate-500">표시 파일명</div>
-                  <input type="text" value={attachment?.name || ''} disabled={disabled} maxLength={180} onChange={(event) => updateAt(index, { name: event.target.value })} placeholder="예: 신청서.pdf" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-focus disabled:bg-slate-100" />
+                  <div className="mb-1 text-[10px] font-semibold text-slate-500">표시 파일명 <span className="font-normal text-slate-400">(선택)</span></div>
+                  <input type="text" value={attachment?.name || ''} disabled={disabled} maxLength={180} onChange={(event) => updateAt(index, { name: event.target.value })} placeholder="비워두면 서버 파일명 자동 사용" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none mk-form-focus disabled:bg-slate-100" />
                 </div>
                 <div>
                   <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold text-slate-500">외부 HTTPS 파일 주소{existing ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">등록됨</span> : null}</div>

@@ -52,4 +52,4 @@ CLERK_PLATFORM_API_TIMEOUT_MS=8000
 
 Do not expose the Platform API key to Vercel/browser environment variables. The browser calls the authenticated rental API, and the Heroku server performs the Clerk Platform API request.
 
-Migration 036 adds secure-attachment file-size metadata and atomic successful-download counters without exposing external target URLs. Existing attachment counts start at zero; file size is populated by safe metadata probing for new/changed URLs or by the first successful proxied download.
+Migration 036 adds secure-attachment file-size metadata and atomic successful-download counters without exposing external target URLs. Existing attachment counts start at zero; file size is populated by safe metadata probing for new/changed URLs or by the first successful proxied download. Attachment display names are optional for new/changed external URLs: when omitted, the secure metadata probe uses the upstream Content-Disposition filename when available and otherwise falls back to the final HTTPS URL path filename.

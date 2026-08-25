@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
-import { createPinnedLookup, normalizeSecureAttachmentInputs } from '../../server/src/attachments/attachment-service.mjs';
+import { createPinnedLookup, inferSecureAttachmentFilename, normalizeSecureAttachmentInputs } from '../../server/src/attachments/attachment-service.mjs';
 
 const read = (path) => readFileSync(path, 'utf8');
 
@@ -15,6 +15,19 @@ assert.equal(created[0].name, '대여안내.pdf');
 assert.equal(created[0].targetUrl, 'https://files.example.com/download/manual.pdf?token=test');
 assert.equal(created[0].fileSizeBytes, null);
 assert.equal(created[0].metadataChecked, false);
+
+const automaticName = normalizeSecureAttachmentInputs([
+  { name: '', targetUrl: 'https://files.example.com/download/server-photo.jpg?token=test' },
+]);
+assert.equal(automaticName[0].name, '');
+assert.equal(automaticName[0].targetUrl, 'https://files.example.com/download/server-photo.jpg?token=test');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: "attachment; filename*=UTF-8''%ED%85%8C%EC%8A%A4%ED%8A%B8%20%EC%82%AC%EC%A7%84.jpg",
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '테스트 사진.jpg');
+assert.equal(inferSecureAttachmentFilename({
+  targetUrl: 'https://files.example.com/download/server-photo.jpg?token=test',
+}), 'server-photo.jpg');
 
 const retained = normalizeSecureAttachmentInputs([{ id: 'att-existing', name: '기존.pdf', targetUrl: '' }]);
 assert.equal(retained[0].id, 'att-existing');
@@ -67,12 +80,17 @@ assert.match(repository, /recordCompletedDownload/);
 assert.match(repository, /download_count=download_count\+1/);
 assert.match(repository, /last_downloaded_at=NOW\(\)/);
 assert.match(repository, /file_size_bytes=CASE WHEN/);
+assert.match(repository, /const displayName = trim\(attachment\?\.name\) \|\| trim\(existing\?\.display_name\) \|\| '첨부파일'/);
 assert.match(service, /httpsRequest/);
 assert.match(service, /lookup: createPinnedLookup\(resolved\)/);
 assert.match(service, /probeSecureAttachmentMetadata/);
 assert.match(service, /method: 'HEAD'/);
 assert.match(service, /Range: 'bytes=0-0'/);
 assert.match(service, /prepareSecureAttachmentInputs/);
+assert.match(service, /inferSecureAttachmentFilename/);
+assert.match(service, /content-disposition/);
+assert.match(service, /const resolvedName = attachment\.name \|\| metadata\.fileName/);
+assert.doesNotMatch(service, /attachment_name_required/);
 assert.match(service, /backfillMissingMetadata/);
 assert.match(service, /recordCompletedDownload\(record\.id, transferred\)/);
 
