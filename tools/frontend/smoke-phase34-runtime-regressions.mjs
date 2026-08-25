@@ -278,9 +278,9 @@ assert.notEqual(formattedCreatedAt, '-', 'PostgreSQL ISO member signup timestamp
 const memberEditSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberAccountEditActions.js', import.meta.url), 'utf8');
 assert.match(memberEditSource, /createdAt:[\s\S]*adminMemberProfileWrite\?\.profile\?\.createdAt[\s\S]*account\?\.createdAt/, 'administrator member edit state must preserve createdAt');
 
-const appShellSource = fs.readFileSync(new URL('../../src/shell/AppShell.jsx', import.meta.url), 'utf8');
-assert.equal(appShellSource.includes('Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다.'), false, 'retired Firebase loading copy must not remain');
-assert.equal(appShellSource.includes('PostgreSQL 운영 DB 기준으로 데이터를 불러오고 있습니다.'), true);
+const userShellLoadingSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', import.meta.url), 'utf8');
+assert.equal(userShellLoadingSource.includes('Firebase 원격 DB 기준으로 데이터를 불러오고 있습니다.'), false, 'retired Firebase loading copy must not remain');
+assert.equal(userShellLoadingSource.includes('PostgreSQL 운영 DB 기준으로 데이터를 불러오고 있습니다.'), true);
 
 const blockingStateSource = fs.readFileSync(new URL('../../src/shell/AppBlockingStateScreen.jsx', import.meta.url), 'utf8');
 assert.equal(blockingStateSource.includes('Firebase 데이터를 불러오지 못했습니다.'), false, 'retired Firebase wording must not be shown for PostgreSQL data-load failures');
@@ -360,8 +360,6 @@ const userMainSource = fs.readFileSync(new URL('../../src/user-main.jsx', import
 const adminMainSource = fs.readFileSync(new URL('../../src/admin-main.jsx', import.meta.url), 'utf8');
 const renderUserRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
 const userHomeBootstrapServiceSource = fs.readFileSync(new URL('../../src/user/userHomeBootstrapService.js', import.meta.url), 'utf8');
-const userHomeBootstrapScreenSource = fs.readFileSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url), 'utf8');
-const renderAppRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAppRoot.jsx', import.meta.url), 'utf8');
 const renderAdminRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderAdminRoot.jsx', import.meta.url), 'utf8');
 const userAppSource = fs.readFileSync(new URL('../../src/UserApp.jsx', import.meta.url), 'utf8');
 const userShellSource = fs.readFileSync(new URL('../../src/user/UserShell.jsx', import.meta.url), 'utf8');
@@ -373,7 +371,6 @@ const userRuntimeErrorBoundarySource = fs.readFileSync(new URL('../../src/user/U
 const adminAppSource = fs.readFileSync(new URL('../../src/admin/AdminApp.jsx', import.meta.url), 'utf8');
 const adminWorkspaceSource = fs.readFileSync(new URL('../../src/admin/AdminWorkspace.jsx', import.meta.url), 'utf8');
 const adminContextAssemblerSource = fs.readFileSync(new URL('../../src/admin/useAdminContextAssembler.js', import.meta.url), 'utf8');
-const appDynamicContextValuesSource = fs.readFileSync(new URL('../../src/context/appDynamicContextValues.js', import.meta.url), 'utf8');
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminAccountSecuritySource, /title="새 기기 로그인 인증"/, 'account-security settings must expose the shared new-device login verification control');
 assert.match(adminAccountSecuritySource, /새로운 기기에서 이메일 인증 사용/, 'Device Trust control must describe the requested yes/no behavior');
@@ -411,6 +408,7 @@ assert.match(renderUserRootSource, /React\.lazy\(async \(\) => \{[\s\S]*import\(
 assert.equal(renderUserRootSource.includes('await preloadUserHomeBootstrap()'), false, 'home bootstrap and critical image decode must not block UserApp lazy resolution');
 assert.match(renderUserRootSource, /void preloadUserHomeBootstrap\(\)[\s\S]*preloadCriticalUserHomeAssets/, 'home bootstrap and critical assets should continue warming in the background');
 assert.match(renderUserRootSource, /<React\.Suspense fallback=\{null\}>[\s\S]*<UserApp runtimeSurface="user" \/>/, 'user root must render the real user runtime without an intermediate home placeholder surface');
+assert.equal(fs.existsSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url)), false, 'the obsolete intermediate bootstrap screen must stay physically retired');
 assert.equal(renderUserRootSource.includes('UserHomeBootstrapScreen'), false, 'the obsolete intermediate bootstrap screen must not be mounted by the user root');
 assert.equal(renderUserRootSource.includes("import UserApp from '../UserApp.jsx'"), false, 'user root must not statically import the full UserApp graph');
 assert.match(renderUserRootSource, /UserRuntimeErrorBoundary/, 'isolated user root must retain a top-level render error boundary');
@@ -419,6 +417,20 @@ assert.equal(userMainSource.includes('renderAdminRoot'), false, 'user entrypoint
 assert.equal(adminMainSource.includes('renderUserRoot'), false, 'administrator entrypoint must not import the user root');
 assert.match(renderAdminRootSource, /import AdminApp from '\.\.\/admin\/AdminApp\.jsx'/, 'administrator document must mount AdminApp directly');
 assert.equal(renderAdminRootSource.includes('../App.jsx'), false, 'administrator document must not mount the legacy shared App root');
+for (const relativePath of [
+  '../../src/App.jsx',
+  '../../src/main.jsx',
+  '../../src/bootstrap/renderAppRoot.jsx',
+  '../../src/shell/AppShell.jsx',
+  '../../src/context/useAppContextAssembler.js',
+  '../../src/context/appDynamicContextValues.js',
+]) {
+  assert.equal(
+    fs.existsSync(fileURLToPath(new URL(relativePath, import.meta.url))),
+    false,
+    `retired shared-root source must stay deleted: ${relativePath}`,
+  );
+}
 assert.match(userAppSource, /from '\.\/user\/UserShell\.jsx'/, 'isolated UserApp must render the dedicated user shell');
 assert.match(userAppSource, /from '\.\/user\/useUserContextAssembler\.js'/, 'isolated UserApp must use the user-only context assembler');
 assert.match(adminAppSource, /from '\.\/AdminShell\.jsx'/, 'AdminApp must render the administrator-only shell');
@@ -468,8 +480,6 @@ assert.match(adminWorkspaceSource, /requestFaqBoard\(\{ page: 1, categoryId: 'al
 assert.match(adminWorkspaceSource, /getAdminRentalRequests\('', \{[\s\S]*tab: 'pending'[\s\S]*page: 1[\s\S]*pageSize: 10/, 'rental-request intent must prefetch the default first administrator page');
 assert.match(adminContextAssemblerSource, /adminRequestsPrerequisitesReady:\s*Boolean\(sourceValues\.isAdminAuthenticated\)[\s\S]*sourceValues\.currentAuthRoleReady[\s\S]*!sourceValues\.currentAuthRoleErrorMessage/, 'administrator rental-request readiness must use Clerk/PostgreSQL administrator authority');
 assert.doesNotMatch(adminContextAssemblerSource, /adminRequestsPrerequisitesReady:[\s\S]{0,220}(?:firebaseAuthReady|firebaseAuthUser)/, 'administrator rental-request readiness must not wait for retired Firebase authentication state');
-assert.match(appDynamicContextValuesSource, /adminRequestsPrerequisitesReady:\s*Boolean\(sourceValues\.isAdminAuthenticated\)[\s\S]*sourceValues\.currentAuthRoleReady[\s\S]*!sourceValues\.currentAuthRoleErrorMessage/, 'legacy context assembly must preserve the Clerk/PostgreSQL administrator readiness contract');
-assert.doesNotMatch(appDynamicContextValuesSource, /adminRequestsPrerequisitesReady:[\s\S]{0,220}(?:firebaseAuthReady|firebaseAuthUser)/, 'legacy context assembly must not reintroduce the retired Firebase administrator readiness gate');
 assert.equal(adminWorkspaceSource.includes('관리 메뉴를 불러오는 중입니다.'), false, 'administrator menu must never render the old first-load explanatory placeholder');
 assert.equal(adminWorkspaceSource.includes('선택한 관리 기능의 코드를 처음 한 번만 불러옵니다.'), false, 'administrator menu must not expose code-loading copy');
 assert.match(adminNavigationSource, /startTransition\(\(\) => \{[\s\S]*setAdminTab\(nextTab\);[\s\S]*\}\);/, 'administrator tab commits must use a transition so the previous panel stays visible while a first-use chunk downloads');
@@ -876,14 +886,13 @@ const homeFastpathSiteContentSource = fs.readFileSync(new URL('../../src/feature
 const homeFastpathSiteSettingsSource = fs.readFileSync(new URL('../../src/features/settings/useSiteSettingsController.js', import.meta.url), 'utf8');
 const homeFastpathBootstrapServiceSource = fs.readFileSync(new URL('../../src/user/userHomeBootstrapService.js', import.meta.url), 'utf8');
 const homeFastpathRenderRootSource = fs.readFileSync(new URL('../../src/bootstrap/renderUserRoot.jsx', import.meta.url), 'utf8');
-const homeFastpathBootstrapScreenSource = fs.readFileSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url), 'utf8');
 const homeFastpathPanelSource = fs.readFileSync(new URL('../../src/user/UserHomePanel.jsx', import.meta.url), 'utf8');
 const homeFastpathAdminSettingsSource = fs.readFileSync(new URL('../../src/admin/AdminSettingsPanel.jsx', import.meta.url), 'utf8');
 assert.match(homeFastpathSiteContentSource, /export const getCachedSiteContentDomain/, 'site-content cache must expose a synchronous resolved-domain seed for first paint');
 assert.match(homeFastpathSiteSettingsSource, /readCachedSiteSettings\(\) \|\| DEFAULT_SITE_SETTINGS/, 'site settings must initialize from the home bootstrap cache before default settings');
 assert.match(homeFastpathRenderRootSource, /preloadCriticalUserHomeAssets/, 'home route must keep the lightweight bootstrap surface until critical hero assets are warm');
-assert.match(homeFastpathBootstrapScreenSource, /heroMobileImageUrl[\s\S]*<picture>/, 'home bootstrap must use responsive picture markup for the critical hero');
-assert.match(homeFastpathBootstrapScreenSource, /showSystemBanner/, 'home bootstrap must render the authoritative global banner to avoid shell layout shift');
+assert.match(homeFastpathPanelSource, /function ResponsiveBannerImage[\s\S]*<picture[\s\S]*mobileImageUrl/, 'the mounted user home panel must retain responsive picture markup for the critical hero');
+assert.match(userShellSource, /shouldShowSystemBanner[\s\S]*normalizedSiteSettings\.systemBannerMessage/, 'the mounted user shell must retain the authoritative global banner');
 assert.doesNotMatch(homeFastpathPanelSource, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 30_000\)/, 'home banner visibility must not force a 30-second periodic rerender');
 assert.match(homeFastpathPanelSource, /getNextBannerBoundaryMillis/, 'home banner visibility must schedule only the next actual start/end boundary');
 assert.match(homeFastpathAdminSettingsSource, /stripTransientGlobalBannerAuditValues/, 'global banner history must redact transient banner values from future audit payloads');

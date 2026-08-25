@@ -38,6 +38,7 @@ const diagnostics = readFileSync('src/clerk/ClerkStagingDiagnostics.jsx', 'utf8'
 for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 26 notice / FAQ PostgreSQL read + CRUD authority', 'Notice / FAQ PostgreSQL bootstrap', "top: '184px'"]) {
   assert.ok(diagnostics.includes(marker), `missing Phase 26 diagnostics marker: ${marker}`);
 }
-const app = readFileSync('src/App.jsx', 'utf8');
-assert.ok(!app.includes('boardContentCutover'), 'Phase 26 must not push board authority logic back into App.jsx.');
+const userApp = readFileSync('src/UserApp.jsx', 'utf8');
+const adminApp = readFileSync('src/admin/AdminApp.jsx', 'utf8');
+assert.ok(!userApp.includes('boardContentCutover') && !adminApp.includes('boardContentCutover'), 'Phase 26 board authority implementation must stay outside application roots');
 console.log('[board-authority-frontend-smoke] PASS (notice/FAQ PostgreSQL read, fallback, view count, admin CRUD/config/category authority, diagnostics bootstrap)');

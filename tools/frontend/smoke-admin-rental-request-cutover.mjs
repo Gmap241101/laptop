@@ -38,7 +38,7 @@ const [controller, mutation, diagnostics, dashboard, guard, app, client] = await
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
   read('src/hooks/useDashboardSummary.js'),
   read('src/features/requests/useSelectedRentalAssetAvailabilityGuard.js'),
-  read('src/App.jsx'),
+  read('src/UserApp.jsx'),
   read('src/clerk/clerkStagingClient.js'),
 ]);
 for (const marker of [

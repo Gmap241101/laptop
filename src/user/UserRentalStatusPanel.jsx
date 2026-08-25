@@ -12,6 +12,7 @@ import {
 import { Button, Card, CardContent } from '../components/CommonUI.jsx';
 import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
+import UserSectionHero from './UserSectionHero.jsx';
 import { getHolidayDisplayName, normalizeHolidayList } from '../domain/rentalPolicy.js';
 import {
   getCachedMemberRentalStatusMonth,
@@ -444,14 +445,10 @@ function UserRentalStatusPanel({ ctx }) {
   return (
     <div className="w-full space-y-6">
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-9 text-white sm:px-8 sm:py-10">
-          <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-20 left-16 h-44 w-44 rounded-full bg-orange-400/10 blur-3xl" />
-          <div className="relative mx-auto max-w-3xl text-center">
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">전체 대여현황</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-300">월별 기기 이용 일정과 과거 대여 이력을 확인할 수 있습니다.</p>
-          </div>
-        </div>
+        <UserSectionHero
+          title="전체 대여현황"
+          description="월별 기기 이용 일정과 과거 대여 이력을 확인할 수 있습니다."
+        />
       </Card>
 
       <RentalStatusBoard

@@ -124,6 +124,26 @@ const adminOnlyComplete = new Set(
   [...completeSets.admin].filter((filePath) => !completeSets.user.has(filePath))
 );
 
+const runtimeSourceExtensions = new Set(['.js', '.jsx', '.mjs']);
+const walkRuntimeSourceFiles = (directory) => {
+  const output = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      output.push(...walkRuntimeSourceFiles(absolute));
+    } else if (entry.isFile() && runtimeSourceExtensions.has(path.extname(entry.name))) {
+      output.push(absolute);
+    }
+  }
+  return output;
+};
+
+const reachableRuntimeSource = new Set([...completeSets.user, ...completeSets.admin]);
+const allRuntimeSource = new Set(walkRuntimeSourceFiles(sourceRoot));
+const unreachableRuntimeSource = new Set(
+  [...allRuntimeSource].filter((filePath) => !reachableRuntimeSource.has(filePath))
+);
+
 const userInitial = entryReports.user.initial;
 const report = {
   schemaVersion: 2,
@@ -132,6 +152,11 @@ const report = {
   sharedComplete: summarizeSet(sharedComplete),
   userOnlyComplete: summarizeSet(userOnlyComplete),
   adminOnlyComplete: summarizeSet(adminOnlyComplete),
+  runtimeSourceReachability: {
+    all: summarizeSet(allRuntimeSource),
+    reachable: summarizeSet(reachableRuntimeSource),
+    unreachable: summarizeSet(unreachableRuntimeSource),
+  },
   // Backward-compatible aliases: the legacy single entry resolved to the user surface.
   initialModuleCount: userInitial.moduleCount,
   initialSourceBytes: userInitial.sourceBytes,
@@ -145,3 +170,13 @@ fs.writeFileSync(
   `${JSON.stringify(report, null, 2)}\n`
 );
 console.log(JSON.stringify(report, null, 2));
+
+if (process.argv.includes('--fail-on-unreachable') && unreachableRuntimeSource.size > 0) {
+  console.error(`[source-reachability] FAIL (${unreachableRuntimeSource.size} unreachable runtime source modules)`);
+  for (const filePath of [...unreachableRuntimeSource].sort()) console.error(`- ${relativeFile(filePath)}`);
+  process.exit(1);
+}
+
+if (process.argv.includes('--fail-on-unreachable')) {
+  console.error(`[source-reachability] PASS (${allRuntimeSource.size}/${allRuntimeSource.size} runtime source modules reachable from user/admin entries)`);
+}

@@ -3,12 +3,11 @@ import path from 'node:path';
 import process from 'node:process';
 
 const root = process.cwd();
-const read = (relativePath) =>
-  fs.readFileSync(path.join(root, relativePath), 'utf8');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const exists = (relativePath) => fs.existsSync(path.join(root, relativePath));
 
 const failures = [];
 const checks = [];
-
 const check = (condition, message) => {
   checks.push(message);
   if (!condition) failures.push(message);
@@ -24,527 +23,142 @@ const extractBlock = (source, startMarker, endMarker) => {
 
 const extractObjectKeys = (source, marker) => {
   const block = extractBlock(source, marker, '});');
-  return new Set(
-    [...block.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map(
-      (match) => match[1]
-    )
-  );
+  return new Set([...block.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map((match) => match[1]));
 };
 
 const extractStringSet = (source, marker) => {
   const block = extractBlock(source, marker, ']);');
-  return new Set(
-    [...block.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
-  );
-};
-
-const extractJsxProps = (source, componentName) => {
-  const match = source.match(
-    new RegExp(`<${componentName}\\s+([\\s\\S]*?)\\n\\s*/>`)
-  );
-  if (!match) return new Set();
-
-  return new Set(
-    [...match[1].matchAll(/^\s*([A-Za-z][A-Za-z0-9]*)\s*(?:=|$)/gm)].map(
-      (entry) => entry[1]
-    )
-  );
-};
-
-const extractDestructuredParameters = (source, marker, endMarker) => {
-  const block = extractBlock(source, marker, endMarker);
-  return new Set(
-    block
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => /^[A-Za-z][A-Za-z0-9]*$/.test(entry))
-  );
+  return new Set([...block.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1]));
 };
 
 const appRoutes = read('src/routing/appRoutes.js');
+const userMain = read('src/user-main.jsx');
+const adminMain = read('src/admin-main.jsx');
+const renderUserRoot = read('src/bootstrap/renderUserRoot.jsx');
+const renderAdminRoot = read('src/bootstrap/renderAdminRoot.jsx');
+const userApp = read('src/UserApp.jsx');
+const adminApp = read('src/admin/AdminApp.jsx');
+const userShell = read('src/user/UserShell.jsx');
+const adminShell = read('src/admin/AdminShell.jsx');
 const userWorkspace = read('src/user/UserWorkspace.jsx');
-const contextSlices = read('src/context/appContextSlices.js');
-const appSource = read('src/App.jsx');
-const appShell = read('src/shell/AppShell.jsx');
 const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
+const contextSlices = read('src/context/appContextSlices.js');
+const userContextAssembler = read('src/user/useUserContextAssembler.js');
+const adminContextAssembler = read('src/admin/useAdminContextAssembler.js');
 const adminDashboard = read('src/admin/AdminDashboardPanel.jsx');
 const adminWorkspaceBridge = read('src/admin/useAdminWorkspaceBridgeController.js');
 const boardDerivedSelectors = read('src/features/boards/useBoardDerivedSelectors.js');
 const assetCatalogViewController = read('src/features/assets/useAssetCatalogViewController.js');
-const appInitializationReadinessController = read('src/shell/useAppInitializationReadinessController.js');
 const appNavigationController = read('src/routing/useAppNavigationController.js');
-const rentalDataSubscriptionController = read('src/features/requests/useRentalDataSubscriptionController.js');
 const adminAccountManagementController = read('src/features/auth/useAdminAccountManagementController.js');
-const appContextAssembler = read('src/context/useAppContextAssembler.js');
-const appDynamicContextValues = read('src/context/appDynamicContextValues.js');
-const adminAuthenticationController = read('src/features/auth/useAdminAuthenticationController.js');
-const boardContentSubscriptionController = read('src/features/boards/useBoardContentSubscriptionController.js');
-const popupFooterContentSubscriptionController = read('src/features/boards/usePopupFooterContentSubscriptionController.js');
 
-const protectedTabs = extractStringSet(
-  appRoutes,
-  'export const PROTECTED_USER_TABS = new Set(['
-);
-check(
-  protectedTabs.size > 0,
-  'Protected user tab set is declared in appRoutes.js.'
-);
-check(
-  userWorkspace.includes('PROTECTED_USER_TABS.has(userTab)'),
-  'UserWorkspace uses the shared protected user tab set.'
-);
-check(
-  contextSlices.includes('PROTECTED_USER_TABS.has(userTab)'),
-  'Context selection uses the shared protected user tab set.'
-);
+const legacyRootFiles = [
+  'src/App.jsx',
+  'src/main.jsx',
+  'src/bootstrap/renderAppRoot.jsx',
+  'src/shell/AppShell.jsx',
+  'src/context/useAppContextAssembler.js',
+  'src/context/appDynamicContextValues.js',
+];
+for (const file of legacyRootFiles) {
+  check(!exists(file), `Retired shared application root stays deleted: ${file}.`);
+}
 
-const hardcodedProtectedTabPattern =
-  /\[\s*['"]rental['"]\s*,\s*['"]history['"]\s*\]\.includes\(userTab\)/;
-check(
-  !hardcodedProtectedTabPattern.test(userWorkspace) &&
-    !hardcodedProtectedTabPattern.test(contextSlices),
-  'No duplicate protected-tab array remains in workspace or context selection.'
-);
+check(renderUserRoot.includes("import '../index.css';"), 'User root imports the shared stylesheet.');
+check(renderAdminRoot.includes("import '../index.css';"), 'Administrator root imports the shared stylesheet.');
+check(userMain.includes("import('./bootstrap/renderUserRoot.jsx')"), 'User entry dynamically resolves the dedicated user root.');
+check(!userMain.includes('renderAppRoot'), 'User entry never falls back to the retired shared root.');
+check(adminMain.includes("import { renderAdminRoot } from './bootstrap/renderAdminRoot.jsx';"), 'Administrator entry mounts the dedicated administrator root.');
+check(!adminMain.includes('renderAppRoot'), 'Administrator entry never falls back to the retired shared root.');
+check(renderUserRoot.includes("import('../UserApp.jsx')"), 'User root lazy-loads UserApp.');
+check(!renderUserRoot.includes('../admin/AdminApp.jsx'), 'User root never references AdminApp.');
+check(renderAdminRoot.includes("import AdminApp from '../admin/AdminApp.jsx';"), 'Administrator root imports AdminApp.');
+check(!renderAdminRoot.includes('../UserApp.jsx'), 'Administrator root never references UserApp.');
 
-const routeMapBlock = extractBlock(
-  appRoutes,
-  'export const USER_ROUTE_PATHS = {',
-  '};'
-);
-const routeEntries = [...routeMapBlock.matchAll(
-  /^\s{2}([A-Za-z][A-Za-z0-9]*):\s*['"]([^'"]*)['"],?$/gm
-)].map((match) => ({ tab: match[1], route: match[2] }));
+const protectedTabs = extractStringSet(appRoutes, 'export const PROTECTED_USER_TABS = new Set([');
+check(protectedTabs.size > 0, 'Protected user tab set is declared in appRoutes.js.');
+check(userWorkspace.includes('PROTECTED_USER_TABS.has(userTab)'), 'UserWorkspace uses the shared protected user tab set.');
+check(contextSlices.includes('PROTECTED_USER_TABS.has(userTab)'), 'Context selection uses the shared protected user tab set.');
 
+const routeMapBlock = extractBlock(appRoutes, 'export const USER_ROUTE_PATHS = {', '};');
+const routeEntries = [...routeMapBlock.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):\s*['"]([^'"]*)['"],?$/gm)]
+  .map((match) => ({ tab: match[1], route: match[2] }));
 check(routeEntries.length >= 10, 'User route map contains the expected route set.');
-routeEntries.forEach(({ tab, route }) => {
+for (const { tab, route } of routeEntries) {
   if (tab === 'home') {
-    check(
-      appRoutes.includes("if (pathname === '/')") &&
-        appRoutes.includes("userTab: 'home'"),
-      'Home route resolves to the user home tab.'
-    );
-    return;
+    check(appRoutes.includes("if (pathname === '/')") && appRoutes.includes("userTab: 'home'"), 'Home route resolves to the user home tab.');
+  } else {
+    check(appRoutes.includes(`pathname === '${route}'`) && appRoutes.includes(`userTab: '${tab}'`), `Route ${route} resolves to user tab ${tab}.`);
   }
+}
 
-  check(
-    appRoutes.includes(`pathname === '${route}'`) &&
-      appRoutes.includes(`userTab: '${tab}'`),
-    `Route ${route} resolves to user tab ${tab}.`
-  );
-});
+check(userApp.includes("import useUserContextAssembler from './user/useUserContextAssembler.js';"), 'UserApp uses the dedicated user context assembler.');
+check(userApp.includes("import UserShell from './user/UserShell.jsx';"), 'UserApp renders the dedicated user shell.');
+check(userApp.includes('useUserContextAssembler({'), 'UserApp assembles only user panel contexts.');
+check(!/\buseAdmin[A-Z]/.test(userApp), 'UserApp does not instantiate administrator controllers.');
+check(!userApp.includes("./admin/"), 'UserApp has no direct administrator imports.');
+check(adminApp.includes("import useAdminContextAssembler from './useAdminContextAssembler.js';"), 'AdminApp uses the dedicated administrator context assembler.');
+check(adminApp.includes("import AdminShell from './AdminShell.jsx';"), 'AdminApp renders the dedicated administrator shell.');
+check(adminApp.includes('useAdminContextAssembler({'), 'AdminApp assembles administrator panel contexts.');
 
-const appShellParameters = extractDestructuredParameters(
-  appShell,
-  'const AppShell = ({',
-  '}) => {'
-);
-const appShellProps = extractJsxProps(appSource, 'AppShell');
-const missingAppShellProps = [...appShellParameters].filter(
-  (name) => !appShellProps.has(name)
-);
-const extraAppShellProps = [...appShellProps].filter(
-  (name) => !appShellParameters.has(name)
-);
-check(
-  appShellParameters.size > 0 && appShellProps.size > 0,
-  'AppShell parameter and call-site contracts are readable.'
-);
-check(
-  missingAppShellProps.length === 0,
-  `AppShell call supplies every declared prop${
-    missingAppShellProps.length ? `: ${missingAppShellProps.join(', ')}` : ''
-  }.`
-);
-check(
-  extraAppShellProps.length === 0,
-  `AppShell call has no undeclared prop${
-    extraAppShellProps.length ? `: ${extraAppShellProps.join(', ')}` : ''
-  }.`
-);
+for (const [source, label] of [[userContextAssembler, 'User'], [adminContextAssembler, 'Administrator']]) {
+  check(source.includes('useStableContextGroups'), `${label} context assembler uses stable context groups.`);
+  check(source.includes('APP_CONTEXT_GROUP_KEYS'), `${label} context assembler reuses the canonical context slice definitions.`);
+}
+check(userContextAssembler.includes('getUserPanelContextKey'), 'User context assembler resolves the current user panel context key.');
+check(adminContextAssembler.includes('getAdminPanelContextKey'), 'Administrator context assembler resolves the current administrator panel context key.');
+check(adminContextAssembler.includes('adminRequestsPrerequisitesReady:'), 'Administrator context assembler derives administrator request readiness.');
+check(adminContextAssembler.includes('currentAuthRoleReady') && adminContextAssembler.includes('currentAuthRoleErrorMessage'), 'Administrator request readiness remains tied to the Clerk/PostgreSQL role gate.');
 
-const guardCall = extractBlock(
-  appSource,
-  'useSelectedRentalAssetAvailabilityGuard({',
-  '});'
-);
-[
-  'selectedLaptop',
-  'selectedLaptopAvailability',
-  'selectedLaptopId',
-  'setSelectedLaptopId',
-  'triggerToast',
-].forEach((requiredKey) => {
-  check(
-    new RegExp(`\\b${requiredKey}\\b`).test(guardCall),
-    `Selected rental asset guard receives ${requiredKey}.`
-  );
-});
+const guardCall = extractBlock(userApp, 'useSelectedRentalAssetAvailabilityGuard({', '});');
+for (const requiredKey of ['selectedLaptop', 'selectedLaptopAvailability', 'requestSubmitLoading', 'selectedLaptopId', 'setSelectedLaptopId', 'triggerToast']) {
+  check(new RegExp(`\\b${requiredKey}\\b`).test(guardCall), `Selected rental asset guard receives ${requiredKey}.`);
+}
 
-const adminMenuTabs = new Set(
-  [...adminWorkspace.matchAll(
-    /\[\s*['"]([A-Za-z][A-Za-z0-9]*)['"]\s*,\s*[A-Za-z][A-Za-z0-9]*\s*,/g
-  )].map((match) => match[1])
-);
-const adminRenderedTabs = new Set(
-  [...adminWorkspace.matchAll(/adminTab\s*===\s*['"]([^'"]+)['"]/g)].map(
-    (match) => match[1]
-  )
-);
-const adminContextTabs = extractObjectKeys(
-  contextSlices,
-  'const ADMIN_TAB_CONTEXT_KEY = Object.freeze({'
-);
+check(userApp.includes('useUserAssetCatalogViewController();'), 'UserApp owns only the user asset catalog view controller.');
+check(adminApp.includes('useAssetCatalogViewController();'), 'AdminApp owns the administrator asset catalog view controller.');
+for (const key of ['adminAvailabilityFilter', 'adminLaptopQuery', 'adminSelectedAssetCategory', 'availabilityFilter', 'query', 'selectedAssetCategory']) {
+  check(assetCatalogViewController.includes(key), `Asset catalog view controller exposes ${key}.`);
+}
 
-const missingAdminRenderTabs = [...adminMenuTabs].filter(
-  (tab) => !adminRenderedTabs.has(tab)
-);
-const missingAdminContextTabs = [...adminMenuTabs].filter(
-  (tab) => !adminContextTabs.has(tab)
-);
+check(userApp.includes('} = useBoardDerivedSelectors({'), 'UserApp delegates notice/FAQ derived state to the board selector hook.');
+check(adminApp.includes('} = useBoardDerivedSelectors({'), 'AdminApp delegates notice/FAQ derived state to the board selector hook.');
+for (const key of ['activeFaqCategoryName', 'categoryFilteredFaqPosts', 'displayedFaqPosts', 'paginatedAdminFaqPosts', 'paginatedAdminNoticePosts', 'selectedNoticePost']) {
+  check(boardDerivedSelectors.includes(key), `Board selector hook exposes ${key}.`);
+}
+
+check(appNavigationController.includes('readUserAccountStatusView'), 'User account status view state is owned by the navigation controller.');
+check(appNavigationController.includes('setUserAccountStatusView,'), 'Navigation controller exposes the account-status setter.');
+check(userApp.includes('useAppNavigationController({'), 'UserApp uses the canonical application navigation controller.');
+
+check(adminApp.includes('} = useAdminAccountManagementState({ adminTab });'), 'AdminApp delegates administrator account tab-entry state to the account management hook.');
+check(adminAccountManagementController.includes('export const useAdminAccountManagementState = ({ adminTab }) => {'), 'Administrator account management state hook accepts the active administrator tab.');
+const adminAccountStateBlock = extractBlock(adminAccountManagementController, 'export const useAdminAccountManagementState = ({ adminTab }) => {', 'export default function useAdminAccountManagementController(');
+check(adminAccountStateBlock.includes("if (adminTab !== 'adminAccounts') return;") && adminAccountStateBlock.includes('setAdminAccountForm(createDefaultAdminAccountForm());'), 'Administrator account state hook owns tab-entry form reset.');
+
+check(adminApp.includes("import useAdminWorkspaceBridgeController from './useAdminWorkspaceBridgeController.js';"), 'AdminApp delegates administrator workspace bridge state to the dedicated controller.');
+for (const key of ['adminMemberAccountsNavigationRequest', 'adminRequestsMutationVersion', 'adminRequestsNavigationRequest', 'clearAdminRequestPanelSelection', 'handleAdminRequestsControllerStateChange', 'notifyAdminRequestMutation', 'updateAdminRequestPanelRequests']) {
+  check(adminWorkspaceBridge.includes(key), `Administrator workspace bridge exposes ${key}.`);
+}
+
+const adminMenuTabs = new Set([...adminWorkspace.matchAll(/\[\s*['"]([A-Za-z][A-Za-z0-9]*)['"]\s*,\s*[A-Za-z][A-Za-z0-9]*\s*,/g)].map((match) => match[1]));
+const adminRenderedTabs = new Set([...adminWorkspace.matchAll(/adminTab\s*===\s*['"]([^'"]+)['"]/g)].map((match) => match[1]));
+const adminContextTabs = extractObjectKeys(contextSlices, 'const ADMIN_TAB_CONTEXT_KEY = Object.freeze({');
 check(adminMenuTabs.size >= 20, 'Administrator menu tabs are discoverable.');
-check(
-  missingAdminRenderTabs.length === 0,
-  `Every administrator menu tab has a render branch${
-    missingAdminRenderTabs.length ? `: ${missingAdminRenderTabs.join(', ')}` : ''
-  }.`
-);
-check(
-  missingAdminContextTabs.length === 0,
-  `Every administrator menu tab has a context mapping${
-    missingAdminContextTabs.length ? `: ${missingAdminContextTabs.join(', ')}` : ''
-  }.`
-);
+for (const tab of adminMenuTabs) {
+  check(adminRenderedTabs.has(tab), `Administrator menu tab ${tab} has a render branch.`);
+  check(adminContextTabs.has(tab), `Administrator menu tab ${tab} has a context mapping.`);
+}
 
+check(userShell.includes('<UserWorkspace'), 'UserShell renders UserWorkspace.');
+check(adminShell.includes('<AdminWorkspace'), 'AdminShell renders AdminWorkspace.');
+check(!userShell.includes('AdminWorkspace'), 'UserShell does not reference AdminWorkspace.');
+check(!adminShell.includes('UserWorkspace'), 'AdminShell does not reference UserWorkspace.');
 
-check(
-  appSource.includes("import useAdminWorkspaceBridgeController from './admin/useAdminWorkspaceBridgeController.js';") &&
-    appSource.includes('} = useAdminWorkspaceBridgeController();'),
-  'App delegates administrator workspace bridge state to the dedicated controller.'
-);
-[
-  'adminMemberAccountsNavigationRequest',
-  'adminRequestsMutationVersion',
-  'adminRequestsNavigationRequest',
-  'clearAdminRequestPanelSelection',
-  'getAdminRequestById',
-  'handleAdminRequestsControllerStateChange',
-  'notifyAdminRequestMutation',
-  'resetAdminRequestPanelPage',
-  'setAdminMemberAccountsNavigationRequest',
-  'setAdminRequestsNavigationRequest',
-  'updateAdminRequestPanelRequests',
-].forEach((bridgeKey) => {
-  check(
-    adminWorkspaceBridge.includes(bridgeKey),
-    `Administrator workspace bridge exposes ${bridgeKey}.`
-  );
-});
-check(
-  !appSource.includes('const adminRequestsControllerRef = useRef(') &&
-    !appSource.includes('setAdminRequestsMutationVersion((currentVersion)'),
-  'App has no duplicate administrator request bridge registry or mutation-version state.'
-);
-
-
-check(
-  appSource.includes("import useBoardDerivedSelectors from './features/boards/useBoardDerivedSelectors.js';") &&
-    appSource.includes('} = useBoardDerivedSelectors({'),
-  'App delegates board filtering, numbering, and pagination to the dedicated selector hook.'
-);
-[
-  'activeFaqCategoryName',
-  'adminFaqTotalPages',
-  'adminNoticeTotalPages',
-  'adminPinnedFaqPosts',
-  'adminPinnedNoticePosts',
-  'adminRegularFaqPosts',
-  'adminRegularNoticePosts',
-  'categoryFilteredFaqPosts',
-  'displayedFaqPosts',
-  'faqCategoryNameById',
-  'faqTotalPages',
-  'noticeRegularPostNumberById',
-  'noticeTotalPages',
-  'paginatedAdminFaqPosts',
-  'paginatedAdminNoticePosts',
-  'paginatedNoticePosts',
-  'pinnedNoticePosts',
-  'regularFaqPosts',
-  'regularNoticePosts',
-  'safeAdminFaqPage',
-  'safeAdminNoticePage',
-  'safeFaqPage',
-  'safeNoticePage',
-  'selectedNoticePost',
-].forEach((selectorKey) => {
-  check(
-    boardDerivedSelectors.includes(selectorKey),
-    `Board selector hook exposes ${selectorKey}.`
-  );
-});
-check(
-  !appSource.includes('const allPinnedNoticePosts = useMemo(') &&
-    !appSource.includes('const categoryFilteredFaqPosts = useMemo(') &&
-    !appSource.includes('const displayedFaqPosts = useMemo('),
-  'App has no duplicate notice or FAQ derived-selector implementation.'
-);
-
-
-check(
-  appSource.includes("import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';") &&
-    appSource.includes('} = useAssetCatalogViewController();'),
-  'App delegates asset catalog filters, upload visibility, and responsive grid state to the dedicated controller.'
-);
-[
-  'adminAvailabilityFilter',
-  'adminLaptopQuery',
-  'adminSelectedAssetCategory',
-  'assetGridColumns',
-  'availabilityFilter',
-  'query',
-  'selectedAssetCategory',
-  'setAdminAvailabilityFilter',
-  'setAdminLaptopQuery',
-  'setAdminSelectedAssetCategory',
-  'setAvailabilityFilter',
-  'setQuery',
-  'setSelectedAssetCategory',
-  'setShowUploadPanel',
-  'showUploadPanel',
-].forEach((viewKey) => {
-  check(
-    assetCatalogViewController.includes(viewKey),
-    `Asset catalog view controller exposes ${viewKey}.`
-  );
-});
-check(
-  !appSource.includes("const [query, setQuery] = useState('');") &&
-    !appSource.includes("const [adminLaptopQuery, setAdminLaptopQuery] = useState('');") &&
-    !appSource.includes('const [showUploadPanel, setShowUploadPanel] = useState(false);') &&
-    !appSource.includes('useResponsiveAssetGridColumns();'),
-  'App has no duplicate asset catalog filter, upload-panel, or responsive-grid state implementation.'
-);
-
-
-check(
-  appSource.includes("import useAppInitializationReadinessController from './shell/useAppInitializationReadinessController.js';") &&
-    appSource.includes('} = useAppInitializationReadinessController();'),
-  'App delegates Firebase initialization readiness state to the dedicated controller.'
-);
-[
-  'firebaseLoadErrorMessage',
-  'firebaseReady',
-  'setFirebaseLoadErrorMessage',
-  'setFirebaseReady',
-].forEach((readinessKey) => {
-  check(
-    appInitializationReadinessController.includes(readinessKey),
-    `App initialization readiness controller exposes ${readinessKey}.`
-  );
-});
-check(
-  !appSource.includes('const [firebaseReady, setFirebaseReady] = useState(false);') &&
-    !appSource.includes("const [firebaseLoadErrorMessage, setFirebaseLoadErrorMessage] = useState('');"),
-  'App has no duplicate Firebase initialization readiness state implementation.'
-);
-check(
-  !appSource.includes('initializedRemoteFormRef') &&
-    rentalDataSubscriptionController.includes('const initializedRemoteFormRef = useRef(false);'),
-  'Remote rental form initialization guard is owned by the rental data subscription controller.'
-);
-
-check(
-  appNavigationController.includes('readUserAccountStatusView') &&
-    appNavigationController.includes('const [userAccountStatusView, setUserAccountStatusView] = useState('),
-  'User account status view state is owned by the application navigation state hook.'
-);
-check(
-  appNavigationController.includes('setUserAccountStatusView,') &&
-    appNavigationController.includes('userAccountStatusView,'),
-  'Application navigation state exposes the user account status view and setter.'
-);
-check(
-  !appSource.includes('readUserAccountStatusView') &&
-    !appSource.includes('const [userAccountStatusView, setUserAccountStatusView] = useState('),
-  'App has no duplicate user account status navigation state implementation.'
-);
-const accountStatusNavigationBlock = extractBlock(
-  appNavigationController,
-  'const showUserAccountStatus = useCallback(',
-  'useEffect(() => {'
-);
-check(
-  accountStatusNavigationBlock.includes('writeUserAccountStatusView(nextView);'),
-  'User account status navigation persists the selected status view.'
-);
-check(
-  accountStatusNavigationBlock.includes('setUserAccountStatusView(nextView);'),
-  'User account status navigation updates the in-memory navigation state.'
-);
-check(
-  accountStatusNavigationBlock.includes("navigateToUserTab('accountStatus'"),
-  'User account status navigation opens the account-status route.'
-);
-
-
-check(
-  appSource.includes('} = useAdminAccountManagementState({ adminTab });'),
-  'App delegates administrator account tab-entry initialization to the account management state hook.'
-);
-check(
-  adminAccountManagementController.includes('export const useAdminAccountManagementState = ({ adminTab }) => {'),
-  'Administrator account management state hook accepts the active administrator tab.'
-);
-const adminAccountStateBlock = extractBlock(
-  adminAccountManagementController,
-  'export const useAdminAccountManagementState = ({ adminTab }) => {',
-  'export default function useAdminAccountManagementController('
-);
-check(
-  adminAccountStateBlock.includes("if (adminTab !== 'adminAccounts') return;") &&
-    adminAccountStateBlock.includes('setAdminAccountForm(createDefaultAdminAccountForm());') &&
-    adminAccountStateBlock.includes('setAdminAccountPage(1);'),
-  'Administrator account state hook resets the registration form and page when the administrator-account tab opens.'
-);
-check(
-  !appSource.includes("if (adminTab === 'adminAccounts')") &&
-    !appSource.includes('setAdminAccountForm(createDefaultAdminAccountForm());'),
-  'App has no duplicate administrator account tab-entry initialization effect.'
-);
-check(
-  !/\buseEffect\s*\(/.test(appSource),
-  'App has no direct useEffect calls after administrator account initialization is delegated.'
-);
-check(
-  !appSource.includes('createDefaultAdminAccountForm,'),
-  'App no longer imports the administrator account form factory solely for tab-entry initialization.'
-);
-
-
-check(
-  appSource.includes('const dynamicContextSourceValues = {') &&
-    appSource.includes('dynamicSourceValues: dynamicContextSourceValues,'),
-  'App supplies a flat dynamic context source contract to the context assembler.'
-);
-check(
-  !appSource.includes('const dynamicContextValueGroups = {') &&
-    !appSource.includes('dynamicValueGroups: dynamicContextValueGroups,'),
-  'App no longer owns feature-grouped dynamic context assembly.'
-);
-check(
-  appContextAssembler.includes("import { createAppDynamicContextValues } from './appDynamicContextValues.js';") &&
-    appContextAssembler.includes('const dynamicValues = createAppDynamicContextValues(dynamicSourceValues);'),
-  'The context assembler derives the flat dynamic context contract in the context layer.'
-);
-[
-  'adminRequestsPrerequisitesReady',
-  'memberAccountsPrerequisitesReady',
-  'memberDirectoryBorrowers',
-  'memberDirectorySettings',
-  'memberDirectoryTeams',
-  'onAdminRequestsControllerStateChange',
-  'onMemberDirectoryDeferredStateChange',
-  'onSignupPolicyDeferredStateChange',
-  'signupPolicySettings',
-].forEach((derivedKey) => {
-  check(
-    appDynamicContextValues.includes(derivedKey),
-    `Dynamic context derivation exposes ${derivedKey}.`
-  );
-});
-check(
-  appDynamicContextValues.includes('...dynamicValues') &&
-    appDynamicContextValues.includes('handleAdminRequestsControllerStateChange,') &&
-    appDynamicContextValues.includes('handleMemberDirectoryDeferredStateChange,') &&
-    appDynamicContextValues.includes('handleSignupPolicyDeferredStateChange,'),
-  'Internal deferred-state handlers are converted to public context aliases instead of leaking as extra keys.'
-);
-
-const appDirectHookCalls = {
-  useCallback: [...appSource.matchAll(/\buseCallback\s*\(/g)].length,
-  useEffect: [...appSource.matchAll(/\buseEffect\s*\(/g)].length,
-  useMemo: [...appSource.matchAll(/\buseMemo\s*\(/g)].length,
-  useRef: [...appSource.matchAll(/\buseRef\s*\(/g)].length,
-  useState: [...appSource.matchAll(/\buseState\s*\(/g)].length,
-};
-check(
-  appDirectHookCalls.useState === 1 &&
-    appSource.includes('const [data, setData] = useState(initialData);'),
-  'App retains only the top-level compatibility data state.'
-);
-check(
-  appDirectHookCalls.useCallback === 0 &&
-    appDirectHookCalls.useEffect === 0 &&
-    appDirectHookCalls.useMemo === 0 &&
-    appDirectHookCalls.useRef === 0,
-  'App has no residual direct effect, memo, ref, or callback hooks.'
-);
-check(
-  !appSource.includes('formatDateWithKoreanWeekday') &&
-    !/\btoday\b/.test(appSource.split("from './utils/appUtils.js';")[0].split('import').at(-1) || ''),
-  'App has no stale rental-date utility imports after UI extraction.'
-);
-const adminAuthControllerCall = extractBlock(
-  appSource,
-  'useAdminAuthenticationController({',
-  '});'
-);
-check(
-  !/\badminAuthLoading\b/.test(
-    extractBlock(
-      adminAuthenticationController,
-      'export default function useAdminAuthenticationController({',
-      '}) {'
-    )
-  ) && !/\badminAuthLoading\b/.test(adminAuthControllerCall),
-  'Administrator authentication controller has no unused loading input.'
-);
-const boardSubscriptionCall = extractBlock(
-  appSource,
-  'useBoardContentSubscriptionController({',
-  '});'
-);
-check(
-  !/\badminNoticeQuery\b/.test(
-    extractBlock(
-      boardContentSubscriptionController,
-      'export default function useBoardContentSubscriptionController({',
-      '}) {'
-    )
-  ) && !/\badminNoticeQuery\b/.test(boardSubscriptionCall),
-  'Board subscription controller has no unused raw administrator notice query input.'
-);
-const popupSubscriptionCall = extractBlock(
-  appSource,
-  'usePopupFooterContentSubscriptionController({',
-  '});'
-);
-check(
-  !/\btemporarilyDismissedPopupVersions\b/.test(
-    extractBlock(
-      popupFooterContentSubscriptionController,
-      'export default function usePopupFooterContentSubscriptionController({',
-      '}) {'
-    )
-  ) && !/\btemporarilyDismissedPopupVersions\b/.test(popupSubscriptionCall),
-  'Popup subscription controller has no unused temporary-dismissal input.'
-);
-
-const dashboardHeadingBlocks = [
-  ...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g),
-].map((match) => match[1]);
-check(
-  dashboardHeadingBlocks.length >= 3,
-  'Administrator dashboard section headings are discoverable.'
-);
-check(
-  dashboardHeadingBlocks.every((block) => /\bid=/.test(block)),
-  'Every administrator dashboard section heading has a stable id.'
-);
-check(
-  adminDashboard.includes('aria-labelledby="dashboard-today-work-heading"'),
-  'Today-work dashboard section references its heading id.'
-);
+const dashboardHeadingBlocks = [...adminDashboard.matchAll(/<DashboardSectionHeading([\s\S]*?)\/>/g)].map((match) => match[1]);
+check(dashboardHeadingBlocks.length >= 3, 'Administrator dashboard section headings are discoverable.');
+check(dashboardHeadingBlocks.every((block) => /\bid=/.test(block)), 'Every administrator dashboard section heading has a stable id.');
+check(adminDashboard.includes('aria-labelledby="dashboard-today-work-heading"'), 'Today-work dashboard section references its heading id.');
 
 if (failures.length > 0) {
   console.error('Application flow contract audit: FAIL');
@@ -552,6 +166,19 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  `Application flow contract audit: PASS (${checks.length} contracts checked, ${routeEntries.length} user routes, ${adminMenuTabs.size} administrator tabs)`
-);
+
+
+// Stage 4 final source-retirement contract: these files were confirmed unreachable from both MPA entries.
+for (const retiredRelativePath of [
+  'src/user/UserHomeBootstrapScreen.jsx',
+  'src/features/compatibility/memberProfileIdentityAuthority.js',
+  'src/features/compatibility/memberStatusRestrictionWriteMirrorRetirement.js',
+  'src/features/compatibility/firestoreWriteMirrorRetirement.js',
+]) {
+  check(
+    !exists(retiredRelativePath),
+    `${retiredRelativePath} must stay retired after final runtime-source cleanup`,
+  );
+}
+
+console.log(`Application flow contract audit: PASS (${checks.length} contracts checked, ${routeEntries.length} user routes, ${adminMenuTabs.size} administrator tabs)`);

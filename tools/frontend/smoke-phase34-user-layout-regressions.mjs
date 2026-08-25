@@ -12,7 +12,6 @@ const footerPagePanel = read('src/user/UserFooterPagePanel.jsx');
 const myPagePanel = read('src/user/UserMyPagePanel.jsx');
 const accountStatusPanel = read('src/user/UserAccountStatusPanel.jsx');
 const adminWorkspace = read('src/admin/AdminWorkspace.jsx');
-const appShell = read('src/shell/AppShell.jsx');
 
 assert.equal(
   renderUserRoot.includes('await preloadUserHomeBootstrap()'),
@@ -54,11 +53,6 @@ assert.ok(
   (adminWorkspace.match(/mx-auto w-full max-w-xl overflow-hidden/g) || []).length >= 3,
   'administrator loading, error, and login cards must consistently use the full max-w-xl authentication width',
 );
-assert.ok(
-  appShell.includes('mx-auto w-full max-w-xl border-slate-200 bg-white shadow-sm'),
-  'the administrator lazy fallback must use the same explicit full-width authentication surface contract',
-);
-
 assert.ok(
   footerPagePanel.includes('flex flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm'),
   'content footer pages must grow their white article card into remaining viewport space',

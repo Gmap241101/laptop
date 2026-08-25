@@ -101,6 +101,7 @@ for (const marker of [
   'Preserved write mirrors: member / restriction / site shell / policy-terms transactions',
   "top: '184px'",
 ]) assert.ok(diagnostics.includes(marker), marker);
-const app = readFileSync('src/App.jsx', 'utf8');
-assert.ok(!app.includes('rentalRequestWriteMirrorRetirement'), 'Phase 29 compatibility logic must remain outside App.jsx');
+const userApp = readFileSync('src/UserApp.jsx', 'utf8');
+const adminApp = readFileSync('src/admin/AdminApp.jsx', 'utf8');
+assert.ok(!userApp.includes('rentalRequestWriteMirrorRetirement') && !adminApp.includes('rentalRequestWriteMirrorRetirement'), 'Phase 29 compatibility logic must stay outside application roots');
 console.log('[rental-transaction-authority-frontend-smoke] PASS (Phase 29 opt-in + authoritative rental read bypass + diagnostics contracts)');

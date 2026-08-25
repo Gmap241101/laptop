@@ -47,7 +47,7 @@ const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8
 const [
   login, signup, authRuntime, session, myPageSecurity, myPageAccount, recovery, recoveryService,
   client, termsCompliance, termsPanel, home, popupFooter, siteSettings, rentalData, termsService,
-  diagnostics, app, main, contextSlices, siteCutover, policyCutover, adminContentSync, boardCutover,
+  diagnostics, userApp, adminApp, renderUserRoot, contextSlices, siteCutover, policyCutover, adminContentSync, boardCutover,
 ] = await Promise.all([
   read('src/features/auth/useUserLoginController.js'),
   read('src/features/auth/useUserSignupController.js'),
@@ -66,8 +66,9 @@ const [
   read('src/features/requests/useRentalDataSubscriptionController.js'),
   read('src/features/terms/termsService.js'),
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
-  read('src/App.jsx'),
-  read('src/main.jsx'),
+  read('src/UserApp.jsx'),
+  read('src/admin/AdminApp.jsx'),
+  read('src/bootstrap/renderUserRoot.jsx'),
   read('src/context/appContextSlices.js'),
   read('src/features/content/siteContentCutover.js'),
   read('src/features/content/policyContentCutover.js'),
@@ -94,11 +95,11 @@ for (const source of [home, popupFooter, siteSettings, rentalData, termsService]
 for (const marker of ['Clerk Staging Test · Phase 33', 'Phase 33 user Clerk-only auth + public content PostgreSQL authority', 'phase33-user-clerk-content-authority-20260811-2210', 'phase33-admin-clerk-authority-coupling-hotfix-20260812-1104', 'Frontend hotfix revision:', "top: '184px'"]) assert.ok(diagnostics.includes(marker), `diagnostics ${marker}`);
 assert.ok(diagnostics.includes("const PHASE32_RUNTIME_REVISION = 'phase32-new-member-runtime-authority-20260811-2108';"), 'Phase 32 diagnostics revision constant must remain defined');
 assert.equal((diagnostics.match(/PHASE32_RUNTIME_REVISION/g) || []).length, 2, 'Phase 32 diagnostics revision must have one definition and one render reference');
-assert.ok(main.includes('class DiagnosticsErrorBoundary extends React.Component'), 'diagnostics must have an isolated error boundary');
-assert.ok(main.includes('<DiagnosticsErrorBoundary>\n      <ClerkStagingDiagnostics />\n    </DiagnosticsErrorBoundary>'), 'diagnostics error boundary must not wrap App');
+assert.ok(renderUserRoot.includes('UserRuntimeErrorBoundary'), 'user runtime must retain an isolated render error boundary');
+assert.ok(renderUserRoot.includes('<ClerkStagingDiagnostics runtimeSurface="user" />'), 'user diagnostics must remain an independently rendered lazy surface');
 assert.ok(contextSlices.includes('passwordResetForm passwordResetLoading passwordResetStage passwordResetVerificationResult'), 'password reset stage must be included in user auth context');
-assert.ok(app.includes('passwordResetStage'));
-assert.ok((app.match(/setFirebaseAuthUser,/g) || []).length >= 4, 'App must pass the synthetic user setter to Phase 33 auth controllers');
+assert.ok(userApp.includes('passwordResetStage'));
+assert.ok((userApp.match(/setFirebaseAuthUser,/g) || []).length >= 4, 'UserApp must pass the synthetic user setter to Phase 33 auth controllers');
 
 for (const [source, envMarker, writeParam] of [
   [siteCutover, 'VITE_SITE_CONTENT_WRITE_THROUGH_ENABLED', 'siteContentWrite'],
@@ -116,7 +117,7 @@ for (const marker of [
   'mk_phase33_public_content_authority_repair_20260812_1104',
 ]) assert.ok(adminContentSync.includes(marker), `admin public content synchronization ${marker}`);
 assert.ok(siteCutover.includes('phase33-public-content-full-server-sync-hotfix-20260812-0117'), 'backend full-domain synchronization revision must remain unchanged');
-assert.ok(app.includes('useAdminPublicContentSynchronizationController'), 'App must run Phase 33 administrator content reconciliation');
+assert.ok(adminApp.includes('useAdminPublicContentSynchronizationController'), 'AdminApp must run Phase 33 administrator content reconciliation');
 
 for (const marker of ['DOMAIN_CACHE_TTL_MS = 5_000', 'publishSiteContentInvalidation', 'firestore-server-backend-full-domain']) {
   assert.ok(siteCutover.includes(marker), `Phase 33 site-content refresh/verification marker missing: ${marker}`);

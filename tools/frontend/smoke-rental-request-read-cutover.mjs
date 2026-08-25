@@ -221,13 +221,13 @@ assert.match(controllerSource, /onSnapshot\(/);
 assert.match(controllerSource, /getDocs\(source\)/);
 
 const appSource = await readFile(
-  new URL('../../src/App.jsx', import.meta.url),
+  new URL('../../src/UserApp.jsx', import.meta.url),
   'utf8',
 );
 assert.ok(
   appSource.includes('useOwnRentalRequestsSubscriptionController({') &&
     appSource.includes('userAuthSessionUid,'),
-  'App must pass the established local Clerk/Firebase session uid into the authoritative rental read gate',
+  'UserApp must pass the established local Clerk/Firebase session uid into the authoritative rental read gate',
 );
 
 const diagnosticsSource = await readFile(

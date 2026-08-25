@@ -82,7 +82,8 @@ const siteContent = readFileSync('src/features/content/siteContentCutover.js', '
 assert.ok(!siteContent.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must preserve site-shell parity fallback.');
 const accountRecovery = readFileSync('src/features/members/accountRecoveryService.js', 'utf8');
 assert.ok(!accountRecovery.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must preserve account-recovery fallback.');
-const app = readFileSync('src/App.jsx', 'utf8');
-assert.ok(!app.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 must not push compatibility cleanup logic back into App.jsx.');
+const userApp = readFileSync('src/UserApp.jsx', 'utf8');
+const adminApp = readFileSync('src/admin/AdminApp.jsx', 'utf8');
+assert.ok(!userApp.includes('legacyFirestoreReadFallbackCutover') && !adminApp.includes('legacyFirestoreReadFallbackCutover'), 'Phase 28 compatibility cleanup logic must stay outside application roots');
 
 console.log('[legacy-firestore-read-fallback-retirement-frontend-smoke] PASS (validated domains retire read fallback; site-shell/account-recovery/write mirrors preserved; rollback latch works)');

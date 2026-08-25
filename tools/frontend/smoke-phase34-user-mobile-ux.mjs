@@ -5,7 +5,6 @@ const read = (relative) => fs.readFileSync(new URL(`../../${relative}`, import.m
 
 const homePanel = read('src/user/UserHomePanel.jsx');
 const userShell = read('src/user/UserShell.jsx');
-const homeBootstrap = read('src/user/UserHomeBootstrapScreen.jsx');
 const popupLayer = read('src/user/UserPopupLayer.jsx');
 
 assert.ok(
@@ -18,9 +17,10 @@ assert.equal(
   'legacy mobile promotion min-height gap must not return',
 );
 
+assert.equal(fs.existsSync(new URL('../../src/user/UserHomeBootstrapScreen.jsx', import.meta.url)), false, 'obsolete home bootstrap screen must stay retired');
+
 for (const [name, source] of [
   ['user shell', userShell],
-  ['home bootstrap', homeBootstrap],
 ]) {
   assert.ok(source.includes('aria-label="메뉴 열기"'), `${name} must expose a mobile menu button`);
   assert.ok(source.includes('lg:hidden'), `${name} mobile navigation must replace the wide navigation below desktop breakpoint`);
