@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import PaginationControls from '../components/PaginationControls.jsx';
+import UserRentalStatusSectionNav from './UserRentalStatusSectionNav.jsx';
 
 const getRequestCreatedAtMillis = (request = {}) => {
   const timestamp = request.createdAt;
@@ -60,6 +61,7 @@ export default function UserRequestHistoryPanel({ ctx }) {
     rentalRequestsLoadErrorMessage,
     rentalRequestsReady,
     userActionSaving,
+    siteSettings,
     userProfile,
   } = ctx;
 
@@ -404,13 +406,18 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
   return (
     <div className="w-full space-y-6">
+      <UserRentalStatusSectionNav
+        activeTab="history"
+        goToProtectedUserTab={goToProtectedUserTab}
+        memberRentalStatusEnabled={siteSettings?.memberRentalStatusEnabled !== false}
+      />
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
           <div className="relative mx-auto max-w-3xl text-center">
             <h2 className="text-2xl font-black tracking-tight">
-              나의 대여 신청내역
+              나의 신청내역
             </h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-300">
               {requestHistoryDescription}

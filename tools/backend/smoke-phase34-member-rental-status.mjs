@@ -51,30 +51,31 @@ assert.deepEqual(result.currentSummary, { total: 5, available: 2, requested: 1, 
 assert.ok(result.categories.includes('노트북') && result.categories.includes('태블릿') && result.categories.includes('카메라'));
 
 const findEvent = (assetId, status) => result.events.find((event) => event.assetId === assetId && event.status === status);
+const overdueReturnedEvent = findEvent('asset-returned-overdue', '연체반납');
+assert.equal(findEvent('asset-returned-overdue', '반납완료'), undefined, 'an overdue return must be represented by one final-state calendar bar');
 assert.deepEqual(
-  { startDate: findEvent('asset-returned-overdue', '반납완료')?.startDate, endDate: findEvent('asset-returned-overdue', '반납완료')?.endDate },
-  { startDate: '2026-08-01', endDate: '2026-08-03' },
-  'returned portion must end on the contractual due date before overdue-return begins',
+  { startDate: overdueReturnedEvent?.startDate, endDate: overdueReturnedEvent?.endDate },
+  { startDate: '2026-08-01', endDate: '2026-08-05' },
+  'overdue-return bar must cover the entire actual usage period',
 );
+assert.equal(overdueReturnedEvent?.dueDate, '2026-08-03');
+assert.equal(overdueReturnedEvent?.actualReturnDate, '2026-08-05');
+assert.equal(overdueReturnedEvent?.overdueDays, 2);
+const activeOverdueEvent = findEvent('asset-active-overdue', '연체중');
+assert.equal(findEvent('asset-active-overdue', '대여중'), undefined, 'an active overdue request must be represented by one current-state calendar bar');
 assert.deepEqual(
-  { startDate: findEvent('asset-returned-overdue', '연체반납')?.startDate, endDate: findEvent('asset-returned-overdue', '연체반납')?.endDate },
-  { startDate: '2026-08-04', endDate: '2026-08-05' },
-  'overdue-return portion must cover only the late-return dates',
+  { startDate: activeOverdueEvent?.startDate, endDate: activeOverdueEvent?.endDate },
+  { startDate: '2026-07-20', endDate: '2026-08-24' },
+  'active overdue bar must cover the whole usage period through the reference date',
 );
-assert.deepEqual(
-  { startDate: findEvent('asset-active-overdue', '대여중')?.startDate, endDate: findEvent('asset-active-overdue', '대여중')?.endDate },
-  { startDate: '2026-07-20', endDate: '2026-08-10' },
-);
-assert.deepEqual(
-  { startDate: findEvent('asset-active-overdue', '연체중')?.startDate, endDate: findEvent('asset-active-overdue', '연체중')?.endDate },
-  { startDate: '2026-08-11', endDate: '2026-08-24' },
-);
+assert.equal(activeOverdueEvent?.dueDate, '2026-08-10');
+assert.equal(activeOverdueEvent?.overdueDays, 14);
 assert.equal(findEvent('asset-review', '신청 검토중')?.status, '신청 검토중');
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.visibleStartDate, '2026-08-01');
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.visibleEndDate, '2026-08-02');
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.isMine, true);
-assert.equal(findEvent('asset-active-overdue', '연체중')?.isMine, false);
-assert.equal('requestId' in findEvent('asset-active-overdue', '연체중'), false, 'other-member request IDs must not be projected');
+assert.equal(activeOverdueEvent?.isMine, false);
+assert.equal('requestId' in activeOverdueEvent, false, 'other-member request IDs must not be projected');
 for (const event of result.events) {
   assert.equal('requesterName' in event, false);
   assert.equal('requesterEmail' in event, false);
@@ -94,8 +95,9 @@ assert.ok(repositorySource.includes('request.actual_return_date'));
 assert.ok(repositorySource.includes('request.overdue_days_at_return'));
 assert.ok(repositorySource.includes('current_summary AS'));
 assert.ok(!repositorySource.includes('requester_name') && !repositorySource.includes('requester_email') && !repositorySource.includes('purpose'));
-assert.ok(serviceSource.includes("add('연체중'"));
-assert.ok(serviceSource.includes("add('연체반납'"));
+assert.ok(serviceSource.includes("add('연체중', startDate, referenceDate"));
+assert.ok(serviceSource.includes("add('연체반납', startDate, actualReturnDate"));
+assert.equal(serviceSource.includes("add('대여중', startDate, dueDate);\n      add('연체중'"), false, 'overdue requests must not be split into normal and overdue bars');
 assert.ok(appSource.includes("url.pathname === '/api/users/me/rental-status'"));
 assert.ok(appSource.includes("memberStatus !== 'active'"));
 assert.ok(appSource.includes("siteSettingsDocument?.payload?.memberRentalStatusEnabled !== false"));

@@ -15,6 +15,14 @@ const addDays = (dateText, days) => {
   return date.toISOString().slice(0, 10);
 };
 
+const differenceInDays = (startDate, endDate) => {
+  if (!DATE_PATTERN.test(String(startDate || '')) || !DATE_PATTERN.test(String(endDate || ''))) return 0;
+  const start = new Date(`${startDate}T00:00:00Z`).getTime();
+  const end = new Date(`${endDate}T00:00:00Z`).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+  return Math.floor((end - start) / 86400000);
+};
+
 const endOfMonth = (year, month) => {
   const date = new Date(Date.UTC(year, month, 0));
   return date.toISOString().slice(0, 10);
@@ -51,14 +59,15 @@ const buildSegments = ({ row, referenceDate, isMine, monthStart, monthEnd }) => 
     category: row.category,
     assetNo: row.assetNo,
     model: row.model,
+    dueDate,
     isMine,
     ...(isMine && row.requestId ? { requestId: row.requestId } : {}),
   };
   const segments = [];
-  const add = (status, segmentStart, segmentEnd) => {
+  const add = (status, segmentStart, segmentEnd, details = {}) => {
     if (!segmentStart || !segmentEnd || segmentEnd < segmentStart) return;
     const projected = clampSegment(
-      { ...common, status, startDate: segmentStart, endDate: segmentEnd },
+      { ...common, ...details, status, startDate: segmentStart, endDate: segmentEnd },
       monthStart,
       monthEnd,
     );
@@ -74,8 +83,9 @@ const buildSegments = ({ row, referenceDate, isMine, monthStart, monthEnd }) => 
     if (startDate > referenceDate) {
       add('예약중', startDate, dueDate);
     } else if (dueDate < referenceDate) {
-      add('대여중', startDate, dueDate);
-      add('연체중', addDays(dueDate, 1), referenceDate);
+      add('연체중', startDate, referenceDate, {
+        overdueDays: differenceInDays(dueDate, referenceDate),
+      });
     } else {
       add('대여중', startDate, dueDate);
     }
@@ -88,11 +98,19 @@ const buildSegments = ({ row, referenceDate, isMine, monthStart, monthEnd }) => 
       ? addDays(dueDate, row.overdueDaysAtReturn)
       : '';
     const actualReturnDate = explicitReturnDate || calculatedReturnDate || dueDate;
+    const overdueDays = Number(row.overdueDaysAtReturn || 0) > 0
+      ? Number(row.overdueDaysAtReturn)
+      : differenceInDays(dueDate, actualReturnDate);
     if (actualReturnDate > dueDate) {
-      add('반납완료', startDate, dueDate);
-      add('연체반납', addDays(dueDate, 1), actualReturnDate);
+      add('연체반납', startDate, actualReturnDate, {
+        actualReturnDate,
+        overdueDays,
+      });
     } else {
-      add('반납완료', startDate, actualReturnDate);
+      add('반납완료', startDate, actualReturnDate, {
+        actualReturnDate,
+        overdueDays: 0,
+      });
     }
   }
 

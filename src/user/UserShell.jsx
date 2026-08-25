@@ -81,7 +81,11 @@ const UserShell = ({
   userTab,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isMobileRentalStatusOpen, setIsMobileRentalStatusOpen] = React.useState(
+    ['history', 'rentalStatus'].includes(userTab)
+  );
   const [isMobileCommunityOpen, setIsMobileCommunityOpen] = React.useState(true);
+  const [isRentalStatusMenuOpen, setIsRentalStatusMenuOpen] = React.useState(false);
   const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
 
@@ -92,6 +96,13 @@ const UserShell = ({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [firebaseAuthUser?.id, firebaseAuthUser?.uid, userTab]);
+
+  React.useEffect(() => {
+    if (['history', 'rentalStatus'].includes(userTab)) {
+      setIsMobileRentalStatusOpen(true);
+    }
+    setIsRentalStatusMenuOpen(false);
+  }, [userTab]);
 
   React.useEffect(() => {
     if (!isMobileMenuOpen) return undefined;
@@ -215,7 +226,7 @@ const UserShell = ({
 
             <nav
               ref={communityMenuRef}
-              className="relative hidden w-full flex-wrap items-center justify-end gap-2 lg:flex lg:w-auto xl:gap-3"
+              className="relative hidden w-full flex-wrap items-center justify-end gap-5 lg:flex lg:w-auto lg:gap-12 xl:gap-14"
             >
               <button
                 type="button"
@@ -229,31 +240,66 @@ const UserShell = ({
                 대여신청
               </button>
 
-              {normalizedSiteSettings.memberRentalStatusEnabled !== false ? (
+              <div
+                className="relative"
+                onPointerEnter={() => normalizedSiteSettings.memberRentalStatusEnabled !== false && setIsRentalStatusMenuOpen(true)}
+                onPointerLeave={() => setIsRentalStatusMenuOpen(false)}
+                onFocus={() => normalizedSiteSettings.memberRentalStatusEnabled !== false && setIsRentalStatusMenuOpen(true)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setIsRentalStatusMenuOpen(false);
+                }}
+              >
                 <button
                   type="button"
-                  onClick={() => goToProtectedUserTab('rentalStatus')}
-                  className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                    userTab === 'rentalStatus'
+                  onClick={() => goToProtectedUserTab('history')}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                    ['history', 'rentalStatus'].includes(userTab) || isRentalStatusMenuOpen
                       ? 'bg-orange-50 font-semibold mk-brand-text'
                       : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   }`}
+                  aria-haspopup={normalizedSiteSettings.memberRentalStatusEnabled !== false ? 'menu' : undefined}
+                  aria-expanded={normalizedSiteSettings.memberRentalStatusEnabled !== false ? isRentalStatusMenuOpen : undefined}
                 >
                   대여현황
+                  {normalizedSiteSettings.memberRentalStatusEnabled !== false ? <ChevronDown size={15} /> : null}
                 </button>
-              ) : null}
 
-              <button
-                type="button"
-                onClick={() => goToProtectedUserTab('history')}
-                className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
-                  userTab === 'history'
-                    ? 'bg-orange-50 font-semibold mk-brand-text'
-                    : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                신청내역
-              </button>
+                <AnimatePresence>
+                  {normalizedSiteSettings.memberRentalStatusEnabled !== false && isRentalStatusMenuOpen ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      className="absolute left-0 top-full z-40 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRentalStatusMenuOpen(false);
+                          goToProtectedUserTab('history');
+                        }}
+                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          userTab === 'history' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        나의 신청내역
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRentalStatusMenuOpen(false);
+                          goToProtectedUserTab('rentalStatus');
+                        }}
+                        className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          userTab === 'rentalStatus' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        전체 대여현황
+                      </button>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
 
               <div className="relative">
                 <button
@@ -325,7 +371,7 @@ const UserShell = ({
                 </AnimatePresence>
               </div>
 
-              <div className="ml-6 flex items-center gap-2 xl:ml-8">
+              <div className="flex items-center gap-2">
                 {firebaseAuthUser ? (
                   <>
                     {!currentAuthRoleErrorMessage ? (
@@ -475,26 +521,43 @@ const UserShell = ({
               >
                 대여신청
               </button>
-              {normalizedSiteSettings.memberRentalStatusEnabled !== false ? (
-                <button
-                  type="button"
-                  onClick={() => runMobileNavigation(() => goToProtectedUserTab('rentalStatus'))}
-                  className={`mt-1 block w-full rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
-                    userTab === 'rentalStatus' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  대여현황
-                </button>
-              ) : null}
               <button
                 type="button"
-                onClick={() => runMobileNavigation(() => goToProtectedUserTab('history'))}
-                className={`mt-1 block w-full rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
-                  userTab === 'history' ? 'bg-orange-50 mk-brand-text' : 'text-slate-700 hover:bg-slate-50'
+                onClick={() => setIsMobileRentalStatusOpen((prev) => !prev)}
+                className={`mt-1 flex w-full items-center justify-between rounded-xl px-4 py-3.5 text-left text-sm font-bold transition ${
+                  ['history', 'rentalStatus'].includes(userTab)
+                    ? 'bg-orange-50 mk-brand-text'
+                    : 'text-slate-700 hover:bg-slate-50'
                 }`}
+                aria-expanded={isMobileRentalStatusOpen}
               >
-                신청내역
+                <span>대여현황</span>
+                <ChevronDown size={17} className={`transition-transform ${isMobileRentalStatusOpen ? 'rotate-180' : ''}`} />
               </button>
+              {isMobileRentalStatusOpen ? (
+                <div className="mt-1 space-y-1 border-l-2 border-orange-100 pl-3">
+                  <button
+                    type="button"
+                    onClick={() => runMobileNavigation(() => goToProtectedUserTab('history'))}
+                    className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                      userTab === 'history' ? 'bg-orange-50 mk-brand-text' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    나의 신청내역
+                  </button>
+                  {normalizedSiteSettings.memberRentalStatusEnabled !== false ? (
+                    <button
+                      type="button"
+                      onClick={() => runMobileNavigation(() => goToProtectedUserTab('rentalStatus'))}
+                      className={`block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                        userTab === 'rentalStatus' ? 'bg-orange-50 mk-brand-text' : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      전체 대여현황
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               <button
                 type="button"
                 onPointerDown={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}

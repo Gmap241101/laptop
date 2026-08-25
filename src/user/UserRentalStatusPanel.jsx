@@ -15,6 +15,7 @@ import { Button, Card, CardContent } from '../components/CommonUI.jsx';
 import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import { getHolidayDisplayName, normalizeHolidayList } from '../domain/rentalPolicy.js';
+import UserRentalStatusSectionNav from './UserRentalStatusSectionNav.jsx';
 import {
   getCachedMemberRentalStatusMonth,
   loadMemberRentalStatusMonth,
@@ -419,25 +420,37 @@ function UserRentalStatusPanel({ ctx }) {
 
   if (!enabled) {
     return (
-      <Card>
-        <CardContent className="py-14 text-center">
-          <CalendarDays className="mx-auto h-10 w-10 text-slate-300" />
-          <h2 className="mt-4 text-lg font-black text-slate-900">대여현황을 이용할 수 없습니다.</h2>
-          <p className="mt-2 text-sm text-slate-500">현재 회원용 대여현황이 공개되지 않습니다.</p>
-        </CardContent>
-      </Card>
+      <div className="w-full space-y-6">
+        <UserRentalStatusSectionNav
+          activeTab="rentalStatus"
+          goToProtectedUserTab={goToProtectedUserTab}
+          memberRentalStatusEnabled={false}
+        />
+        <Card>
+          <CardContent className="py-14 text-center">
+            <CalendarDays className="mx-auto h-10 w-10 text-slate-300" />
+            <h2 className="mt-4 text-lg font-black text-slate-900">전체 대여현황을 이용할 수 없습니다.</h2>
+            <p className="mt-2 text-sm text-slate-500">현재 회원용 전체 대여현황이 공개되지 않습니다.</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="w-full space-y-6">
+      <UserRentalStatusSectionNav
+        activeTab="rentalStatus"
+        goToProtectedUserTab={goToProtectedUserTab}
+        memberRentalStatusEnabled={enabled}
+      />
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-9 text-white sm:px-8 sm:py-10">
           <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 left-16 h-44 w-44 rounded-full bg-orange-400/10 blur-3xl" />
           <div className="relative mx-auto max-w-3xl text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10"><CalendarDays size={24} /></div>
-            <h2 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">기기 대여현황</h2>
+            <h2 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">전체 대여현황</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">월별 기기 이용 일정과 과거 대여 이력을 확인할 수 있습니다.</p>
           </div>
         </div>
@@ -593,9 +606,18 @@ function UserRentalStatusPanel({ ctx }) {
         <ModalFrame title={selectedEvent.assetNo || '기기 대여 일정'} onClose={() => setSelectedEvent(null)} maxWidth="max-w-md">
           <div className="space-y-4 p-5 sm:p-6">
             <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs font-black ${statusClass(selectedEvent.status)}`}>{selectedEvent.status}</span>{selectedEvent.isMine ? <span className="rounded-full border-2 border-orange-300 bg-white px-2.5 py-1 text-xs font-black text-slate-700">내 신청</span> : null}</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"><div className="font-black text-slate-900">{selectedEvent.category}{selectedEvent.model ? ` · ${selectedEvent.model}` : ''}</div><div className="mt-2 text-xs leading-5 text-slate-600">{formatFullDate(selectedEvent.startDate)} ~ {formatFullDate(selectedEvent.endDate)}</div></div>
-            <p className="text-xs leading-5 text-slate-500">해당 기간에 기기 대여 일정이 등록되어 있습니다.</p>
-            <div className="flex justify-end gap-2">{selectedEvent.isMine ? <Button type="button" variant="outline" onClick={() => { setSelectedEvent(null); goToProtectedUserTab?.('history'); }}>신청내역 보기</Button> : null}<Button type="button" onClick={() => setSelectedEvent(null)}>닫기</Button></div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <div className="font-black text-slate-900">{selectedEvent.category}{selectedEvent.model ? ` · ${selectedEvent.model}` : ''}</div>
+              <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-600">
+                <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">대여기간</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.startDate)} ~ {formatFullDate(selectedEvent.endDate)}</span></div>
+                {selectedEvent.dueDate ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">반납 예정일</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.dueDate)}</span></div> : null}
+                {selectedEvent.actualReturnDate ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">실제 반납일</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.actualReturnDate)}</span></div> : null}
+                {selectedEvent.status === '연체중' ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">현재 상태</span><span className="text-right font-bold text-rose-700">미반납 · {Number(selectedEvent.overdueDays || 0)}일 연체</span></div> : null}
+                {selectedEvent.status === '연체반납' ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">반납 상태</span><span className="text-right font-bold text-orange-700">{Number(selectedEvent.overdueDays || 0)}일 연체 후 반납</span></div> : null}
+              </div>
+            </div>
+            <p className="text-xs leading-5 text-slate-500">한 대여 신청은 하나의 일정 막대로 표시하며, 연체중·연체반납은 해당 신청의 전체 이용기간에 대표 상태로 표시됩니다.</p>
+            <div className="flex justify-end gap-2">{selectedEvent.isMine ? <Button type="button" variant="outline" onClick={() => { setSelectedEvent(null); goToProtectedUserTab?.('history'); }}>나의 신청내역 보기</Button> : null}<Button type="button" onClick={() => setSelectedEvent(null)}>닫기</Button></div>
           </div>
         </ModalFrame>
       ) : null}

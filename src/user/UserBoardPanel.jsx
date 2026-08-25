@@ -215,7 +215,7 @@ export default function UserBoardPanel({ ctx }) {
                 <div className="relative mx-auto max-w-3xl text-center">
                   <h2 className="text-2xl font-black tracking-tight">
                     {userTab === 'home' && '초기화면 준비중입니다'}
-                    {userTab === 'history' && '신청내역 화면 준비중입니다'}
+                    {userTab === 'history' && '나의 신청내역 화면 준비중입니다'}
                     {userTab === 'notice' && '공지사항'}
                     {userTab === 'faq' && '자주 묻는 질문'}
                   </h2>

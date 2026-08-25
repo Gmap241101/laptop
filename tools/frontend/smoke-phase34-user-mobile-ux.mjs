@@ -29,7 +29,9 @@ for (const [name, source] of [
   assert.ok(source.includes('회원가입'), `${name} mobile menu must retain signup access`);
   assert.ok(source.includes('로그인'), `${name} mobile menu must retain login access`);
   assert.ok(source.includes('대여신청'), `${name} mobile menu must retain rental access`);
-  assert.ok(source.includes('신청내역'), `${name} mobile menu must retain history access`);
+  assert.ok(source.includes('나의 신청내역'), `${name} mobile menu must retain the renamed personal history access`);
+  assert.ok(source.includes('대여현황'), `${name} mobile menu must contain the rental-status parent group`);
+  assert.ok(source.includes('전체 대여현황'), `${name} mobile menu must expose the all-assets monthly calendar when enabled`);
   assert.ok(source.includes('커뮤니티'), `${name} mobile menu must contain the community group`);
   assert.ok(source.includes('공지사항'), `${name} mobile menu must contain notices`);
   assert.ok(source.includes('FAQ'), `${name} mobile menu must contain FAQ`);

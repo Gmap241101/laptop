@@ -52,7 +52,7 @@ const PLACEMENT_CONFIG = {
 const INTERNAL_LINK_OPTIONS = [
   ['/', '초기화면'],
   ['/rental', '대여신청'],
-  ['/history', '신청내역'],
+  ['/history', '나의 신청내역'],
   ['/board/notice', '공지사항'],
   ['/board/faq', 'FAQ'],
   ['/login', '로그인'],

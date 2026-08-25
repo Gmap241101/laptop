@@ -34,6 +34,7 @@ const getHomePresentation = (bootstrap) => {
 export default function UserHomeBootstrapScreen() {
   const [bootstrap, setBootstrap] = useState(() => getCachedUserHomeBootstrap());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileRentalStatusOpen, setIsMobileRentalStatusOpen] = useState(true);
   const [isMobileCommunityOpen, setIsMobileCommunityOpen] = useState(true);
 
   useEffect(() => {
@@ -114,13 +115,25 @@ export default function UserHomeBootstrapScreen() {
               <Menu size={23} />
             </button>
           </div>
-          <nav className="hidden flex-wrap items-center justify-end gap-2 text-sm font-semibold text-slate-700 lg:flex xl:gap-3">
+          <nav className="hidden flex-wrap items-center justify-end gap-5 text-sm font-semibold text-slate-700 lg:flex lg:gap-12 xl:gap-14">
             <a href="/rental" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여신청</a>
-            {siteSettings.memberRentalStatusEnabled !== false ? <a href="/rental-status" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여현황</a> : null}
-            <a href="/history" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">신청내역</a>
+            <div className="group relative">
+              <a href="/history" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-2 hover:bg-slate-100">
+                대여현황
+                {siteSettings.memberRentalStatusEnabled !== false ? <ChevronDown size={15} /> : null}
+              </a>
+              {siteSettings.memberRentalStatusEnabled !== false ? (
+                <div className="invisible absolute left-0 top-full z-40 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 opacity-0 shadow-xl transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                  <a href="/history" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">나의 신청내역</a>
+                  <a href="/rental-status" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">전체 대여현황</a>
+                </div>
+              ) : null}
+            </div>
             <a href="/board/notice" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">커뮤니티</a>
-            <a href="/signup" className="ml-6 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs xl:ml-8">회원가입</a>
-            <a href="/login" className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white">로그인</a>
+            <div className="flex items-center gap-2">
+              <a href="/signup" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs">회원가입</a>
+              <a href="/login" className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white">로그인</a>
+            </div>
           </nav>
         </div>
       </header>
@@ -154,8 +167,21 @@ export default function UserHomeBootstrapScreen() {
           </div>
           <nav className="min-h-0 flex-1 overflow-y-auto p-3" aria-label="모바일 사용자 메뉴">
             <a href="/rental" className="block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">대여신청</a>
-            {siteSettings.memberRentalStatusEnabled !== false ? <a href="/rental-status" className="mt-1 block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">대여현황</a> : null}
-            <a href="/history" className="mt-1 block rounded-xl px-4 py-3.5 text-sm font-bold text-slate-700">신청내역</a>
+            <button
+              type="button"
+              onClick={() => setIsMobileRentalStatusOpen((prev) => !prev)}
+              className="mt-1 flex w-full items-center justify-between rounded-xl px-4 py-3.5 text-left text-sm font-bold text-slate-700"
+              aria-expanded={isMobileRentalStatusOpen}
+            >
+              <span>대여현황</span>
+              <ChevronDown size={17} className={`transition-transform ${isMobileRentalStatusOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isMobileRentalStatusOpen ? (
+              <div className="mt-1 space-y-1 border-l-2 border-orange-100 pl-3">
+                <a href="/history" className="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600">나의 신청내역</a>
+                {siteSettings.memberRentalStatusEnabled !== false ? <a href="/rental-status" className="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600">전체 대여현황</a> : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => setIsMobileCommunityOpen((prev) => !prev)}
