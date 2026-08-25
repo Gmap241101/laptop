@@ -105,6 +105,26 @@ const UserShell = ({
   }, [userTab]);
 
   React.useEffect(() => {
+    if (!isRentalStatusMenuOpen) return undefined;
+
+    const handleRentalStatusMenuOutsideClick = (event) => {
+      if (communityMenuRef?.current && !communityMenuRef.current.contains(event.target)) {
+        setIsRentalStatusMenuOpen(false);
+      }
+    };
+    const handleRentalStatusMenuEscape = (event) => {
+      if (event.key === 'Escape') setIsRentalStatusMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleRentalStatusMenuOutsideClick);
+    window.addEventListener('keydown', handleRentalStatusMenuEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleRentalStatusMenuOutsideClick);
+      window.removeEventListener('keydown', handleRentalStatusMenuEscape);
+    };
+  }, [communityMenuRef, isRentalStatusMenuOpen]);
+
+  React.useEffect(() => {
     if (!isMobileMenuOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -240,19 +260,18 @@ const UserShell = ({
                 대여신청
               </button>
 
-              <div
-                className="relative"
-                onPointerEnter={() => normalizedSiteSettings.memberRentalStatusEnabled !== false && setIsRentalStatusMenuOpen(true)}
-                onPointerLeave={() => setIsRentalStatusMenuOpen(false)}
-                onFocus={() => normalizedSiteSettings.memberRentalStatusEnabled !== false && setIsRentalStatusMenuOpen(true)}
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) setIsRentalStatusMenuOpen(false);
-                }}
-              >
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => goToProtectedUserTab('history')}
-                  className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
+                  onClick={() => {
+                    if (normalizedSiteSettings.memberRentalStatusEnabled === false) {
+                      goToProtectedUserTab('history');
+                      return;
+                    }
+                    setIsCommunityMenuOpen(false);
+                    setIsRentalStatusMenuOpen((prev) => !prev);
+                  }}
+                  className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${
                     ['history', 'rentalStatus'].includes(userTab) || isRentalStatusMenuOpen
                       ? 'bg-orange-50 font-semibold mk-brand-text'
                       : 'font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -307,6 +326,7 @@ const UserShell = ({
                   onFocus={() => prefetchUserCommunity(Boolean(firebaseAuthUser))}
                   onClick={() => {
                     prefetchUserCommunity(Boolean(firebaseAuthUser));
+                    setIsRentalStatusMenuOpen(false);
                     setIsCommunityMenuOpen((prev) => !prev);
                   }}
                   className={`rounded-lg px-2.5 py-2 text-[15px] transition sm:px-3 sm:text-base lg:px-4 lg:text-lg ${

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Menu, X } from 'lucide-react';
 
 import {
@@ -36,6 +36,9 @@ export default function UserHomeBootstrapScreen() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileRentalStatusOpen, setIsMobileRentalStatusOpen] = useState(true);
   const [isMobileCommunityOpen, setIsMobileCommunityOpen] = useState(true);
+  const [isDesktopRentalStatusOpen, setIsDesktopRentalStatusOpen] = useState(false);
+  const [isDesktopCommunityOpen, setIsDesktopCommunityOpen] = useState(false);
+  const desktopMenuRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +64,28 @@ export default function UserHomeBootstrapScreen() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    if (!isDesktopRentalStatusOpen && !isDesktopCommunityOpen) return undefined;
+    const handleOutsideClick = (event) => {
+      if (desktopMenuRef.current && !desktopMenuRef.current.contains(event.target)) {
+        setIsDesktopRentalStatusOpen(false);
+        setIsDesktopCommunityOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsDesktopRentalStatusOpen(false);
+        setIsDesktopCommunityOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDesktopCommunityOpen, isDesktopRentalStatusOpen]);
 
   const { siteSettings, hero } = useMemo(() => getHomePresentation(bootstrap), [bootstrap]);
   const siteName = String(siteSettings.siteName || DEFAULT_SITE_NAME).trim() || DEFAULT_SITE_NAME;
@@ -115,20 +140,53 @@ export default function UserHomeBootstrapScreen() {
               <Menu size={23} />
             </button>
           </div>
-          <nav className="hidden flex-wrap items-center justify-end gap-5 text-sm font-semibold text-slate-700 lg:flex lg:gap-12 xl:gap-14">
+          <nav ref={desktopMenuRef} className="hidden flex-wrap items-center justify-end gap-5 text-sm font-semibold text-slate-700 lg:flex lg:gap-12 xl:gap-14">
             <a href="/rental" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여신청</a>
-            <div className="group relative">
-              <a href="/history" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-2 hover:bg-slate-100">
-                대여현황
-              </a>
+            <div className="relative">
               {siteSettings.memberRentalStatusEnabled !== false ? (
-                <div className="invisible absolute left-0 top-full z-40 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 opacity-0 shadow-xl transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDesktopCommunityOpen(false);
+                    setIsDesktopRentalStatusOpen((prev) => !prev);
+                  }}
+                  className={`rounded-lg px-2.5 py-2 transition ${isDesktopRentalStatusOpen ? 'bg-orange-50 mk-brand-text' : 'hover:bg-slate-100'}`}
+                  aria-haspopup="menu"
+                  aria-expanded={isDesktopRentalStatusOpen}
+                >
+                  대여현황
+                </button>
+              ) : (
+                <a href="/history" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">대여현황</a>
+              )}
+              {siteSettings.memberRentalStatusEnabled !== false && isDesktopRentalStatusOpen ? (
+                <div className="absolute left-0 top-full z-40 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
                   <a href="/history" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">나의 신청내역</a>
                   <a href="/rental-status" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">전체 대여현황</a>
                 </div>
               ) : null}
             </div>
-            <a href="/board/notice" className="rounded-lg px-2.5 py-2 hover:bg-slate-100">커뮤니티</a>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDesktopRentalStatusOpen(false);
+                  setIsDesktopCommunityOpen((prev) => !prev);
+                }}
+                className={`rounded-lg px-2.5 py-2 transition ${isDesktopCommunityOpen ? 'bg-orange-50 mk-brand-text' : 'hover:bg-slate-100'}`}
+                aria-haspopup="menu"
+                aria-expanded={isDesktopCommunityOpen}
+              >
+                커뮤니티
+              </button>
+              {isDesktopCommunityOpen ? (
+                <div className="absolute left-0 top-full z-40 mt-2 w-36 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                  <a href="/board/notice" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">공지사항</a>
+                  <a href="/board/faq" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">FAQ</a>
+                  <a href="/board/inquiry" className="block w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50">문의하기</a>
+                </div>
+              ) : null}
+            </div>
             <div className="flex items-center gap-2">
               <a href="/signup" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs">회원가입</a>
               <a href="/login" className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white">로그인</a>

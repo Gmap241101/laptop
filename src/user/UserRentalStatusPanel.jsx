@@ -448,8 +448,7 @@ function UserRentalStatusPanel({ ctx }) {
           <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 left-16 h-44 w-44 rounded-full bg-orange-400/10 blur-3xl" />
           <div className="relative mx-auto max-w-3xl text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10"><CalendarDays size={24} /></div>
-            <h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">전체 대여현황</h2>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">전체 대여현황</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">월별 기기 이용 일정과 과거 대여 이력을 확인할 수 있습니다.</p>
           </div>
         </div>
@@ -615,7 +614,6 @@ function UserRentalStatusPanel({ ctx }) {
                 {selectedEvent.status === '연체반납' ? <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">반납 상태</span><span className="text-right font-semibold text-orange-700">{Number(selectedEvent.overdueDays || 0)}일 연체 후 반납</span></div> : null}
               </div>
             </div>
-            <p className="text-xs leading-5 text-slate-500">한 대여 신청은 하나의 일정 막대로 표시하며, 연체중·연체반납은 해당 신청의 전체 이용기간에 대표 상태로 표시됩니다.</p>
             <div className="flex justify-end gap-2">{selectedEvent.isMine ? <Button type="button" variant="outline" onClick={() => { setSelectedEvent(null); goToProtectedUserTab?.('history'); }}>나의 신청내역 보기</Button> : null}<Button type="button" onClick={() => setSelectedEvent(null)}>닫기</Button></div>
           </div>
         </ModalFrame>
