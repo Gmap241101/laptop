@@ -1,7 +1,7 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
-import { clerkStagingClient, requestCurrentUserRentalRestriction } from '../../clerk/clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from '../../clerk/clerkRuntimeClient.js';
 
 const EVENT_NAME = 'rental:rental-restriction-read-cutover';
 const WRITE_EVENT_NAME = 'rental:rental-restriction-write-through';
@@ -54,13 +54,14 @@ export const readRentalRestrictionCutoverConfig = ({
 const firebaseRequest = async () => { const error = new Error('Legacy Firebase restriction request was removed in Phase 34.'); error.code='firebase_runtime_removed'; error.status=410; throw error; };
 
 export const requestRentalRestrictionCandidate = async ({ apiBaseUrl, fetchImpl = fetch }) => {
-  const clerk = await clerkStagingClient.initialize();
+  const clerkClient = getActiveClerkRuntimeClient();
+  const clerk = await clerkClient.initialize();
   if (!clerk?.session) {
     const error = new Error('Clerk user session is required before reading PostgreSQL rental restriction state.');
     error.code = 'rental_restriction_clerk_session_missing';
     throw error;
   }
-  const payload = await requestCurrentUserRentalRestriction({ clerk, apiBaseUrl, fetchImpl });
+  const payload = await clerkClient.getCurrentUserRentalRestriction();
   const candidate = payload?.rentalRestriction;
   if (candidate?.source !== 'postgresql-authoritative') {
     const error = new Error('Invalid PostgreSQL rental restriction authority response.');

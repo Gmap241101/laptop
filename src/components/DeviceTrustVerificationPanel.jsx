@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from '../clerk/clerkRuntimeClient.js';
 
 const CODE_LENGTH = 6;
 
@@ -98,9 +98,9 @@ export default function DeviceTrustVerificationPanel({
       if (typeof resendHandler === 'function') {
         await resendHandler();
       } else if (surface === 'admin') {
-        await clerkStagingClient.resendAdminClientTrust();
+        await getActiveClerkRuntimeClient().resendAdminClientTrust();
       } else {
-        await clerkStagingClient.resendUserClientTrust();
+        await getActiveClerkRuntimeClient().resendUserClientTrust();
       }
       setResendStatus({
         type: 'success',

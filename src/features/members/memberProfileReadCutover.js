@@ -1,7 +1,7 @@
 import { readAccountLifecycleAuthorityConfig } from '../auth/accountLifecycleAuthority.js';
 import { readUserFirebaseAuthRetirementConfig } from '../auth/userFirebaseAuthRetirement.js';
 import { readFirebaseRuntimeRetirementConfig } from '../auth/firebaseRuntimeRetirement.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import { compareMemberProfileReads, normalizeMemberProfileRead } from './memberProfileReadObservation.js';
 
 const EVENT_NAME = 'rental:member-profile-read-cutover';

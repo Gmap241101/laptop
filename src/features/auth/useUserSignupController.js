@@ -66,7 +66,7 @@ import {
   createDefaultUserAuthForm,
 } from './useUserLoginController.js';
 import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,

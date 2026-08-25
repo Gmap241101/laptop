@@ -596,6 +596,10 @@ assert.ok(userStaticImportGraph.includes('user/userHomeBootstrapService.js'), 'i
 assert.equal(userImportGraph.includes('App.jsx'), false, 'user import graph must not fall back to the shared legacy App root');
 assert.equal(userImportGraph.includes('shell/AppShell.jsx'), false, 'user import graph must not fall back to the shared legacy AppShell');
 assert.equal(userImportGraph.some((file) => file.startsWith('admin/')), false, 'user import graph must not contain administrator source modules');
+assert.equal(userImportGraph.includes('clerk/clerkStagingClient.js'), false, 'user import graph must not pull the administrator/legacy Clerk client');
+assert.equal(userImportGraph.includes('clerk/clerkAdminClient.js'), false, 'user import graph must not pull the administrator Clerk client alias');
+assert.ok(userImportGraph.includes('clerk/clerkUserClient.js'), 'user import graph must use the dedicated user Clerk client');
+assert.ok(userImportGraph.includes('clerk/clerkRuntimeClient.js'), 'shared user/admin modules must resolve Clerk through the surface runtime registry');
 const userAdminOnlyServiceImports = userImportGraph.filter((file) => [
   'features/boards/adminSiteContentCatalogService.js',
   'features/requests/adminRentalRequestCutover.js',
@@ -626,6 +630,8 @@ const adminSystemSettingsControllerSource = fs.readFileSync(new URL('../../src/f
 const signupPolicyActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminSignupPolicyActions.js', import.meta.url), 'utf8');
 const adminAccountSecurityAuditSource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 const clerkStagingClientSource = fs.readFileSync(new URL('../../src/clerk/clerkStagingClient.js', import.meta.url), 'utf8');
+const clerkUserClientSource = fs.readFileSync(new URL('../../src/clerk/clerkUserClient.js', import.meta.url), 'utf8');
+const clerkRuntimeClientSource = fs.readFileSync(new URL('../../src/clerk/clerkRuntimeClient.js', import.meta.url), 'utf8');
 const memberDirectorySaveActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectorySaveActions.js', import.meta.url), 'utf8');
 const userMyPageSource = fs.readFileSync(new URL('../../src/user/UserMyPagePanel.jsx', import.meta.url), 'utf8');
 const userRequestHistorySource = fs.readFileSync(new URL('../../src/user/UserRequestHistoryPanel.jsx', import.meta.url), 'utf8');
@@ -655,6 +661,10 @@ assert.match(clerkStagingClientSource, /async signOut\(options = undefined\)[\s\
 
 assert.doesNotMatch(clerkStagingClientSource, /requestMemberShadowStatus|requestMemberShadowSync|requestMemberShadowComparison|syncMemberShadow|compareMemberShadow|getMemberShadow/, 'frontend Clerk client must not expose retired member shadow APIs after canonical consolidation');
 assert.doesNotMatch(clerkStagingClientSource, /requestRentalRequestShadowSync|requestRentalRequestShadowComparison|syncRentalRequestShadow|compareRentalRequestShadow/, 'frontend Clerk client must not expose retired rental-request shadow APIs after canonical consolidation');
+assert.doesNotMatch(clerkUserClientSource, /\/api\/admin\//, 'dedicated user Clerk client must not contain administrator backend API paths');
+assert.doesNotMatch(clerkUserClientSource, /requestAdmin(?:Rental|Member|Asset|System|Account)/, 'dedicated user Clerk client must not contain administrator backend request implementations');
+assert.match(clerkUserClientSource, /export const clerkUserClient =/, 'dedicated user Clerk client must expose an explicit user-surface client');
+assert.match(clerkRuntimeClientSource, /setActiveClerkRuntimeClient/, 'shared modules must use an explicit per-document Clerk runtime client registry');
 assert.match(clerkStagingClientSource, /payload\?\.readCandidate\?\.source !== 'postgresql-authoritative'/, 'member profile read candidate must require the canonical PostgreSQL authority source');
 
 assert.match(memberDirectorySaveActionsSource, /syncAdminMemberDirectory\(\{[\s\S]*entries: directoryEntries[\s\S]*version: nextSettings\.memberDirectoryVersion[\s\S]*teams: nextTeams[\s\S]*settings: nextSettings/, 'department/user saves must synchronize the directory and organization configuration through one authoritative PostgreSQL mutation');
@@ -768,9 +778,11 @@ assert.match(siteContentCutoverSource, /addressClaims/, 'site-content PostgreSQL
 assert.match(siteContentCutoverSource, /cached\?\.promise && \(cached\.pending \|\| cached\.expiresAt > nowMillis\)/, 'site-content cache must always share an in-flight domain request even when a slow request exceeds the short resolved-result TTL');
 assert.match(siteContentCutoverSource, /cacheEntry\.expiresAt = Date\.now\(\) \+ DOMAIN_CACHE_TTL_MS/, 'site-content cache TTL must begin after a successful response instead of at request start');
 assert.equal(siteContentCutoverSource.startsWith("import { clerkStagingClient }"), false, 'public site-content reads must not synchronously pull the large Clerk client into the critical home warmup chunk');
-assert.match(siteContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator site-content writes must lazy-load Clerk only when an authenticated mutation needs it');
+assert.match(siteContentCutoverSource, /getActiveClerkRuntimeClient/, 'site-content writes must resolve the Clerk client from the active application surface without importing the administrator client into the user graph');
+assert.equal(siteContentCutoverSource.includes("clerkStagingClient.js"), false, 'site-content cutover must not reference the legacy administrator Clerk client');
 assert.equal(boardContentCutoverSource.includes("import { clerkStagingClient } from '../../clerk/clerkStagingClient.js'"), false, 'public notice warmup must not synchronously pull Clerk into the user entry chunk');
-assert.match(boardContentCutoverSource, /await import\('\.\.\/\.\.\/clerk\/clerkStagingClient\.js'\)/, 'administrator board mutations must lazy-load Clerk on demand');
+assert.match(boardContentCutoverSource, /getActiveClerkRuntimeClient/, 'board mutations must resolve Clerk from the active application surface without importing the administrator client into the user graph');
+assert.equal(boardContentCutoverSource.includes("clerkStagingClient.js"), false, 'board cutover must not reference the legacy administrator Clerk client');
 assert.match(boardSubscriptionControllerSource, /shouldLoadUserHomeNotice[\s\S]*requestAnimationFrame[\s\S]*requestAnimationFrame\(loadNotice\)/, 'home notice read must be deferred until after the first paint');
 assert.match(popupFooterControllerSource, /scheduleAfterUserFirstPaint/, 'noncritical user popup/footer reads must be deferred until after the first paint');
 assert.match(popupFooterControllerSource, /shouldLoadUserPopup && !shouldLoadAdminPopup[\s\S]*scheduleAfterUserFirstPaint/, 'user popup reads must not compete with critical home bootstrap requests');

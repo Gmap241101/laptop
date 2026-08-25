@@ -1,9 +1,10 @@
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from '../../clerk/clerkRuntimeClient.js';
 
 const trim = (value) => String(value ?? '').trim();
 
 const getApiBaseUrl = () => {
-  const configured = trim(clerkStagingClient?.config?.apiBaseUrl || import.meta.env?.VITE_API_URL);
+  const clerkClient = getActiveClerkRuntimeClient();
+  const configured = trim(clerkClient?.config?.apiBaseUrl || import.meta.env?.VITE_API_URL);
   if (!configured) {
     const error = new Error('Attachment API base URL is not configured.');
     error.code = 'attachment_api_not_configured';
@@ -16,10 +17,11 @@ export const getSecureAttachmentUrl = (attachmentId) =>
   `${getApiBaseUrl()}/api/attachments/${encodeURIComponent(trim(attachmentId))}/download`;
 
 const getClerkToken = async () => {
-  const token = typeof clerkStagingClient.getSessionToken === 'function'
-    ? await clerkStagingClient.getSessionToken()
+  const clerkClient = getActiveClerkRuntimeClient();
+  const token = typeof clerkClient.getSessionToken === 'function'
+    ? await clerkClient.getSessionToken()
     : await (async () => {
-        const clerk = await clerkStagingClient.initialize();
+        const clerk = await clerkClient.initialize();
         return clerk?.session?.getToken?.();
       })();
   if (!token) {

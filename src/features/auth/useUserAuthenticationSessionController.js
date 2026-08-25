@@ -17,7 +17,7 @@ import {
 } from './authSessionService.js';
 import { readUserAccountLifecycleCutoverConfig } from './userAccountLifecycleCutover.js';
 import { createDefaultUserAuthForm } from './useUserLoginController.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import { readUserFirebaseAuthRetirementConfig } from './userFirebaseAuthRetirement.js';
 
 export const useUserAuthenticationSessionState = ({ userSessionPolicy }) => {

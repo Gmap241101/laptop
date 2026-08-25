@@ -1,6 +1,6 @@
 import { doc, getDoc } from '../../platform/retiredLegacyDataCompat.js';
 
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   ACCOUNT_RECOVERY_KEYS_COLLECTION_REF,
 } from '../../platform/appDataRefs.js';

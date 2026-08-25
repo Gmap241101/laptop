@@ -59,7 +59,7 @@ import {
 import {
   syncMemberProfileWriteThroughBestEffort,
 } from './memberProfileWriteThrough.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import { publishMemberAuthorityObservation, readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 import {
   publishUserAccountLifecycleObservation,

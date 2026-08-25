@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import DomesticPhoneInput from '../components/DomesticPhoneInput.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
-import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../clerk/clerkUserClient.js';
 import { preloadSignupTermsPolicy } from '../features/terms/termsService.js';
 import { isValidEmailAddress, normalizeEmailAddress, sanitizeMemberNameInput } from '../utils/memberPolicy.js';
 import UserSignupTermsSection from './UserSignupTermsSection.jsx';

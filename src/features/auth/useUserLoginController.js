@@ -30,7 +30,7 @@ import {
   SERVICE_MODE,
   normalizeSiteSettings,
 } from '../../utils/systemSettings.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import { getClerkPasswordSignInErrorMessage } from './loginErrorMessages.js';
 import {
   beginUserAuthTransition,

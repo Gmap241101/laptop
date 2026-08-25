@@ -42,7 +42,7 @@ import {
   isRegisteredMemberSignupRequired,
 } from './memberAccountPolicy.js';
 import { syncMemberProfileWriteThroughBestEffort } from './memberProfileWriteThrough.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import { readUserAccountLifecycleCutoverConfig } from '../auth/userAccountLifecycleCutover.js';
 import { readMemberAuthorityCutoverConfig } from './memberAuthorityCutover.js';
 

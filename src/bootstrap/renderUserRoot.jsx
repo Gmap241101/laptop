@@ -2,9 +2,13 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { getRouteStateFromPath } from '../routing/appRoutes.js';
+import { clerkUserClient } from '../clerk/clerkUserClient.js';
+import { setActiveClerkRuntimeClient } from '../clerk/clerkRuntimeClient.js';
 import UserRuntimeErrorBoundary from '../user/UserRuntimeErrorBoundary.jsx';
 import { preloadCriticalUserHomeAssets, preloadUserHomeBootstrap } from '../user/userHomeBootstrapService.js';
 import '../index.css';
+
+setActiveClerkRuntimeClient(clerkUserClient, 'user');
 
 const UserApp = React.lazy(async () => {
   const modulePromise = import('../UserApp.jsx');

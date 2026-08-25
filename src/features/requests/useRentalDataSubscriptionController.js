@@ -11,7 +11,8 @@ import {
   readRentalRequestCutoverConfig,
   shouldUseRentalRequestFirestoreWatcher,
 } from './rentalRequestReadCutover.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from '../../clerk/clerkRuntimeClient.js';
+const clerkStagingClient = new Proxy({}, { get: (_target, key) => getActiveClerkRuntimeClient()[key] });
 import {
   normalizeAssetReservations,
   normalizePublicCatalogAssets,

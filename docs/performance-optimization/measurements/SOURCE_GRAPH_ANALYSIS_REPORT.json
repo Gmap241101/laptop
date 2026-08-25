@@ -1,16 +1,16 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T03:12:33.173Z",
+  "generatedAt": "2026-08-25T03:29:59.401Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
       "initial": {
         "moduleCount": 5,
-        "sourceBytes": 33941,
+        "sourceBytes": 33961,
         "files": [
           {
             "file": "src/features/content/siteContentCutover.js",
-            "bytes": 17199
+            "bytes": 17219
           },
           {
             "file": "src/routing/appRoutes.js",
@@ -31,16 +31,16 @@
         ]
       },
       "complete": {
-        "moduleCount": 125,
-        "sourceBytes": 1527843,
+        "moduleCount": 126,
+        "sourceBytes": 1472726,
         "files": [
-          {
-            "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 119551
-          },
           {
             "file": "src/components/RichTextEditor.jsx",
             "bytes": 93761
+          },
+          {
+            "file": "src/clerk/clerkUserClient.js",
+            "bytes": 62887
           },
           {
             "file": "src/user/UserInquiryPanel.jsx",
@@ -52,23 +52,23 @@
           },
           {
             "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
-            "bytes": 40985
+            "bytes": 41001
+          },
+          {
+            "file": "src/features/requests/useUserRequestHistoryActionController.js",
+            "bytes": 39402
           },
           {
             "file": "src/user/UserRentalStatusPanel.jsx",
             "bytes": 39400
           },
           {
-            "file": "src/features/requests/useUserRequestHistoryActionController.js",
-            "bytes": 39386
-          },
-          {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
-            "bytes": 39111
+            "bytes": 39225
           },
           {
             "file": "src/user/UserAuthPanel.jsx",
-            "bytes": 36814
+            "bytes": 36830
           },
           {
             "file": "src/user/UserBoardPanel.jsx",
@@ -83,16 +83,16 @@
             "bytes": 35633
           },
           {
+            "file": "src/features/auth/useUserSignupController.js",
+            "bytes": 34236
+          },
+          {
             "file": "src/user/UserRequestHistoryPanel.jsx",
             "bytes": 34223
           },
           {
-            "file": "src/features/auth/useUserSignupController.js",
-            "bytes": 34220
-          },
-          {
             "file": "src/features/auth/useUserLoginController.js",
-            "bytes": 32053
+            "bytes": 32069
           },
           {
             "file": "src/user/UserShell.jsx",
@@ -100,7 +100,7 @@
           },
           {
             "file": "src/features/members/useUserMyPageAccountController.js",
-            "bytes": 30257
+            "bytes": 30273
           },
           {
             "file": "src/user/UserHomePanel.jsx",
@@ -116,7 +116,7 @@
           },
           {
             "file": "src/features/members/useUserMembershipStatusController.js",
-            "bytes": 20451
+            "bytes": 20467
           },
           {
             "file": "src/user/UserRentalPanel.jsx",
@@ -124,7 +124,7 @@
           },
           {
             "file": "src/user/UserTermsConsentPanel.jsx",
-            "bytes": 18610
+            "bytes": 18626
           },
           {
             "file": "src/components/CommonUI.jsx",
@@ -132,7 +132,7 @@
           },
           {
             "file": "src/features/inquiries/inquiryApi.js",
-            "bytes": 18134
+            "bytes": 18211
           },
           {
             "file": "src/context/appContextSlices.js",
@@ -140,7 +140,7 @@
           },
           {
             "file": "src/features/content/siteContentCutover.js",
-            "bytes": 17199
+            "bytes": 17219
           },
           {
             "file": "src/user/UserDialogs.jsx",
@@ -156,11 +156,11 @@
           },
           {
             "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15643
+            "bytes": 15651
           },
           {
             "file": "src/features/requests/useUserRentalRequestController.js",
-            "bytes": 15220
+            "bytes": 15236
           },
           {
             "file": "src/routing/useAppNavigationController.js",
@@ -184,7 +184,7 @@
           },
           {
             "file": "src/features/auth/useUserAuthenticationSessionController.js",
-            "bytes": 11894
+            "bytes": 11910
           },
           {
             "file": "src/utils/systemSettings.js",
@@ -200,7 +200,7 @@
           },
           {
             "file": "src/features/members/useUserMyPageSecurity.js",
-            "bytes": 10551
+            "bytes": 10567
           },
           {
             "file": "src/features/boards/useBoardDerivedSelectors.js",
@@ -212,7 +212,7 @@
           },
           {
             "file": "src/features/auth/useUserAccountRecoveryController.js",
-            "bytes": 9417
+            "bytes": 9433
           },
           {
             "file": "src/user/UserRentalPeriodFields.jsx",
@@ -224,7 +224,7 @@
           },
           {
             "file": "src/features/members/memberProfileReadCutover.js",
-            "bytes": 8384
+            "bytes": 8400
           },
           {
             "file": "src/routing/appRoutes.js",
@@ -232,11 +232,11 @@
           },
           {
             "file": "src/features/requests/rentalRestrictionReadCutover.js",
-            "bytes": 8114
+            "bytes": 8108
           },
           {
             "file": "src/features/members/accountRecoveryService.js",
-            "bytes": 8006
+            "bytes": 8022
           },
           {
             "file": "src/features/requests/rentalRequestReadParity.js",
@@ -248,7 +248,7 @@
           },
           {
             "file": "src/clerk/ClerkStagingDiagnostics.jsx",
-            "bytes": 6940
+            "bytes": 6960
           },
           {
             "file": "src/components/TermsContentDialog.jsx",
@@ -267,12 +267,12 @@
             "bytes": 6049
           },
           {
-            "file": "src/performance/DevRenderProfiler.jsx",
-            "bytes": 6026
+            "file": "src/components/DeviceTrustVerificationPanel.jsx",
+            "bytes": 6042
           },
           {
-            "file": "src/components/DeviceTrustVerificationPanel.jsx",
-            "bytes": 6011
+            "file": "src/performance/DevRenderProfiler.jsx",
+            "bytes": 6026
           },
           {
             "file": "src/user/userHomeBootstrapService.js",
@@ -411,6 +411,10 @@
             "bytes": 2912
           },
           {
+            "file": "src/features/attachments/secureAttachmentApi.js",
+            "bytes": 2702
+          },
+          {
             "file": "src/features/requests/rentalRequestWriteCutover.js",
             "bytes": 2641
           },
@@ -421,10 +425,6 @@
           {
             "file": "src/features/members/memberAccountPolicy.js",
             "bytes": 2617
-          },
-          {
-            "file": "src/features/attachments/secureAttachmentApi.js",
-            "bytes": 2615
           },
           {
             "file": "src/features/requests/rentalRequestUserActionCutover.js",
@@ -459,12 +459,12 @@
             "bytes": 1847
           },
           {
-            "file": "src/user/UserRuntimeErrorBoundary.jsx",
-            "bytes": 1677
+            "file": "src/bootstrap/renderUserRoot.jsx",
+            "bytes": 1822
           },
           {
-            "file": "src/bootstrap/renderUserRoot.jsx",
-            "bytes": 1626
+            "file": "src/user/UserRuntimeErrorBoundary.jsx",
+            "bytes": 1677
           },
           {
             "file": "src/features/assets/useAssetCatalogViewController.js",
@@ -476,7 +476,7 @@
           },
           {
             "file": "src/features/requests/memberRentalStatusReadService.js",
-            "bytes": 1498
+            "bytes": 1514
           },
           {
             "file": "src/user-main.jsx",
@@ -497,6 +497,10 @@
           {
             "file": "src/hooks/useMinuteClock.js",
             "bytes": 762
+          },
+          {
+            "file": "src/clerk/clerkRuntimeClient.js",
+            "bytes": 760
           },
           {
             "file": "src/features/boards/footerContentShared.js",
@@ -538,15 +542,15 @@
       },
       "dynamicEntries": [
         "src/bootstrap/renderUserRoot.jsx",
-        "src/clerk/clerkStagingClient.js",
+        "src/clerk/clerkRuntimeClient.js",
         "src/features/terms/termsService.js"
       ]
     },
     "admin": {
       "entry": "src/admin-main.jsx",
       "initial": {
-        "moduleCount": 92,
-        "sourceBytes": 1055580,
+        "moduleCount": 94,
+        "sourceBytes": 1056809,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -570,7 +574,7 @@
           },
           {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
-            "bytes": 39111
+            "bytes": 39225
           },
           {
             "file": "src/features/requests/useAdminUserActionReviewController.js",
@@ -622,7 +626,7 @@
           },
           {
             "file": "src/features/content/siteContentCutover.js",
-            "bytes": 17199
+            "bytes": 17219
           },
           {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
@@ -642,7 +646,7 @@
           },
           {
             "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15643
+            "bytes": 15651
           },
           {
             "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -694,7 +698,7 @@
           },
           {
             "file": "src/features/requests/rentalRestrictionReadCutover.js",
-            "bytes": 8114
+            "bytes": 8108
           },
           {
             "file": "src/features/requests/rentalRequestReadParity.js",
@@ -710,19 +714,19 @@
           },
           {
             "file": "src/clerk/ClerkStagingDiagnostics.jsx",
-            "bytes": 6940
+            "bytes": 6960
           },
           {
             "file": "src/utils/appUtils.js",
             "bytes": 6049
           },
           {
-            "file": "src/performance/DevRenderProfiler.jsx",
-            "bytes": 6026
+            "file": "src/components/DeviceTrustVerificationPanel.jsx",
+            "bytes": 6042
           },
           {
-            "file": "src/components/DeviceTrustVerificationPanel.jsx",
-            "bytes": 6011
+            "file": "src/performance/DevRenderProfiler.jsx",
+            "bytes": 6026
           },
           {
             "file": "src/platform/retiredLegacyDataCompat.js",
@@ -878,7 +882,11 @@
           },
           {
             "file": "src/bootstrap/renderAdminRoot.jsx",
-            "bytes": 725
+            "bytes": 925
+          },
+          {
+            "file": "src/clerk/clerkRuntimeClient.js",
+            "bytes": 760
           },
           {
             "file": "src/features/boards/footerContentShared.js",
@@ -915,12 +923,16 @@
           {
             "file": "src/admin-main.jsx",
             "bytes": 176
+          },
+          {
+            "file": "src/clerk/clerkAdminClient.js",
+            "bytes": 82
           }
         ]
       },
       "complete": {
-        "moduleCount": 161,
-        "sourceBytes": 2043021,
+        "moduleCount": 163,
+        "sourceBytes": 2044414,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -964,7 +976,7 @@
           },
           {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
-            "bytes": 39111
+            "bytes": 39225
           },
           {
             "file": "src/admin/AdminInquiryPanel.jsx",
@@ -1056,7 +1068,7 @@
           },
           {
             "file": "src/features/inquiries/inquiryApi.js",
-            "bytes": 18134
+            "bytes": 18211
           },
           {
             "file": "src/context/appContextSlices.js",
@@ -1068,7 +1080,7 @@
           },
           {
             "file": "src/features/content/siteContentCutover.js",
-            "bytes": 17199
+            "bytes": 17219
           },
           {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
@@ -1108,7 +1120,7 @@
           },
           {
             "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 15643
+            "bytes": 15651
           },
           {
             "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -1192,7 +1204,7 @@
           },
           {
             "file": "src/features/requests/rentalRestrictionReadCutover.js",
-            "bytes": 8114
+            "bytes": 8108
           },
           {
             "file": "src/admin/AdminFaqCategoryDialog.jsx",
@@ -1248,7 +1260,7 @@
           },
           {
             "file": "src/clerk/ClerkStagingDiagnostics.jsx",
-            "bytes": 6940
+            "bytes": 6960
           },
           {
             "file": "src/admin/AdminAccountCreateDialog.jsx",
@@ -1259,12 +1271,12 @@
             "bytes": 6049
           },
           {
-            "file": "src/performance/DevRenderProfiler.jsx",
-            "bytes": 6026
+            "file": "src/components/DeviceTrustVerificationPanel.jsx",
+            "bytes": 6042
           },
           {
-            "file": "src/components/DeviceTrustVerificationPanel.jsx",
-            "bytes": 6011
+            "file": "src/performance/DevRenderProfiler.jsx",
+            "bytes": 6026
           },
           {
             "file": "src/components/RichTextContent.jsx",
@@ -1447,12 +1459,12 @@
             "bytes": 2912
           },
           {
-            "file": "src/features/members/memberAccountPolicy.js",
-            "bytes": 2617
+            "file": "src/features/attachments/secureAttachmentApi.js",
+            "bytes": 2702
           },
           {
-            "file": "src/features/attachments/secureAttachmentApi.js",
-            "bytes": 2615
+            "file": "src/features/members/memberAccountPolicy.js",
+            "bytes": 2617
           },
           {
             "file": "src/utils/dataCapacity.js",
@@ -1523,12 +1535,16 @@
             "bytes": 1101
           },
           {
+            "file": "src/bootstrap/renderAdminRoot.jsx",
+            "bytes": 925
+          },
+          {
             "file": "src/hooks/useMinuteClock.js",
             "bytes": 762
           },
           {
-            "file": "src/bootstrap/renderAdminRoot.jsx",
-            "bytes": 725
+            "file": "src/clerk/clerkRuntimeClient.js",
+            "bytes": 760
           },
           {
             "file": "src/features/boards/footerContentShared.js",
@@ -1565,6 +1581,10 @@
           {
             "file": "src/admin-main.jsx",
             "bytes": 176
+          },
+          {
+            "file": "src/clerk/clerkAdminClient.js",
+            "bytes": 82
           }
         ]
       },
@@ -1586,6 +1606,7 @@
         "src/admin/AdminRequestsPanel.jsx",
         "src/admin/AdminSettingsPanel.jsx",
         "src/admin/AdminSignupPolicyPanel.jsx",
+        "src/clerk/clerkRuntimeClient.js",
         "src/clerk/clerkStagingClient.js",
         "src/components/RichTextEditor.jsx",
         "src/features/content/siteContentCutover.js",
@@ -1597,12 +1618,8 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 719535,
+    "sourceBytes": 601095,
     "files": [
-      {
-        "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 119551
-      },
       {
         "file": "src/components/RichTextEditor.jsx",
         "bytes": 93761
@@ -1613,7 +1630,7 @@
       },
       {
         "file": "src/features/requests/useRentalDataSubscriptionController.js",
-        "bytes": 39111
+        "bytes": 39225
       },
       {
         "file": "src/utils/richTextCore.js",
@@ -1629,7 +1646,7 @@
       },
       {
         "file": "src/features/inquiries/inquiryApi.js",
-        "bytes": 18134
+        "bytes": 18211
       },
       {
         "file": "src/context/appContextSlices.js",
@@ -1637,7 +1654,7 @@
       },
       {
         "file": "src/features/content/siteContentCutover.js",
-        "bytes": 17199
+        "bytes": 17219
       },
       {
         "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -1645,7 +1662,7 @@
       },
       {
         "file": "src/features/boards/boardContentCutover.js",
-        "bytes": 15643
+        "bytes": 15651
       },
       {
         "file": "src/index.css",
@@ -1681,7 +1698,7 @@
       },
       {
         "file": "src/features/requests/rentalRestrictionReadCutover.js",
-        "bytes": 8114
+        "bytes": 8108
       },
       {
         "file": "src/features/requests/rentalRequestReadParity.js",
@@ -1693,19 +1710,19 @@
       },
       {
         "file": "src/clerk/ClerkStagingDiagnostics.jsx",
-        "bytes": 6940
+        "bytes": 6960
       },
       {
         "file": "src/utils/appUtils.js",
         "bytes": 6049
       },
       {
-        "file": "src/performance/DevRenderProfiler.jsx",
-        "bytes": 6026
+        "file": "src/components/DeviceTrustVerificationPanel.jsx",
+        "bytes": 6042
       },
       {
-        "file": "src/components/DeviceTrustVerificationPanel.jsx",
-        "bytes": 6011
+        "file": "src/performance/DevRenderProfiler.jsx",
+        "bytes": 6026
       },
       {
         "file": "src/components/RichTextContent.jsx",
@@ -1812,12 +1829,12 @@
         "bytes": 2912
       },
       {
-        "file": "src/features/members/memberAccountPolicy.js",
-        "bytes": 2617
+        "file": "src/features/attachments/secureAttachmentApi.js",
+        "bytes": 2702
       },
       {
-        "file": "src/features/attachments/secureAttachmentApi.js",
-        "bytes": 2615
+        "file": "src/features/members/memberAccountPolicy.js",
+        "bytes": 2617
       },
       {
         "file": "src/utils/popupUtils.js",
@@ -1860,6 +1877,10 @@
         "bytes": 762
       },
       {
+        "file": "src/clerk/clerkRuntimeClient.js",
+        "bytes": 760
+      },
+      {
         "file": "src/features/boards/footerContentShared.js",
         "bytes": 673
       },
@@ -1886,28 +1907,32 @@
     ]
   },
   "userOnlyComplete": {
-    "moduleCount": 54,
-    "sourceBytes": 808308,
+    "moduleCount": 55,
+    "sourceBytes": 871631,
     "files": [
+      {
+        "file": "src/clerk/clerkUserClient.js",
+        "bytes": 62887
+      },
       {
         "file": "src/user/UserInquiryPanel.jsx",
         "bytes": 59541
       },
       {
         "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
-        "bytes": 40985
+        "bytes": 41001
+      },
+      {
+        "file": "src/features/requests/useUserRequestHistoryActionController.js",
+        "bytes": 39402
       },
       {
         "file": "src/user/UserRentalStatusPanel.jsx",
         "bytes": 39400
       },
       {
-        "file": "src/features/requests/useUserRequestHistoryActionController.js",
-        "bytes": 39386
-      },
-      {
         "file": "src/user/UserAuthPanel.jsx",
-        "bytes": 36814
+        "bytes": 36830
       },
       {
         "file": "src/user/UserBoardPanel.jsx",
@@ -1922,16 +1947,16 @@
         "bytes": 35633
       },
       {
+        "file": "src/features/auth/useUserSignupController.js",
+        "bytes": 34236
+      },
+      {
         "file": "src/user/UserRequestHistoryPanel.jsx",
         "bytes": 34223
       },
       {
-        "file": "src/features/auth/useUserSignupController.js",
-        "bytes": 34220
-      },
-      {
         "file": "src/features/auth/useUserLoginController.js",
-        "bytes": 32053
+        "bytes": 32069
       },
       {
         "file": "src/user/UserShell.jsx",
@@ -1939,7 +1964,7 @@
       },
       {
         "file": "src/features/members/useUserMyPageAccountController.js",
-        "bytes": 30257
+        "bytes": 30273
       },
       {
         "file": "src/user/UserHomePanel.jsx",
@@ -1947,7 +1972,7 @@
       },
       {
         "file": "src/features/members/useUserMembershipStatusController.js",
-        "bytes": 20451
+        "bytes": 20467
       },
       {
         "file": "src/user/UserRentalPanel.jsx",
@@ -1955,7 +1980,7 @@
       },
       {
         "file": "src/user/UserTermsConsentPanel.jsx",
-        "bytes": 18610
+        "bytes": 18626
       },
       {
         "file": "src/user/UserDialogs.jsx",
@@ -1967,7 +1992,7 @@
       },
       {
         "file": "src/features/requests/useUserRentalRequestController.js",
-        "bytes": 15220
+        "bytes": 15236
       },
       {
         "file": "src/routing/useAppNavigationController.js",
@@ -1987,15 +2012,15 @@
       },
       {
         "file": "src/features/auth/useUserAuthenticationSessionController.js",
-        "bytes": 11894
+        "bytes": 11910
       },
       {
         "file": "src/features/members/useUserMyPageSecurity.js",
-        "bytes": 10551
+        "bytes": 10567
       },
       {
         "file": "src/features/auth/useUserAccountRecoveryController.js",
-        "bytes": 9417
+        "bytes": 9433
       },
       {
         "file": "src/user/UserRentalPeriodFields.jsx",
@@ -2003,11 +2028,11 @@
       },
       {
         "file": "src/features/members/memberProfileReadCutover.js",
-        "bytes": 8384
+        "bytes": 8400
       },
       {
         "file": "src/features/members/accountRecoveryService.js",
-        "bytes": 8006
+        "bytes": 8022
       },
       {
         "file": "src/components/TermsContentDialog.jsx",
@@ -2074,16 +2099,16 @@
         "bytes": 1898
       },
       {
+        "file": "src/bootstrap/renderUserRoot.jsx",
+        "bytes": 1822
+      },
+      {
         "file": "src/user/UserRuntimeErrorBoundary.jsx",
         "bytes": 1677
       },
       {
-        "file": "src/bootstrap/renderUserRoot.jsx",
-        "bytes": 1626
-      },
-      {
         "file": "src/features/requests/memberRentalStatusReadService.js",
-        "bytes": 1498
+        "bytes": 1514
       },
       {
         "file": "src/user-main.jsx",
@@ -2108,9 +2133,13 @@
     ]
   },
   "adminOnlyComplete": {
-    "moduleCount": 90,
-    "sourceBytes": 1323486,
+    "moduleCount": 92,
+    "sourceBytes": 1443319,
     "files": [
+      {
+        "file": "src/clerk/clerkStagingClient.js",
+        "bytes": 119551
+      },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
         "bytes": 63394
@@ -2457,7 +2486,7 @@
       },
       {
         "file": "src/bootstrap/renderAdminRoot.jsx",
-        "bytes": 725
+        "bytes": 925
       },
       {
         "file": "src/features/auth/adminAuditActorService.js",
@@ -2470,15 +2499,19 @@
       {
         "file": "src/admin-main.jsx",
         "bytes": 176
+      },
+      {
+        "file": "src/clerk/clerkAdminClient.js",
+        "bytes": 82
       }
     ]
   },
   "initialModuleCount": 5,
-  "initialSourceBytes": 33941,
+  "initialSourceBytes": 33961,
   "files": [
     {
       "file": "src/features/content/siteContentCutover.js",
-      "bytes": 17199
+      "bytes": 17219
     },
     {
       "file": "src/routing/appRoutes.js",
@@ -2499,7 +2532,7 @@
   ],
   "dynamicEntries": [
     "src/bootstrap/renderUserRoot.jsx",
-    "src/clerk/clerkStagingClient.js",
+    "src/clerk/clerkRuntimeClient.js",
     "src/features/terms/termsService.js"
   ]
 }

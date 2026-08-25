@@ -14,7 +14,7 @@ import {
   loadSignupTermContents,
   preloadSignupTermContent,
 } from '../features/terms/termsService.js';
-import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../clerk/clerkUserClient.js';
 import {
   publishAccountLifecycleAuthorityObservation,
   readAccountLifecycleAuthorityFromPayload,

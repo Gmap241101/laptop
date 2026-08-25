@@ -41,7 +41,7 @@ import {
 import { createDefaultUserProfileForm } from '../members/useUserMyPageAccountController.js';
 import { readUserAuthTransition } from './authSessionService.js';
 import { readAccountLifecycleAuthorityConfig } from './accountLifecycleAuthority.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   createClerkPostgresqlUserPrincipal,
   publishUserFirebaseAuthRetirementObservation,

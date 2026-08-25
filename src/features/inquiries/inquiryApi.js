@@ -1,4 +1,4 @@
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from '../../clerk/clerkRuntimeClient.js';
 
 const trim = (value) => String(value ?? '').trim();
 const INQUIRY_READ_CACHE_TTL_MS = 30_000;
@@ -57,14 +57,15 @@ const withInquiryReadCache = async (key, loader, ttlMs = INQUIRY_READ_CACHE_TTL_
 };
 
 const getMemberSessionCacheKey = async () => {
-  const clerk = await clerkStagingClient.initialize();
+  const clerk = await getActiveClerkRuntimeClient().initialize();
   const sessionKey = trim(clerk?.session?.id || clerk?.user?.id);
   if (sessionKey) lastMemberSessionCacheKey = sessionKey;
   return sessionKey;
 };
 
 const getApiBaseUrl = () => {
-  const configured = trim(clerkStagingClient?.config?.apiBaseUrl || import.meta.env?.VITE_API_URL);
+  const clerkClient = getActiveClerkRuntimeClient();
+  const configured = trim(clerkClient?.config?.apiBaseUrl || import.meta.env?.VITE_API_URL);
   if (!configured) {
     const error = new Error('Inquiry API base URL is not configured.');
     error.code = 'inquiry_api_not_configured';
@@ -97,7 +98,7 @@ const requestJson = async ({ path, method = 'GET', body, auth = 'public', guestT
     const token = typeof clerkStagingClient.getSessionToken === 'function'
       ? await clerkStagingClient.getSessionToken()
       : await (async () => {
-          const clerk = await clerkStagingClient.initialize();
+          const clerk = await getActiveClerkRuntimeClient().initialize();
           return clerk?.session?.getToken?.();
         })();
     if (!token) {

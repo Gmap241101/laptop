@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { STATUS } from '../../constants/appConstants.js';
 import { USER_PROFILE_STATUS } from '../../constants/memberConstants.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   createDefaultRequestForm,
   getAdjustedRentalDueDate,

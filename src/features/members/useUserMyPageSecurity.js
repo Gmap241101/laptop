@@ -4,7 +4,7 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from '../../platform/retiredLegacyDataCompat.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   publishUserAccountLifecycleObservation,
   readUserAccountLifecycleCutoverConfig,

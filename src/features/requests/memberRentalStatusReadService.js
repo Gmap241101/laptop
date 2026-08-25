@@ -1,4 +1,4 @@
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 
 const CACHE_TTL_MS = 30000;
 const monthCache = new Map();

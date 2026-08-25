@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { clerkStagingClient } from './clerkStagingClient.js';
+import { getActiveClerkRuntimeClient } from './clerkRuntimeClient.js';
 import { readSiteContentCutoverConfig } from '../features/content/siteContentCutover.js';
 import { readPolicyContentCutoverConfig } from '../features/content/policyContentCutover.js';
 
@@ -60,7 +60,7 @@ export default function ClerkStagingDiagnostics({ runtimeSurface = 'user' }) {
     if (!enabled) return;
     setState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const clerk = await clerkStagingClient.initialize();
+      const clerk = await getActiveClerkRuntimeClient().initialize();
       const siteConfig = readSiteContentCutoverConfig();
       const policyConfig = readPolicyContentCutoverConfig();
       const apiBaseUrl = siteConfig.apiBaseUrl || policyConfig.apiBaseUrl;

@@ -40,7 +40,7 @@ import {
   today,
 } from '../../utils/appUtils.js';
 import { getServiceBlockReason } from '../../utils/systemSettings.js';
-import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
   publishRentalRequestUserActionObservation,
   readRentalRequestUserActionCutoverConfig,

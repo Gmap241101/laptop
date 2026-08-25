@@ -11,6 +11,7 @@ import {
   requestFirebaseLegacyLinkStatus,
   requestMemberProfileReadCandidate,
 } from '../../src/clerk/clerkStagingClient.js';
+import { createClerkUserClient } from '../../src/clerk/clerkUserClient.js';
 
 const encode = (value) => Buffer.from(`${value}$`, 'utf8').toString('base64');
 const decode = (value) => Buffer.from(value, 'base64').toString('utf8');
@@ -353,6 +354,26 @@ assert.equal((await client.getFirebaseLegacyLink()).firebaseLink.appUserId, '11'
 assert.equal((await client.getMemberProfileReadCandidate()).readCandidate.profile.uid, 'firebase_uid_browser');
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Authorization']), false);
+
+const dedicatedUserClient = createClerkUserClient({
+  env: {
+    MODE: 'staging',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: key,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef,
+  documentRef,
+  fetchImpl: client.config.enabled ? async (url, options) => {
+    browserCalls.push({ url, options });
+    if (url.endsWith('/api/auth/session')) return { ok: true, status: 200, async json() { return { authenticated: true, session: { userId: 'user_browser' } }; } };
+    if (url.endsWith('/api/users/me')) return { ok: true, status: 200, async json() { return { authenticated: true, user: { id: '11', clerkUserId: 'user_browser' } }; } };
+    throw new Error(`Unexpected dedicated user client request: ${url}`);
+  } : fetch,
+});
+assert.equal(await dedicatedUserClient.initialize(), fakeClerk, 'dedicated user Clerk client must reuse the same Clerk browser runtime');
+assert.equal((await dedicatedUserClient.verifyBackendSession()).session.userId, 'user_browser');
+assert.equal((await dedicatedUserClient.getBackendUserIdentity()).user.id, '11');
 
 let deviceTrustSendCount = 0;
 let deviceTrustVerifyCount = 0;

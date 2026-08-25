@@ -245,8 +245,8 @@ export const requestSiteContentDomain = async ({ domain, fetchImpl = fetch, conf
 };
 
 const getClerkToken = async ({ forceRefresh = false } = {}) => {
-  const { clerkStagingClient } = await import('../../clerk/clerkStagingClient.js');
-  const clerk = await clerkStagingClient.initialize();
+  const { getActiveClerkRuntimeClient } = await import('../../clerk/clerkRuntimeClient.js');
+  const clerk = await getActiveClerkRuntimeClient().initialize();
   const token = await clerk?.session?.getToken?.(forceRefresh ? { skipCache: true } : undefined);
   if (!token) throw Object.assign(new Error('Clerk administrator session is required for site content write-through.'), { code: 'site_content_clerk_session_missing' });
   return token;
