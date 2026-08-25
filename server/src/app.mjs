@@ -1957,8 +1957,19 @@ export const createRequestHandler = ({
     const noticeViewMatch = request.method === 'POST' ? url.pathname.match(/^\/api\/boards\/notice\/([^/]+)\/view$/) : null;
     if (noticeViewMatch) {
       try {
-        const viewCount = await boardService.incrementNoticeView(decodeURIComponent(noticeViewMatch[1]));
-        writeJson(response, 200, { ...basePayload, noticeView: { authority: 'postgresql', viewCount } }, headers);
+        const body = await readJsonBody(request, { maxBytes: 2048 });
+        const result = await boardService.incrementNoticeView(
+          decodeURIComponent(noticeViewMatch[1]),
+          String(body?.viewerId || ''),
+        );
+        writeJson(response, 200, {
+          ...basePayload,
+          noticeView: {
+            authority: 'postgresql',
+            viewCount: Math.max(0, Number(result?.viewCount ?? result) || 0),
+            counted: typeof result === 'object' ? Boolean(result?.counted) : true,
+          },
+        }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'notice_view_unavailable' }, headers);
       }

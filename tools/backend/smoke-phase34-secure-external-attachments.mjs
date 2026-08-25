@@ -29,6 +29,27 @@ assert.equal(inferSecureAttachmentFilename({
 assert.equal(inferSecureAttachmentFilename({
   targetUrl: 'https://files.example.com/download/server-photo.jpg?token=test',
 }), 'server-photo.jpg');
+const rawUtf8KoreanFilename = Buffer.from('한글파일.pdf', 'utf8').toString('latin1');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: `attachment; filename="${rawUtf8KoreanFilename}"`,
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '한글파일.pdf', 'raw UTF-8 header bytes exposed as latin1 must recover the Korean filename');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: "attachment; filename*=EUC-KR''%C7%D1%B1%DB%C6%C4%C0%CF%2E%70%64%66",
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '한글파일.pdf', 'RFC 5987 EUC-KR filename metadata must decode');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: 'attachment; filename="=?UTF-8?B?7ZWc6riA7YyM7J28LnBkZg==?="',
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '한글파일.pdf', 'RFC 2047 UTF-8 filename metadata must decode');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: 'attachment; filename="=?EUC-KR?B?x9Gx28bEwM8ucGRm?="',
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '한글파일.pdf', 'RFC 2047 EUC-KR filename metadata must decode');
+assert.equal(inferSecureAttachmentFilename({
+  contentDisposition: 'attachment; filename="%C7%D1%B1%DB%C6%C4%C0%CF%2E%70%64%66"',
+  targetUrl: 'https://files.example.com/download/opaque',
+}), '한글파일.pdf', 'legacy percent-encoded EUC-KR filename metadata must decode');
 
 const retained = normalizeSecureAttachmentInputs([{ id: 'att-existing', name: '기존.pdf', targetUrl: '' }]);
 assert.equal(retained[0].id, 'att-existing');
@@ -89,6 +110,10 @@ assert.match(service, /method: 'HEAD'/);
 assert.match(service, /Range: 'bytes=0-0'/);
 assert.match(service, /prepareSecureAttachmentInputs/);
 assert.match(service, /inferSecureAttachmentFilename/);
+assert.match(service, /TextDecoder/);
+assert.match(service, /euc-kr/);
+assert.match(service, /decodeMimeEncodedWords/);
+assert.match(service, /Accept-Language': 'ko-KR/);
 assert.match(service, /content-disposition/);
 assert.match(service, /const resolvedName = attachment\.name \|\| metadata\.fileName/);
 assert.doesNotMatch(service, /attachment_name_required/);

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { normalizeSecureAttachmentInputs } from '../attachments/attachment-service.mjs';
 
 const trim = (value) => String(value ?? '').trim();
@@ -42,6 +42,19 @@ const normalizePostInput = (boardType, input, { id, isEditing, actorClerkUserId 
     actorClerkUserId: trim(actorClerkUserId),
   });
 };
+
+
+const normalizeNoticeViewerId = (value) => {
+  const viewerId = trim(value);
+  if (!/^notice-viewer-v1-[A-Za-z0-9_-]{16,120}$/.test(viewerId)) {
+    throw serviceError('notice_viewer_id_invalid', 'Notice viewer identity is invalid.', 400);
+  }
+  return viewerId;
+};
+
+const hashNoticeViewerId = (value) => createHash('sha256')
+  .update(`phase34-notice-viewer:${normalizeNoticeViewerId(value)}`, 'utf8')
+  .digest('hex');
 
 const mapRepositoryError = (error) => {
   const map = {
@@ -98,9 +111,15 @@ export const createBoardService = ({ repository, attachmentService = null }) => 
       if (!post) throw serviceError('notice_post_not_found', 'Notice post was not found.', 404);
       return post;
     },
-    async incrementNoticeView(postId) {
-      try { return await repository.incrementNoticeView(postId); }
-      catch (error) { return mapRepositoryError(error); }
+    async incrementNoticeView(postId, viewerId) {
+      try {
+        const result = await repository.incrementNoticeView(postId, hashNoticeViewerId(viewerId));
+        if (typeof result === 'number') return Object.freeze({ viewCount: Number(result) || 0, counted: true });
+        return Object.freeze({
+          viewCount: Math.max(0, Number(result?.viewCount) || 0),
+          counted: Boolean(result?.counted),
+        });
+      } catch (error) { return mapRepositoryError(error); }
     },
     async listFaq(query) {
       try { return await repository.listFaq(query); }

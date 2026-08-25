@@ -7,7 +7,7 @@ const repository = {
   async getStatus() { return { source: 'postgresql', synchronized: true, noticeCount: 1, faqCount: 1, faqCategoryCount: 1, syncedAt: new Date('2026-08-11T00:00:00.000Z') }; },
   async listNotice() { return { source: 'postgresql', config: { postsPerPage: 10 }, pinnedPosts: [], regularPosts: [], totalRegularCount: 0, hasNextPage: false }; },
   async getNoticePost(id) { return { id, boardType: 'notice', title: 'Notice' }; },
-  async incrementNoticeView(id) { return { id, viewCount: 2 }; },
+  async incrementNoticeView(id, viewerHash) { calls.push(['notice-view', id, viewerHash]); return { viewCount: 2, counted: true }; },
   async listFaq() { return { source: 'postgresql', config: { postsPerPage: 10 }, categories: [], pinnedPosts: [], regularPosts: [], totalRegularCount: 0, hasNextPage: false }; },
   async saveNoticePostAuthoritative({ post }) { calls.push(['notice-save', post]); return { post: { ...post, createdAt: new Date(), updatedAt: new Date(), viewCount: 0 } }; },
   async deleteNoticePostAuthoritative({ postId }) { calls.push(['notice-delete', postId]); return { deletedPost: { id: postId } }; },
@@ -42,6 +42,13 @@ assert.ok(calls.some(([name]) => name === 'notice-save'));
 assert.ok(calls.some(([name]) => name === 'faq-save'));
 assert.ok(calls.some(([name]) => name === 'config-save'));
 assert.ok(calls.some(([name]) => name === 'category-save'));
+
+const viewResult = await service.incrementNoticeView('notice-1', 'notice-viewer-v1-0123456789abcdef0123456789abcdef');
+assert.equal(viewResult.viewCount, 2);
+assert.equal(viewResult.counted, true);
+const viewCall = calls.find(([name]) => name === 'notice-view');
+assert.ok(viewCall, 'unique notice view must reach the repository');
+assert.match(viewCall[2], /^[0-9a-f]{64}$/, 'repository must receive only a SHA-256 viewer hash');
 await assert.rejects(() => service.saveNotice({ uid: 'legacy', source: 'firebase' }, 'legacy', { title: 'No', contentText: 'No' }), (error) => error?.code === 'admin_postgresql_identity_required');
 
 const migration = readFileSync('server/migrations/018_phase26_notice_faq_board_authority.sql', 'utf8');

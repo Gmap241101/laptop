@@ -34,7 +34,7 @@ const boardRepository = {
   async getStatus() { return { source: 'postgresql', synchronized: true, noticeCount: 0, faqCount: 0, faqCategoryCount: 1 }; },
   async listNotice() { return { source: 'postgresql', pinnedPosts: [], regularPosts: [], totalRegularCount: 0 }; },
   async getNoticePost(id) { return { id, boardType: 'notice', title: 'N' }; },
-  async incrementNoticeView(id) { return { id, viewCount: 1 }; },
+  async incrementNoticeView(id, viewerHash) { return { viewCount: 1, counted: Boolean(viewerHash) }; },
   async listFaq() { return { source: 'postgresql', categories: [{ id: 'c1', name: '일반' }], pinnedPosts: [], regularPosts: [], totalRegularCount: 0 }; },
   async saveNoticePostAuthoritative({ post }) { return { post }; },
   async deleteNoticePostAuthoritative({ postId }) { return { deletedPost: { id: postId } }; },

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP } from 'node:net';
+import { TextDecoder } from 'node:util';
 
 const MAX_ATTACHMENTS = 5;
 const MAX_NAME_LENGTH = 180;
@@ -66,8 +67,108 @@ const decodeFilenameValue = (value) => {
   catch { return text; }
 };
 
+const normalizeCharsetLabel = (value) => {
+  const label = trim(value).toLowerCase().replace(/_/g, '-');
+  if (['utf8', 'utf-8'].includes(label)) return 'utf-8';
+  if (['euc-kr', 'euckr', 'ks-c-5601-1987', 'ks-c-5601', 'ksc5601', 'cp949', 'windows-949', 'x-windows-949'].includes(label)) return 'euc-kr';
+  if (['iso-8859-1', 'latin1', 'latin-1'].includes(label)) return 'windows-1252';
+  return label || 'utf-8';
+};
+
+const decodeBytes = (bytes, charset = 'utf-8', { fatal = false } = {}) => {
+  try {
+    return new TextDecoder(normalizeCharsetLabel(charset), { fatal }).decode(bytes);
+  } catch {
+    return '';
+  }
+};
+
+const percentEncodedBytes = (value) => {
+  const source = String(value ?? '');
+  const bytes = [];
+  for (let index = 0; index < source.length;) {
+    if (source[index] === '%' && /^[0-9A-Fa-f]{2}$/.test(source.slice(index + 1, index + 3))) {
+      bytes.push(Number.parseInt(source.slice(index + 1, index + 3), 16));
+      index += 3;
+      continue;
+    }
+    const encoded = Buffer.from(source[index], 'utf8');
+    bytes.push(...encoded);
+    index += 1;
+  }
+  return Uint8Array.from(bytes);
+};
+
+const decodeExtendedFilenameValue = (charset, value) => {
+  const decoded = decodeBytes(percentEncodedBytes(String(value ?? '').replace(/^\"|\"$/g, '')), charset);
+  return trim(decoded);
+};
+
+const decodeMimeEncodedWords = (value) => String(value ?? '').replace(
+  /=\?([^?]+)\?([bq])\?([^?]*)\?=/gi,
+  (whole, charset, mode, payload) => {
+    try {
+      let bytes;
+      if (String(mode).toLowerCase() === 'b') {
+        bytes = Uint8Array.from(Buffer.from(String(payload || ''), 'base64'));
+      } else {
+        const q = String(payload || '').replace(/_/g, ' ');
+        const values = [];
+        for (let index = 0; index < q.length;) {
+          if (q[index] === '=' && /^[0-9A-Fa-f]{2}$/.test(q.slice(index + 1, index + 3))) {
+            values.push(Number.parseInt(q.slice(index + 1, index + 3), 16));
+            index += 3;
+          } else {
+            values.push(...Buffer.from(q[index], 'latin1'));
+            index += 1;
+          }
+        }
+        bytes = Uint8Array.from(values);
+      }
+      return decodeBytes(bytes, charset) || whole;
+    } catch {
+      return whole;
+    }
+  },
+);
+
+const filenameTextScore = (value) => {
+  const text = String(value ?? '');
+  const hangul = (text.match(/[\uAC00-\uD7A3]/g) || []).length;
+  const cjk = (text.match(/[\u3040-\u30FF\u3400-\u9FFF]/g) || []).length;
+  const replacement = (text.match(/\uFFFD/g) || []).length;
+  const controls = (text.match(/[\u0000-\u001f\u007f]/g) || []).length;
+  const questionMarks = (text.match(/\?/g) || []).length;
+  const mojibake = (text.match(/[ÃÂÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]/g) || []).length;
+  return (hangul * 8) + (cjk * 4) - (replacement * 12) - (controls * 12) - (questionMarks * 2) - (mojibake * 2);
+};
+
+const recoverLegacyHeaderFilename = (value) => {
+  const source = trim(value).replace(/^\"|\"$/g, '');
+  if (!source) return '';
+  const candidates = [source, decodeFilenameValue(source), decodeMimeEncodedWords(source)];
+  if (/%[0-9A-Fa-f]{2}/.test(source)) {
+    const encodedBytes = percentEncodedBytes(source);
+    const utf8Percent = decodeBytes(encodedBytes, 'utf-8', { fatal: true });
+    const eucKrPercent = decodeBytes(encodedBytes, 'euc-kr');
+    if (utf8Percent) candidates.push(utf8Percent);
+    if (eucKrPercent) candidates.push(eucKrPercent);
+  }
+  if ([...source].every((character) => character.charCodeAt(0) <= 0xFF)) {
+    const bytes = Uint8Array.from(Buffer.from(source, 'latin1'));
+    const utf8 = decodeBytes(bytes, 'utf-8', { fatal: true });
+    const eucKr = decodeBytes(bytes, 'euc-kr');
+    if (utf8) candidates.push(utf8);
+    if (eucKr) candidates.push(eucKr);
+  }
+  return candidates
+    .map((candidate, index) => ({ candidate: trim(candidate), score: filenameTextScore(candidate), index }))
+    .filter(({ candidate }) => candidate)
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.candidate || '';
+};
+
 const normalizeSourceFilename = (value) => {
-  const decoded = decodeFilenameValue(value)
+  const decoded = recoverLegacyHeaderFilename(value)
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .trim();
   const leaf = decoded.split(/[\\/]/).pop()?.replace(/^[\"']+|[\"']+$/g, '').trim() || '';
@@ -77,9 +178,10 @@ const normalizeSourceFilename = (value) => {
 const filenameFromContentDisposition = (value) => {
   const header = trim(value);
   if (!header) return '';
-  const extended = header.match(/filename\*\s*=\s*(?:UTF-8''|utf-8'[^']*')([^;]+)/i);
-  if (extended?.[1]) {
-    const candidate = normalizeSourceFilename(extended[1].replace(/^\"|\"$/g, ''));
+  const extended = header.match(/filename\*\s*=\s*([^']+)'[^']*'([^;]+)/i);
+  if (extended?.[2]) {
+    const decoded = decodeExtendedFilenameValue(extended[1], extended[2]);
+    const candidate = normalizeSourceFilename(decoded);
     if (candidate) return candidate;
   }
   const regular = header.match(/filename\s*=\s*(?:\"([^\"]*)\"|([^;]+))/i);
@@ -165,7 +267,8 @@ const openUpstreamRequest = async (targetUrl, { method = 'GET', requestHeaders =
       method,
       headers: {
         Accept: '*/*',
-        'User-Agent': 'MK-Rental-Secure-Attachment-Proxy/1.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0 Safari/537.36 MK-Rental-Secure-Attachment-Proxy/1.1',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
         ...requestHeaders,
       },
       timeout: REQUEST_TIMEOUT_MS,

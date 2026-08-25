@@ -35,6 +35,7 @@ const phase34AdminMemberDirectoryOverride = readFileSync('server/migrations/033_
 const phase34PrivateInquiryBoard = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql', 'utf8');
 const phase34SecureExternalAttachments = readFileSync('server/migrations/035_phase34_secure_external_attachments.sql', 'utf8');
 const phase34SecureAttachmentMetadataMetrics = readFileSync('server/migrations/036_phase34_secure_attachment_metadata_metrics.sql', 'utf8');
+const phase34NoticeUniqueViewers = readFileSync('server/migrations/037_phase34_notice_unique_viewers.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -616,4 +617,24 @@ for (const marker of [
     throw new Error(`Phase 34 secure attachment metadata metrics migration marker is missing: ${marker}`);
   }
 }
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, 035 secure external attachments, and 036 attachment metadata metrics, are type-safe)');
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS app_board_notice_unique_views',
+  'viewer_hash TEXT NOT NULL',
+  'PRIMARY KEY (post_id, viewer_hash)',
+  'REFERENCES app_board_posts(post_id) ON DELETE CASCADE',
+  'app_board_notice_unique_views_hash_shape',
+  "'phase34_notice_unique_viewers'",
+  "'viewerIdentity', 'browser-local-opaque-id-sha256'",
+  "'counting', 'first-view-per-browser-profile-per-post'",
+  "'personalData', 'none-stored'",
+]) {
+  if (!phase34NoticeUniqueViewers.includes(marker)) {
+    throw new Error(`Phase 34 notice unique-view migration marker is missing: ${marker}`);
+  }
+}
+if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34NoticeUniqueViewers)) {
+  throw new Error('Migration 037 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, 035 secure external attachments, 036 attachment metadata metrics, and 037 unique notice views, are type-safe)');

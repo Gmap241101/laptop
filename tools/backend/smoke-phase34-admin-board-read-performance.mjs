@@ -103,7 +103,7 @@ assert.equal(detailCalls, 1, 'FAQ detail must use one PostgreSQL query');
 
 const getNoticeBody = repositorySource.slice(
   repositorySource.indexOf('async getNoticePost(postId)'),
-  repositorySource.indexOf('async incrementNoticeView(postId)'),
+  repositorySource.indexOf('async incrementNoticeView(postId, viewerHash)'),
 );
 assert.equal((getNoticeBody.match(/pool\.query\(/g) || []).length, 1, 'notice detail hot path must contain one pool.query');
 assert.equal(getNoticeBody.includes('ensureBootstrapped(pool)'), false, 'notice detail must not perform a separate bootstrap query');

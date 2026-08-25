@@ -322,7 +322,7 @@ const boardService = {
   async getStatus() { return { source: 'postgresql', synchronized: true, noticeCount: 1, faqCount: 1, faqCategoryCount: 1 }; },
   async listNotice() { return { source: 'postgresql', config: { postsPerPage: 10 }, pinnedPosts: [], regularPosts: [{ id: 'NOTICE-1', title: 'Smoke notice' }], totalRegularCount: 1, hasNextPage: false }; },
   async getNotice(postId) { return { id: postId, title: 'Smoke notice', viewCount: 1 }; },
-  async incrementNoticeView() { return 2; },
+  async incrementNoticeView() { return { viewCount: 2, counted: true }; },
   async listFaq() { return { source: 'postgresql', config: { postsPerPage: 10 }, categories: [], pinnedPosts: [], regularPosts: [], totalRegularCount: 0, hasNextPage: false }; },
   async bootstrap() { return { source: 'postgresql', synchronized: 0 }; },
   async saveNotice() { return { authority: 'postgresql', firestoreMirror: 'retired', post: { id: 'NOTICE-NEW' } }; },

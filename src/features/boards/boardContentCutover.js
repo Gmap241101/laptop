@@ -6,9 +6,38 @@ const WRITE_SESSION_KEY = 'mk_board_content_postgres_write';
 const OBSERVATION_EVENT = 'rental:board-content-cutover';
 const REFRESH_EVENT = 'rental:board-content-refresh';
 const BOARD_READ_CACHE_TTL_MS = 60_000;
+const NOTICE_VIEWER_STORAGE_KEY = 'mk_notice_viewer_id_v1';
+let fallbackNoticeViewerId = '';
 const boardReadCache = new Map();
 const trim = (value) => (typeof value === 'string' ? value.trim() : String(value ?? '').trim());
 const bool = (value) => trim(value).toLowerCase() === 'true';
+
+
+export const getOrCreateNoticeViewerId = ({ storage = globalThis.localStorage, cryptoApi = globalThis.crypto } = {}) => {
+  try {
+    const stored = trim(storage?.getItem?.(NOTICE_VIEWER_STORAGE_KEY));
+    if (/^notice-viewer-v1-[A-Za-z0-9_-]{16,120}$/.test(stored)) return stored;
+  } catch {
+    // Storage can be unavailable in privacy-restricted contexts; use the in-memory fallback below.
+  }
+  if (!fallbackNoticeViewerId) {
+    let token = '';
+    try {
+      if (typeof cryptoApi?.randomUUID === 'function') token = cryptoApi.randomUUID().replace(/-/g, '');
+      else if (typeof cryptoApi?.getRandomValues === 'function') {
+        const bytes = new Uint8Array(16);
+        cryptoApi.getRandomValues(bytes);
+        token = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+      }
+    } catch {
+      token = '';
+    }
+    if (!token) token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+    fallbackNoticeViewerId = `notice-viewer-v1-${token}`;
+  }
+  try { storage?.setItem?.(NOTICE_VIEWER_STORAGE_KEY, fallbackNoticeViewerId); } catch { /* no-op */ }
+  return fallbackNoticeViewerId;
+};
 
 const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
@@ -124,12 +153,17 @@ const withBoardReadCache = async ({ key, useCache = true, loader }) => {
   return entry.promise;
 };
 
-const publicRequest = async (path, { method = 'GET', fetchImpl = fetch } = {}) => {
+const publicRequest = async (path, { method = 'GET', body = undefined, fetchImpl = fetch } = {}) => {
   const config = readBoardContentCutoverConfig();
   requireApi(config);
+  const hasBody = body !== undefined;
   const response = await fetchImpl(`${config.apiBaseUrl}${path}`, {
     method,
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(hasBody ? { body: JSON.stringify(body) } : {}),
     cache: 'no-store',
   });
   const payload = await readJson(response);
@@ -188,8 +222,13 @@ export const requestNoticePost = async (postId, { useCache = true, fetchImpl = f
   });
 };
 
-export const incrementNoticePostView = async (postId, { fetchImpl = fetch } = {}) => {
-  const payload = await publicRequest(`/api/boards/notice/${encodeURIComponent(trim(postId))}/view`, { method: 'POST', fetchImpl });
+export const incrementNoticePostView = async (postId, { fetchImpl = fetch, storage = globalThis.localStorage, cryptoApi = globalThis.crypto } = {}) => {
+  const viewerId = getOrCreateNoticeViewerId({ storage, cryptoApi });
+  const payload = await publicRequest(`/api/boards/notice/${encodeURIComponent(trim(postId))}/view`, {
+    method: 'POST',
+    body: { viewerId },
+    fetchImpl,
+  });
   publishBoardContentObservation({ readRequested: true, writeRequested: false, writeSource: 'postgresql', boardType: 'notice', operation: 'view-count', error: null });
   return Number(payload?.noticeView?.viewCount || 0);
 };

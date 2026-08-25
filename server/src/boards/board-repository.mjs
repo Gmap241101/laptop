@@ -337,16 +337,35 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
     });
   },
 
-  async incrementNoticeView(postId) {
+  async incrementNoticeView(postId, viewerHash) {
     const result = await pool.query(
-      `UPDATE app_board_posts
-          SET view_count=view_count+1, updated_at=updated_at
-        WHERE board_type='notice' AND post_id=$1
-        RETURNING view_count`,
-      [trim(postId)],
+      `WITH target AS (
+         SELECT post_id
+           FROM app_board_posts
+          WHERE board_type='notice' AND post_id=$1
+       ), inserted AS (
+         INSERT INTO app_board_notice_unique_views (post_id, viewer_hash, first_viewed_at)
+         SELECT post_id, $2, NOW()
+           FROM target
+         ON CONFLICT (post_id, viewer_hash) DO NOTHING
+         RETURNING post_id
+       ), updated AS (
+         UPDATE app_board_posts p
+            SET view_count = p.view_count + (SELECT COUNT(*)::int FROM inserted),
+                updated_at = p.updated_at
+          WHERE p.board_type='notice' AND p.post_id=$1
+         RETURNING p.view_count
+       )
+       SELECT updated.view_count,
+              EXISTS (SELECT 1 FROM inserted) AS counted
+         FROM updated`,
+      [trim(postId), trim(viewerHash)],
     );
     if (!result.rows[0]) throw repositoryError('notice_post_not_found', 'Notice post was not found.');
-    return Number(result.rows[0].view_count || 0);
+    return Object.freeze({
+      viewCount: Number(result.rows[0].view_count || 0),
+      counted: Boolean(result.rows[0].counted),
+    });
   },
 
   async listFaq({ search = '', page = 1, pageSize = null, categoryId = '', searchWithinCategory = false, pinnedLimit = 20, summaryOnly = false } = {}) {

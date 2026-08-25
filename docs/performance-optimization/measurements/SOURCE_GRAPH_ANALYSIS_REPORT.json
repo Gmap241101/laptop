@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T13:01:15.377Z",
+  "generatedAt": "2026-08-25T14:03:33.349Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1474810,
+        "sourceBytes": 1476451,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -123,6 +123,10 @@
             "bytes": 19601
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 18859
+          },
+          {
             "file": "src/user/UserTermsConsentPanel.jsx",
             "bytes": 18626
           },
@@ -141,10 +145,6 @@
           {
             "file": "src/features/content/siteContentCutover.js",
             "bytes": 17219
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 17218
           },
           {
             "file": "src/user/UserDialogs.jsx",
@@ -554,7 +554,7 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 94,
-        "sourceBytes": 1058577,
+        "sourceBytes": 1060218,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -617,6 +617,10 @@
             "bytes": 19294
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 18859
+          },
+          {
             "file": "src/components/CommonUI.jsx",
             "bytes": 18375
           },
@@ -631,10 +635,6 @@
           {
             "file": "src/features/content/siteContentCutover.js",
             "bytes": 17219
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 17218
           },
           {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2047117,
+        "sourceBytes": 2048758,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1067,6 +1067,10 @@
             "bytes": 18897
           },
           {
+            "file": "src/features/boards/boardContentCutover.js",
+            "bytes": 18859
+          },
+          {
             "file": "src/components/CommonUI.jsx",
             "bytes": 18375
           },
@@ -1085,10 +1089,6 @@
           {
             "file": "src/features/content/siteContentCutover.js",
             "bytes": 17219
-          },
-          {
-            "file": "src/features/boards/boardContentCutover.js",
-            "bytes": 17218
           },
           {
             "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 603497,
+    "sourceBytes": 605138,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1645,6 +1645,10 @@
         "bytes": 22078
       },
       {
+        "file": "src/features/boards/boardContentCutover.js",
+        "bytes": 18859
+      },
+      {
         "file": "src/components/CommonUI.jsx",
         "bytes": 18375
       },
@@ -1659,10 +1663,6 @@
       {
         "file": "src/features/content/siteContentCutover.js",
         "bytes": 17219
-      },
-      {
-        "file": "src/features/boards/boardContentCutover.js",
-        "bytes": 17218
       },
       {
         "file": "src/features/requests/useRentalDerivedSelectors.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2905776,
+      "sourceBytes": 2907417,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2716,6 +2716,10 @@
           "bytes": 18897
         },
         {
+          "file": "src/features/boards/boardContentCutover.js",
+          "bytes": 18859
+        },
+        {
           "file": "src/user/UserTermsConsentPanel.jsx",
           "bytes": 18626
         },
@@ -2738,10 +2742,6 @@
         {
           "file": "src/features/content/siteContentCutover.js",
           "bytes": 17219
-        },
-        {
-          "file": "src/features/boards/boardContentCutover.js",
-          "bytes": 17218
         },
         {
           "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2918430,
+      "sourceBytes": 2920071,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3594,6 +3594,10 @@
           "bytes": 18897
         },
         {
+          "file": "src/features/boards/boardContentCutover.js",
+          "bytes": 18859
+        },
+        {
           "file": "src/user/UserTermsConsentPanel.jsx",
           "bytes": 18626
         },
@@ -3616,10 +3620,6 @@
         {
           "file": "src/features/content/siteContentCutover.js",
           "bytes": 17219
-        },
-        {
-          "file": "src/features/boards/boardContentCutover.js",
-          "bytes": 17218
         },
         {
           "file": "src/features/boards/usePopupFooterContentSubscriptionController.js",
