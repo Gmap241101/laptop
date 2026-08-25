@@ -596,6 +596,27 @@ assert.ok(userStaticImportGraph.includes('user/userHomeBootstrapService.js'), 'i
 assert.equal(userImportGraph.includes('App.jsx'), false, 'user import graph must not fall back to the shared legacy App root');
 assert.equal(userImportGraph.includes('shell/AppShell.jsx'), false, 'user import graph must not fall back to the shared legacy AppShell');
 assert.equal(userImportGraph.some((file) => file.startsWith('admin/')), false, 'user import graph must not contain administrator source modules');
+const userAdminOnlyServiceImports = userImportGraph.filter((file) => [
+  'features/boards/adminSiteContentCatalogService.js',
+  'features/requests/adminRentalRequestCutover.js',
+  'hooks/useDashboardSummary.js',
+  'user/userSurfaceAdminCompatibility.js',
+].includes(file));
+assert.deepEqual(
+  userAdminOnlyServiceImports,
+  [],
+  `user import graph must not retain administrator-only compatibility/services: ${userAdminOnlyServiceImports.join(', ')}`
+);
+assert.equal(
+  fs.existsSync(fileURLToPath(new URL('../../src/user/userSurfaceAdminCompatibility.js', import.meta.url))),
+  false,
+  'retired user-surface administrator no-op compatibility module must stay deleted'
+);
+assert.equal(/\buseAdmin[A-Z]/.test(userAppSource), false, 'UserApp must not instantiate administrator controllers');
+assert.equal(userAppSource.includes('renderRequestActionButtons'), false, 'UserApp must not retain administrator rental mutation rendering');
+assert.equal(userAppSource.includes('dashboardSummary'), false, 'UserApp must not retain administrator dashboard state');
+assert.equal(userAppSource.includes('userSurfaceAdminCompatibility'), false, 'UserApp must not fall back to administrator no-op compatibility hooks');
+assert.ok(userAppSource.split('\n').length < 1500, 'UserApp orchestration must remain below the post-optimization regression ceiling');
 assert.ok(adminImportGraph.includes('admin/AdminApp.jsx'), 'administrator import graph must include AdminApp');
 
 
@@ -607,7 +628,15 @@ const adminAccountSecurityAuditSource = fs.readFileSync(new URL('../../src/admin
 const clerkStagingClientSource = fs.readFileSync(new URL('../../src/clerk/clerkStagingClient.js', import.meta.url), 'utf8');
 const memberDirectorySaveActionsSource = fs.readFileSync(new URL('../../src/features/members/useAdminMemberDirectorySaveActions.js', import.meta.url), 'utf8');
 const userMyPageSource = fs.readFileSync(new URL('../../src/user/UserMyPagePanel.jsx', import.meta.url), 'utf8');
+const userRequestHistorySource = fs.readFileSync(new URL('../../src/user/UserRequestHistoryPanel.jsx', import.meta.url), 'utf8');
+const userPopupFooterControllerSource = fs.readFileSync(new URL('../../src/features/boards/useUserPopupFooterContentSubscriptionController.js', import.meta.url), 'utf8');
 const packageSource = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
+assert.equal(userMyPageSource.includes('adminMyProfile'), false, 'user My Page must not retain administrator profile state or controls');
+assert.equal(userMyPageSource.includes('saveMyAdminProfile'), false, 'user My Page must not retain administrator profile mutation paths');
+assert.equal(userRequestHistorySource.includes('currentAuthAdminAccount'), false, 'user request history must not branch on administrator account state');
+assert.equal(userRequestHistorySource.includes('isAdminAuthenticated'), false, 'user request history must remain a pure member surface');
+assert.equal(userPopupFooterControllerSource.includes('adminSiteContentCatalogService'), false, 'user popup/footer controller must not import administrator catalog services');
+assert.equal(userPopupFooterControllerSource.includes('preloadAdmin'), false, 'user popup/footer controller must not preload administrator content catalogs');
 assert.equal(diagnosticsSource.includes('Firebase runtime:'), false, 'staging diagnostics must not expose retired-provider runtime tags');
 assert.equal(diagnosticsSource.includes('External Firebase SDK/network'), false, 'staging diagnostics must not expose retired-provider SDK tags');
 assert.equal(diagnosticsSource.includes('Legacy Firestore sync controls'), false, 'staging diagnostics must not expose retired-provider sync tags');

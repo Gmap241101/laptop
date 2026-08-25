@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Button } from './components/CommonUI.jsx';
 import useUserContextAssembler from './user/useUserContextAssembler.js';
 import UserShell from './user/UserShell.jsx';
 import AppBlockingStateScreen, {
@@ -16,80 +15,39 @@ import { firebaseAuth } from './platform/appDataRefs.js';
 
 
 import {
-  STATUS,
   USER_REQUEST_ACTION,
   USER_REQUEST_REVIEW_STATUS,
 } from './constants/appConstants.js';
 
 
 import {
-  DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY,
-  DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
   createDefaultRequestForm,
   getRentalStartAdjustmentInfo,
-  normalizeHolidayList,
 } from './domain/rentalPolicy.js';
-import { useDashboardSummary } from './hooks/useDashboardSummary.js';
 import useSiteSettingsController from './features/settings/useSiteSettingsController.js';
-import useAdminPublicContentSynchronizationController, {
-  createCurrentAdminAuditActorResolver,
-  sanitizeFooterCommonHtml,
-  useAdminAccountManagementController,
-  useAdminAccountManagementState,
-  useAdminAssetCategoryController,
-  useAdminAssetCategoryState,
-  useAdminAssetCrudController,
-  useAdminAssetCrudState,
-  useAdminAuthenticationController,
-  useAdminAuthenticationState,
-  useAdminBoardPostController,
-  useAdminBoardSettingsController,
-  useAdminBoardSettingsState,
-  useAdminFooterContentController,
-  useAdminFooterContentState,
-  useAdminNavigationController,
-  useAdminNavigationState,
-  useAdminPopupPostController,
-  useAdminPopupPostState,
-  useAdminRequestMutationController,
-  useAdminSplitStorageMigrationController,
-  useAdminSplitStorageMigrationState,
-  useAdminSystemSettingsController,
-  useAdminSystemSettingsState,
-  useAdminUserActionReviewController,
-  useAdminUserActionReviewState,
-  useAdminWorkspaceBridgeController,
-} from './user/userSurfaceAdminCompatibility.js';
-import { selectAppReadiness } from './selectors/appReadinessSelectors.js';
+import { selectUserAppReadiness } from './selectors/appReadinessSelectors.js';
 import useBoardContentSubscriptionController, {
-  getSafeFaqPostsPerPage,
-  getSafeNoticePostsPerPage,
-  useBoardContentSubscriptionState,
+  useUserBoardContentSubscriptionState,
 } from './features/boards/useBoardContentSubscriptionController.js';
 import useBoardDerivedSelectors from './features/boards/useBoardDerivedSelectors.js';
-import {
-  useFaqPostAdminState,
-  useNoticePostAdminState,
-} from './user/userSurfaceAdminCompatibility.js';
-import usePopupFooterContentSubscriptionController, {
+import useUserPopupFooterContentSubscriptionController, {
   usePopupFooterContentSubscriptionState,
-} from './features/boards/usePopupFooterContentSubscriptionController.js';
-import usePublicAssetCatalogCompatibilityController from './features/assets/usePublicAssetCatalogCompatibilityController.js';
-import useAssetCatalogViewController from './features/assets/useAssetCatalogViewController.js';
+} from './features/boards/useUserPopupFooterContentSubscriptionController.js';
+import { useUserAssetCatalogViewController } from './features/assets/useAssetCatalogViewController.js';
 import { useDebouncedValue } from './hooks/useDebouncedValue.js';
 import useAppNavigationController, {
   useAppNavigationState,
 } from './routing/useAppNavigationController.js';
 import useUserAccountRecoveryController from './features/auth/useUserAccountRecoveryController.js';
 import useAuthIdentityPolicySubscriptionController, {
-  normalizeAdminAccounts,
-  useAuthIdentityPolicySubscriptionState,
+  useUserAuthIdentityPolicySubscriptionState,
 } from './features/auth/useAuthIdentityPolicySubscriptionController.js';
 import useUserLoginController, {
   useUserAuthState,
 } from './features/auth/useUserLoginController.js';
 import useUserSignupController from './features/auth/useUserSignupController.js';
 import {
+  clearAdminAuthSession,
   configureFirebaseAuthPersistence,
 } from './features/auth/authSessionService.js';
 import useUserAuthenticationSessionController, {
@@ -115,15 +73,15 @@ import useRentalDataSubscriptionController, {
   useOwnRentalRequestsSubscriptionController,
   useRentalDataSubscriptionState,
 } from './features/requests/useRentalDataSubscriptionController.js';
-import useRentalDerivedSelectors from './features/requests/useRentalDerivedSelectors.js';
+import { useUserRentalDerivedSelectors } from './features/requests/useRentalDerivedSelectors.js';
 import {
   initialData,
   mergePersistedData,
 } from './services/appDataCompatibilityService.js';
 
 
-import { getDisplayRentalStatus } from './utils/appUtils.js';
 
+const USER_SURFACE_NOOP = () => {};
 
 // --- 상태 및 스타일 정의 ---
 const getUserRequestActionLabel = (type) => {
@@ -240,65 +198,6 @@ const getUserAuthErrorMessage = (error) => {
   return `사용자 인증 처리 중 오류가 발생했습니다. 오류 코드: ${errorCode || 'unknown'} ${errorMessage ? ` / ${errorMessage}` : ''}`;
 };
 
-const getAdminAuthErrorMessage = (error) => {
-  const errorCode = error?.code || '';
-
-  if (error?.message === 'admin-auth-uid-mismatch') {
-    return 'Clerk 계정과 PostgreSQL 관리자 등록 정보가 일치하지 않습니다. 관리자 계정 관리 정보를 확인해 주세요.';
-  }
-
-  if (errorCode === 'auth/email-already-in-use') {
-    return '이미 Clerk에 등록된 이메일입니다. 다른 이메일을 사용하거나 기존 관리자 계정 연결 상태를 확인해 주세요.';
-  }
-
-  if (errorCode === 'auth/operation-not-allowed') {
-    return 'Clerk에서 이메일/비밀번호 인증이 사용 가능하도록 설정되어 있는지 확인해 주세요.';
-  }
-
-  if (errorCode === 'auth/invalid-email') {
-    return '관리자 로그인 이메일 형식이 올바르지 않습니다.';
-  }
-
-  if (errorCode === 'auth/weak-password') {
-    return '관리자 초기 비밀번호는 6자 이상으로 입력해 주세요.';
-  }
-
-  if (errorCode === 'auth/password-does-not-meet-requirements') {
-    return '관리자 비밀번호가 현재 Clerk 인증 정책을 충족하지 않습니다.';
-  }
-
-  if (
-    errorCode === 'auth/user-not-found' ||
-    errorCode === 'auth/wrong-password' ||
-    errorCode === 'auth/invalid-credential'
-  ) {
-    return '관리자 로그인 이메일 또는 비밀번호가 일치하지 않습니다.';
-  }
-
-  if (errorCode === 'auth/network-request-failed') {
-    return '인증 서버에 연결하지 못했습니다. 네트워크 상태와 Clerk 설정을 확인해 주세요.';
-  }
-
-  if (errorCode === 'auth/unauthorized-domain') {
-    return '현재 접속한 도메인이 Clerk의 허용 도메인/Authorized Parties 설정에 포함되어 있지 않습니다.';
-  }
-
-  if (errorCode === 'auth/too-many-requests') {
-    return '로그인 또는 가입 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
-  }
-
-  if (errorCode === 'auth/requires-recent-login') {
-    return '보안상 최근 로그인한 관리자만 비밀번호를 변경할 수 있습니다. 로그아웃 후 다시 로그인한 다음 비밀번호 변경을 시도해 주세요.';
-  }
-
-  if (errorCode === 'permission-denied') {
-    return '관리자 계정 조회 또는 저장 권한이 거부되었습니다. PostgreSQL 관리자 레지스트리와 Clerk 권한을 확인해 주세요.';
-  }
-
-  return getUserAuthErrorMessage(error).replace('사용자 인증', '관리자 인증');
-};
-
-
 function UserApp({ runtimeSurface = 'user' }) {
   const [data, setData] = useState(initialData);
   const {
@@ -308,44 +207,29 @@ function UserApp({ runtimeSurface = 'user' }) {
     siteSettingsReady,
   } = useSiteSettingsController();
   const {
-    adminAccounts,
-    adminAccountsLoadErrorMessage,
-    adminAccountsReady,
-    currentAuthAdminAccount,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     currentUserRestriction,
     currentUserRestrictionReady,
     firebaseAuthReady,
     firebaseAuthUser,
-    setAdminAccounts,
-    setAdminAccountsLoadErrorMessage,
-    setAdminAccountsReady,
-    setAdminAccountsRemoteHasData,
-    setCurrentAuthAdminAccount,
     setCurrentAuthRoleErrorMessage,
     setCurrentAuthRoleReady,
     setCurrentUserRestriction,
     setCurrentUserRestrictionReady,
     setFirebaseAuthReady,
     setFirebaseAuthUser,
-    setSystemAdminSettings,
-    setSystemAdminSettingsLoadErrorMessage,
-    setSystemAdminSettingsReady,
     setUserProfile,
     setUserProfileReady,
     setUserSessionPolicy,
     setUserSessionPolicyLoadErrorMessage,
     setUserSessionPolicyReady,
-    systemAdminSettings,
-    systemAdminSettingsLoadErrorMessage,
-    systemAdminSettingsReady,
     userProfile,
     userProfileReady,
     userSessionPolicy,
     userSessionPolicyLoadErrorMessage,
     userSessionPolicyReady,
-  } = useAuthIdentityPolicySubscriptionState();
+  } = useUserAuthIdentityPolicySubscriptionState();
   const {
     appDialogsActivated,
     confirmModal,
@@ -381,17 +265,10 @@ function UserApp({ runtimeSurface = 'user' }) {
     userActionForm,
     userActionSaving,
   } = useUserRequestHistoryActionState();
-  const {
-    adminUserActionSavingRequestId,
-    setAdminUserActionSavingRequestId,
-  } = useAdminUserActionReviewState();
+
 
   const {
     activeFaqCategoryId,
-    adminExpandedFaqPostId,
-    adminFaqPage,
-    adminNoticePage,
-    adminNoticeQuery,
     expandedFaqPostId,
     faqBoardConfig,
     faqBoardConfigLoadErrorMessage,
@@ -421,10 +298,6 @@ function UserApp({ runtimeSurface = 'user' }) {
     selectedNoticePostId,
     selectedNoticePostOverride,
     setActiveFaqCategoryId,
-    setAdminExpandedFaqPostId,
-    setAdminFaqPage,
-    setAdminNoticePage,
-    setAdminNoticeQuery,
     setExpandedFaqPostId,
     setFaqBoardConfig,
     setFaqBoardConfigLoadErrorMessage,
@@ -455,37 +328,9 @@ function UserApp({ runtimeSurface = 'user' }) {
     setSelectedNoticePostOverride,
     setUserNoticeQuery,
     userNoticeQuery,
-  } = useBoardContentSubscriptionState();
-  const {
-    noticePostDeletingId,
-    noticePostDialog,
-    noticePostForm,
-    noticePostSaving,
-    setNoticePostDeletingId,
-    setNoticePostDialog,
-    setNoticePostForm,
-    setNoticePostSaving,
-  } = useNoticePostAdminState();
-  const {
-    editingFaqCategoryId,
-    editingFaqCategoryName,
-    faqBoardConfigSaving,
-    faqCategoryDeletingId,
-    faqCategorySavingId,
-    faqPostsPerPageInput,
-    newFaqCategoryName,
-    noticeBoardConfigSaving,
-    noticePostsPerPageInput,
-    setEditingFaqCategoryId,
-    setEditingFaqCategoryName,
-    setFaqBoardConfigSaving,
-    setFaqCategoryDeletingId,
-    setFaqCategorySavingId,
-    setFaqPostsPerPageInput,
-    setNewFaqCategoryName,
-    setNoticeBoardConfigSaving,
-    setNoticePostsPerPageInput,
-  } = useAdminBoardSettingsState();
+  } = useUserBoardContentSubscriptionState();
+
+
 
   const {
     dismissedPopupLocalVersions,
@@ -513,46 +358,11 @@ function UserApp({ runtimeSurface = 'user' }) {
     setTemporarilyDismissedPopupVersions,
     temporarilyDismissedPopupVersions,
   } = usePopupFooterContentSubscriptionState();
-  const {
-    popupPostDeletingId,
-    popupPostDialog,
-    popupPostForm,
-    popupPostSaving,
-    popupPostToggleSavingId,
-    setPopupPostDeletingId,
-    setPopupPostDialog,
-    setPopupPostForm,
-    setPopupPostSaving,
-    setPopupPostToggleSavingId,
-  } = useAdminPopupPostState();
 
-  const {
-    footerConfigDraft,
-    footerConfigSaving,
-    footerPageDeletingId,
-    footerPageDialog,
-    footerPageForm,
-    footerPageSaving,
-    footerPageToggleSavingId,
-    setFooterConfigDraft,
-    setFooterConfigSaving,
-    setFooterPageDeletingId,
-    setFooterPageDialog,
-    setFooterPageForm,
-    setFooterPageSaving,
-    setFooterPageToggleSavingId,
-  } = useAdminFooterContentState();
 
-  const {
-    faqPostDeletingId,
-    faqPostDialog,
-    faqPostForm,
-    faqPostSaving,
-    setFaqPostDeletingId,
-    setFaqPostDialog,
-    setFaqPostForm,
-    setFaqPostSaving,
-  } = useFaqPostAdminState();
+
+
+
 
 
   const {
@@ -597,105 +407,13 @@ function UserApp({ runtimeSurface = 'user' }) {
     view,
   } = useAppNavigationState();
   const {
-    adminAvailabilityFilter,
-    adminLaptopQuery,
-    adminSelectedAssetCategory,
-    assetGridColumns,
     availabilityFilter,
     query,
     selectedAssetCategory,
-    setAdminAvailabilityFilter,
-    setAdminLaptopQuery,
-    setAdminSelectedAssetCategory,
     setAvailabilityFilter,
     setQuery,
     setSelectedAssetCategory,
-    setShowUploadPanel,
-    showUploadPanel,
-  } = useAssetCatalogViewController();
-  const {
-    adminTab,
-    handleMemberDirectoryDeferredStateChange,
-    handleSignupPolicyDeferredStateChange,
-    memberDirectoryDeferredActionsRef,
-    peopleSettingsDirty,
-    setAdminTab,
-    signupPolicyDeferredActionsRef,
-    signupPolicyDirty,
-  } = useAdminNavigationState();
-  const {
-    adminMemberAccountsNavigationRequest,
-    adminRequestsMutationVersion,
-    adminRequestsNavigationRequest,
-    clearAdminRequestPanelSelection,
-    getAdminRequestById,
-    handleAdminRequestsControllerStateChange,
-    notifyAdminRequestMutation,
-    resetAdminRequestPanelPage,
-    setAdminMemberAccountsNavigationRequest,
-    setAdminRequestsNavigationRequest,
-    updateAdminRequestPanelRequests,
-  } = useAdminWorkspaceBridgeController();
-  const {
-    editLaptop,
-    newLaptop,
-    setEditLaptop,
-    setNewLaptop,
-  } = useAdminAssetCrudState();
-  const {
-    assetCategorySettingsDirty,
-    draggingAssetCategoryIndex,
-    editingAssetCategoryIndex,
-    editingAssetCategoryName,
-    newAssetCategory,
-    setDraggingAssetCategoryIndex,
-    setEditingAssetCategoryIndex,
-    setEditingAssetCategoryName,
-    setNewAssetCategory,
-    setTempAssetCategories,
-    setTempAssetCategoryRenameMap,
-    tempAssetCategories,
-    tempAssetCategoryRenameMap,
-  } = useAdminAssetCategoryState({
-    adminTab,
-    dataAssetCategories: data.assetCategories,
-  });
-
-  const {
-    adminAccountEditForm,
-    adminAccountForm,
-    adminAccountPage,
-    adminMyProfileForm,
-    adminMyProfileSaving,
-    editingAdminAccountId,
-    setAdminAccountEditForm,
-    setAdminAccountForm,
-    setAdminAccountPage,
-    setAdminMyProfileForm,
-    setAdminMyProfileSaving,
-    setEditingAdminAccountId,
-  } = useAdminAccountManagementState({ adminTab });
-  const {
-    adminAuthAbsoluteExpiresAt,
-    adminAuthExpiresAt,
-    adminAuthForm,
-    adminAuthLoading,
-    adminAuthPolicyVersion,
-    adminLogoutInProgress,
-    adminLogoutInProgressRef,
-    authenticatedAdminId,
-    clearAdminAuthenticatedSession,
-    setAdminAuthenticatedSession,
-    setAdminAuthAbsoluteExpiresAt,
-    setAdminAuthExpiresAt,
-    setAdminAuthForm,
-    setAdminAuthLoading,
-    setAdminAuthPolicyVersion,
-    setAdminLogoutInProgress,
-  } = useAdminAuthenticationState({
-    systemAdminSettings,
-    runtimeSurface,
-  });
+  } = useUserAssetCatalogViewController();
   const {
     clearUserAuthenticatedSession,
     setUserAuthenticatedSession,
@@ -736,50 +454,7 @@ function UserApp({ runtimeSurface = 'user' }) {
   } = useUserMyPageAccountState();
 
   const debouncedUserNoticeQuery = useDebouncedValue(userNoticeQuery);
-  const debouncedAdminNoticeQuery = useDebouncedValue(adminNoticeQuery);
   const debouncedFaqQuery = useDebouncedValue(faqQuery);
-
-  // 설정 임시 저장 상태와 변경 여부는 설정 feature에서 관리
-  const {
-    holidayImportConflictModal,
-    holidayImportLoading,
-    holidayImportYear,
-    holidayManagementMonth,
-    holidayManagementView,
-    holidayManagementYear,
-    holidaySettingsDirty,
-    newHolidayDate,
-    newHolidayName,
-    newHolidayType,
-    rentalPolicySettingsDirty,
-    setHolidayImportConflictModal,
-    setHolidayImportLoading,
-    setHolidayImportYear,
-    setHolidayManagementMonth,
-    setHolidayManagementView,
-    setHolidayManagementYear,
-    setNewHolidayDate,
-    setNewHolidayName,
-    setNewHolidayType,
-    setTempSettings,
-    tempSettings,
-  } = useAdminSystemSettingsState({
-    adminTab,
-    dataSettings: data.settings,
-    publicConfig: splitPublicConfig,
-  });
-
-  const footerConfigDirty =
-    footerConfigReady &&
-    (Boolean(footerConfigDraft.enabled) !== Boolean(footerConfig.enabled) ||
-      sanitizeFooterCommonHtml(footerConfigDraft.contentHtml || '') !==
-        sanitizeFooterCommonHtml(footerConfig.contentHtml || ''));
-
-
-  const {
-    setSplitStorageFinalizeLoading,
-    splitStorageFinalizeLoading,
-  } = useAdminSplitStorageMigrationState();
 
   const {
     dismissSystemBanner,
@@ -790,9 +465,6 @@ function UserApp({ runtimeSurface = 'user' }) {
   } = useGlobalUiController({
     appDialogsActivated,
     confirmModal,
-    faqPostDialog,
-    noticePostDialog,
-    popupPostDialog,
     setAppDialogsActivated,
     setConfirmModal,
     setSystemBannerDismissedKey,
@@ -808,29 +480,28 @@ function UserApp({ runtimeSurface = 'user' }) {
 
   useAuthIdentityPolicySubscriptionController({
     runtimeSurface,
-    adminTab,
-    authenticatedAdminId,
-    clearAdminAuthenticatedSession,
+    authenticatedAdminId: '',
+    clearAdminAuthenticatedSession: clearAdminAuthSession,
     clearUserAuthenticatedSession,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount: null,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     firebaseAuthReady,
     firebaseAuthUser,
-    setAdminAccounts,
-    setAdminAccountsLoadErrorMessage,
-    setAdminAccountsReady,
-    setAdminAccountsRemoteHasData,
-    setCurrentAuthAdminAccount,
+    setAdminAccounts: USER_SURFACE_NOOP,
+    setAdminAccountsLoadErrorMessage: USER_SURFACE_NOOP,
+    setAdminAccountsReady: USER_SURFACE_NOOP,
+    setAdminAccountsRemoteHasData: USER_SURFACE_NOOP,
+    setCurrentAuthAdminAccount: USER_SURFACE_NOOP,
     setCurrentAuthRoleErrorMessage,
     setCurrentAuthRoleReady,
     setCurrentUserRestriction,
     setCurrentUserRestrictionReady,
     setFirebaseAuthReady,
     setFirebaseAuthUser,
-    setSystemAdminSettings,
-    setSystemAdminSettingsLoadErrorMessage,
-    setSystemAdminSettingsReady,
+    setSystemAdminSettings: USER_SURFACE_NOOP,
+    setSystemAdminSettingsLoadErrorMessage: USER_SURFACE_NOOP,
+    setSystemAdminSettingsReady: USER_SURFACE_NOOP,
     setToast,
     setUserProfile,
     setUserProfileForm,
@@ -842,113 +513,20 @@ function UserApp({ runtimeSurface = 'user' }) {
     view,
   });
 
-  const registeredAdminAccounts = adminAccounts || [];
-
   const {
-    authenticateAdmin,
-    authenticatedAdminAccount,
-    isAdminAuthenticated,
-    logoutAdmin,
-  } = useAdminAuthenticationController({
-    runtimeSurface,
-    adminAccounts,
-    adminAccountsReady,
-    adminAuthAbsoluteExpiresAt,
-    adminAuthExpiresAt,
-    adminAuthForm,
-    adminAuthPolicyVersion,
-    adminLogoutInProgress,
-    adminLogoutInProgressRef,
-    authenticatedAdminId,
-    clearAdminAuthenticatedSession,
-    currentAuthAdminAccount,
-    currentAuthRoleReady,
-    firebaseAuthReady,
-    firebaseAuthUser,
-    firebaseReady,
-    getAdminAuthErrorMessage,
-    normalizeAdminAccounts,
-    setAdminAccounts,
-    setAdminAuthenticatedSession,
-    setAdminAuthAbsoluteExpiresAt,
-    setAdminAuthExpiresAt,
-    setAdminAuthForm,
-    setAdminAuthLoading,
-    setAdminAuthPolicyVersion,
-    setAdminLogoutInProgress,
-    setCurrentAuthAdminAccount,
-    setCurrentAuthRoleErrorMessage,
-    setCurrentAuthRoleReady,
-    setIsCommunityMenuOpen,
-    setSelectedFooterPageId,
-    setSelectedNoticePostId,
-    clearUserAuthenticatedSession,
-    setUserTab,
-    setView,
-    setAdminTab,
-    systemAdminSettings,
-    systemAdminSettingsReady,
-    triggerToast,
-    userTab,
-    view,
-  });
-
-  useAdminPublicContentSynchronizationController({
-    firebaseAuthUser,
-    isAdminAuthenticated,
-    triggerToast,
-    view,
-  });
-
-  const {
-    hasAdminAccess,
     hasFirebaseAuthSession,
-    isCurrentFirebaseAuthAdmin,
     isCurrentFirebaseAuthGeneralUser,
     isSplitStorageReady,
     isUserDirectoryAccessRestricted,
-    memberDirectoryAudit,
-    memberDirectoryPolicyEnabled,
-    memberIdentityClaimsReady,
-    shouldShowAdminAccountsErrorPage,
-    shouldShowAdminLoadingPage,
-    shouldShowAdminLoginPage,
-  } = selectAppReadiness({
-    adminAccountsLoadErrorMessage,
-    adminAccountsReady,
-    adminLogoutInProgress,
-    currentAuthAdminAccount,
+  } = selectUserAppReadiness({
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     dataSettings: data.settings,
     firebaseAuthCurrentUser: firebaseAuth.currentUser,
-    firebaseAuthReady,
     firebaseAuthUser,
-    firebaseLoadErrorMessage,
-    firebaseReady,
-    isAdminAuthenticated,
     splitPublicConfig,
     splitStorageVersion,
     userProfile,
-    view,
-  });
-
-  const {
-    dashboardSummary,
-    dashboardSummaryLoadErrorMessage,
-    dashboardSummaryReady,
-    dashboardSummaryRefreshing,
-    refreshDashboardSummary,
-  } = useDashboardSummary({
-    adminTab,
-    authenticatedAdminId,
-    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
-    currentAuthRoleReady,
-    firebaseAuthReady,
-    firebaseAuthUserUid: firebaseAuthUser?.uid || '',
-    isAdminAuthenticated,
-    triggerToast,
-    view,
   });
 
   const {
@@ -965,16 +543,16 @@ function UserApp({ runtimeSurface = 'user' }) {
     showUserAccountStatus,
   } = useAppNavigationController({
     runtimeSurface,
-    adminLogoutInProgress,
+    adminLogoutInProgress: false,
     communityMenuRef,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount: null,
     currentAuthRoleReady,
     dataSettings: data.settings,
     firebaseAuthReady,
     footerPages,
     footerPagesReady,
     hasFirebaseAuthSession,
-    isAdminAuthenticated,
+    isAdminAuthenticated: false,
     isCommunityMenuOpen,
     pendingProtectedUserTabRef,
     selectedFooterPageId,
@@ -994,10 +572,10 @@ function UserApp({ runtimeSurface = 'user' }) {
   });
 
   useRentalDataSubscriptionController({
-    adminTab,
-    authenticatedAdminId,
+    adminTab: 'dashboard',
+    authenticatedAdminId: '',
     createDefaultRequestForm,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount: null,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     firebaseAuthReady,
@@ -1017,7 +595,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     setSplitSourceErrors,
     setSplitSourceReady,
     setSplitStorageVersion,
-    setTempSettings,
+    setTempSettings: USER_SURFACE_NOOP,
     setToast,
     splitPublicConfig,
     splitRentalAssets,
@@ -1034,7 +612,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     currentAuthRoleReady,
     firebaseAuthReady,
     firebaseAuthUser,
-    isAdminAuthenticated,
+    isAdminAuthenticated: false,
     setRentalRequests,
     setRentalRequestsLoadErrorMessage,
     setRentalRequestsReady,
@@ -1044,41 +622,28 @@ function UserApp({ runtimeSurface = 'user' }) {
     userProfileReady,
   });
 
-  const orphanedRentalAvailabilityRequests = [];
-
-
 
   const {
     activeFaqCategoryName,
-    adminFaqTotalPages,
-    adminNoticeTotalPages,
-    adminPinnedFaqPosts,
-    adminPinnedNoticePosts,
-    adminRegularFaqPosts,
-    adminRegularNoticePosts,
     categoryFilteredFaqPosts,
     displayedFaqPosts,
     faqCategoryNameById,
     faqTotalPages,
     noticeRegularPostNumberById,
     noticeTotalPages,
-    paginatedAdminFaqPosts,
-    paginatedAdminNoticePosts,
     paginatedNoticePosts,
     pinnedNoticePosts,
     regularFaqPosts,
     regularNoticePosts,
-    safeAdminFaqPage,
-    safeAdminNoticePage,
     safeFaqPage,
     safeNoticePage,
     selectedNoticePost,
   } = useBoardDerivedSelectors({
     activeFaqCategoryId,
-    adminFaqPage,
-    adminNoticePage,
-    adminNoticeQuery,
-    adminTab,
+    adminFaqPage: 1,
+    adminNoticePage: 1,
+    adminNoticeQuery: '',
+    adminTab: 'dashboard',
     faqBoardConfig,
     faqCategories,
     faqPage,
@@ -1097,70 +662,9 @@ function UserApp({ runtimeSurface = 'user' }) {
   });
 
   const {
-    addFaqCategory,
-    confirmDeleteFaqCategory,
-    discardFaqBoardConfigChanges,
-    discardNoticeBoardConfigChanges,
-    faqBoardSettingsDirty,
-    noticeBoardSettingsDirty,
-    saveFaqBoardConfig,
-    saveFaqCategoryName,
-    saveNoticeBoardConfig,
-    startEditFaqCategory,
-  } = useAdminBoardSettingsController({
-    activeFaqCategoryId,
-    editingFaqCategoryId,
-    editingFaqCategoryName,
-    faqBoardConfig,
-    faqBoardConfigReady,
-    faqCategories,
-    faqPostForm,
-    faqPostsPerPageInput,
-    getSafeFaqPostsPerPage,
-    getSafeNoticePostsPerPage,
-    isAdminAuthenticated,
-    newFaqCategoryName,
-    noticeBoardConfig,
-    noticeBoardConfigReady,
-    noticePostsPerPageInput,
-    setActiveFaqCategoryId,
-    setAdminExpandedFaqPostId,
-    setAdminFaqPage,
-    setAdminNoticePage,
-    setEditingFaqCategoryId,
-    setEditingFaqCategoryName,
-    setExpandedFaqPostId,
-    setFaqBoardConfig,
-    setFaqBoardConfigSaving,
-    setFaqCategoryDeletingId,
-    setFaqCategorySavingId,
-    setFaqPage,
-    setFaqPostForm,
-    setFaqPostsPerPageInput,
-    setNewFaqCategoryName,
-    setNoticeBoardConfig,
-    setNoticeBoardConfigSaving,
-    setNoticePage,
-    setNoticePostsPerPageInput,
-    triggerConfirm,
-    triggerToast,
-  });
-
-
-  usePublicAssetCatalogCompatibilityController({
-    authenticatedAdminId,
-    currentAuthAdminAccountId: currentAuthAdminAccount?.id || '',
-    isAdminAuthenticated,
-    triggerToast,
-  });
-
-
-  const {
-    adminFilteredLaptops,
     availableFilterLabel,
     currentUserRentalRestrictionStatus,
     currentUserRequests,
-    editLaptopInsertIndex,
     filteredLaptops,
     isPeriodBasedRentalMode,
     rentalDeviceSectionDescription,
@@ -1171,41 +675,30 @@ function UserApp({ runtimeSurface = 'user' }) {
     stats,
     statsLoading,
     unavailableFilterLabel,
-  } = useRentalDerivedSelectors({
-    adminAvailabilityFilter,
-    adminLaptopQuery,
-    adminSelectedAssetCategory,
-    adminTab,
-    assetGridColumns,
+  } = useUserRentalDerivedSelectors({
     availabilityFilter,
     currentUserRestriction,
-    dashboardSummary,
-    dashboardSummaryReady,
     dataBorrowers: data.borrowers,
     dataLaptops: data.laptops,
     dataRequests: data.requests,
     dataSettings: data.settings,
-    editLaptop,
     firebaseAuthUser,
     form,
-    hasAdminAccess,
-    isAdminAuthenticated,
     query,
     rentalRequests,
     selectedAssetCategory,
     selectedLaptopId,
     userProfile,
     userTab,
-    view,
   });
 
   const { closeNoticePost, openNoticePost } =
     useBoardContentSubscriptionController({
       activeFaqCategoryId,
-      adminFaqPage,
-      adminNoticePage,
-      adminTab,
-      debouncedAdminNoticeQuery,
+      adminFaqPage: 1,
+      adminNoticePage: 1,
+      adminTab: 'dashboard',
+      debouncedAdminNoticeQuery: '',
       debouncedFaqQuery,
       debouncedUserNoticeQuery,
       faqBoardConfig,
@@ -1214,7 +707,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       faqCursorKeyRef,
       faqPage,
       faqSearchWithinCategory,
-      isAdminAuthenticated,
+      isAdminAuthenticated: false,
       noticeBoardConfig,
       noticeCursorByPageRef,
       noticeCursorKeyRef,
@@ -1223,8 +716,8 @@ function UserApp({ runtimeSurface = 'user' }) {
       selectedNoticePostId,
       selectedNoticePostOverride,
       setActiveFaqCategoryId,
-      setAdminFaqPage,
-      setAdminNoticePage,
+      setAdminFaqPage: USER_SURFACE_NOOP,
+      setAdminNoticePage: USER_SURFACE_NOOP,
       setExpandedFaqPostId,
       setFaqBoardConfig,
       setFaqBoardConfigLoadErrorMessage,
@@ -1236,7 +729,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       setFaqPage,
       setFaqPinnedPosts,
       setFaqPostsLoadErrorMessage,
-      setFaqPostsPerPageInput,
+      setFaqPostsPerPageInput: USER_SURFACE_NOOP,
       setFaqPostsReady,
       setFaqRegularPagePosts,
       setFaqRegularTotalCount,
@@ -1247,7 +740,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       setNoticePage,
       setNoticePinnedPosts,
       setNoticePostsLoadErrorMessage,
-      setNoticePostsPerPageInput,
+      setNoticePostsPerPageInput: USER_SURFACE_NOOP,
       setNoticePostsReady,
       setNoticeRegularPagePosts,
       setNoticeRegularTotalCount,
@@ -1262,18 +755,15 @@ function UserApp({ runtimeSurface = 'user' }) {
     dismissAllUserPopups,
     dismissUserPopup,
     selectedFooterPage,
-  } = usePopupFooterContentSubscriptionController({
-    adminTab,
+  } = useUserPopupFooterContentSubscriptionController({
     dismissedPopupLocalVersions,
     dismissedPopupSessionVersions,
     firebaseAuthUser,
     footerPages,
-    isAdminAuthenticated,
     selectedFooterPageId,
     setDismissedPopupLocalVersions,
     setDismissedPopupSessionVersions,
     setFooterConfig,
-    setFooterConfigDraft,
     setFooterConfigLoadErrorMessage,
     setFooterConfigReady,
     setFooterPages,
@@ -1283,7 +773,6 @@ function UserApp({ runtimeSurface = 'user' }) {
     setPopupPostsLoadErrorMessage,
     setPopupPostsReady,
     setTemporarilyDismissedPopupVersions,
-    triggerToast,
     userTab,
     view,
   });
@@ -1291,9 +780,9 @@ function UserApp({ runtimeSurface = 'user' }) {
   const { hasEstablishedUserSession } =
     useUserAuthenticationSessionController({
       runtimeSurface,
-      authenticatedAdminId,
+      authenticatedAdminId: '',
       clearUserAuthenticatedSession,
-      currentAuthAdminAccount,
+      currentAuthAdminAccount: null,
       currentAuthRoleErrorMessage,
       currentAuthRoleReady,
       firebaseAuthUser,
@@ -1322,11 +811,11 @@ function UserApp({ runtimeSurface = 'user' }) {
   const { verifyUserDirectoryMembership } =
     useUserMembershipStatusController({
       runtimeSurface,
-      authenticatedAdminId,
-      clearAdminAuthenticatedSession,
+      authenticatedAdminId: '',
+      clearAdminAuthenticatedSession: clearAdminAuthSession,
       clearUserAuthenticatedSession,
       createMemberPolicyError,
-      currentAuthAdminAccount,
+      currentAuthAdminAccount: null,
       currentAuthRoleErrorMessage,
       currentAuthRoleReady,
       dataSettings: data.settings,
@@ -1359,9 +848,9 @@ function UserApp({ runtimeSurface = 'user' }) {
     submitMembershipWithdrawal,
     withdrawalBlockMessage,
   } = useUserMyPageAccountController({
-    clearAdminAuthenticatedSession,
+    clearAdminAuthenticatedSession: clearAdminAuthSession,
     createMemberPolicyError,
-    currentAuthAdminAccount,
+    currentAuthAdminAccount: null,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     currentUserRentalRestrictionStatus,
@@ -1416,7 +905,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     logoutUser,
     submitUserLogin,
   } = useUserLoginController({
-    clearAdminAuthenticatedSession,
+    clearAdminAuthenticatedSession: clearAdminAuthSession,
     clearUserAuthenticatedSession,
     configureFirebaseAuthPersistence,
     createMemberPolicyError,
@@ -1450,7 +939,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     goToUserSignup,
     submitUserSignupForm,
   } = useUserSignupController({
-    clearAdminAuthenticatedSession,
+    clearAdminAuthenticatedSession: clearAdminAuthSession,
     clearUserAuthenticatedSession,
     configureFirebaseAuthPersistence,
     createMemberPolicyError,
@@ -1485,118 +974,6 @@ function UserApp({ runtimeSurface = 'user' }) {
       ? submitUserSignupForm(event, providedTermsSubmission)
       : submitUserLogin(event);
 
-  const {
-    adminAccountTotalPages,
-    adminAccountUserOptions,
-    cancelEditAdminAccount,
-    deleteAdminAccount,
-    paginatedAdminAccounts,
-    registerAdminAccount,
-    safeAdminAccountPage,
-    saveAdminAccountEdit,
-    saveMyAdminProfile,
-    sendAdminAccountPasswordResetEmail,
-    startEditAdminAccount,
-    toggleAdminAccountLock,
-  } = useAdminAccountManagementController({
-    adminAccountEditForm,
-    adminAccountForm,
-    adminAccountPage,
-    adminMyProfileForm,
-    authenticatedAdminAccount,
-    authenticatedAdminId,
-    currentAuthAdminAccount,
-    dataBorrowers: data.borrowers,
-    editingAdminAccountId,
-    firebaseAuthUser,
-    getAdminAuthErrorMessage,
-    registeredAdminAccounts,
-    setAdminAccountEditForm,
-    setAdminAccountForm,
-    setAdminAccountPage,
-    setAdminAccounts,
-    setAdminMyProfileForm,
-    setAdminMyProfileSaving,
-    setCurrentAuthAdminAccount,
-    setEditingAdminAccountId,
-    triggerConfirm,
-    triggerToast,
-  });
-
-  const {
-    addTempHoliday,
-    applyHolidayImportConflictChoice,
-    deleteTempHoliday,
-    discardHolidayChanges,
-    discardRentalPolicyChanges,
-    importKoreanPublicHolidaysFromJson,
-    saveHolidaySettings,
-    saveSystemSettings,
-    updateTempHolidayReason,
-  } = useAdminSystemSettingsController({
-    dataSettings: data.settings,
-    holidayImportConflictModal,
-    holidayImportYear,
-    isSplitStorageReady,
-    newHolidayDate,
-    newHolidayName,
-    newHolidayType,
-    setData,
-    setHolidayImportConflictModal,
-    setHolidayImportLoading,
-    setHolidayManagementMonth,
-    setHolidayManagementYear,
-    setNewHolidayDate,
-    setNewHolidayName,
-    setNewHolidayType,
-    setTempSettings,
-    tempSettings,
-    triggerToast,
-  });
-
-
-  const { finalizeSplitStorageMigration } =
-    useAdminSplitStorageMigrationController({
-      authenticatedAdminId,
-      currentAuthAdminAccount,
-      isAdminAuthenticated,
-      setSplitStorageFinalizeLoading,
-      splitStorageFinalizeLoading,
-      triggerToast,
-    });
-
-  const {
-    addTempAssetCategory,
-    applyEditTempAssetCategory,
-    cancelTempAssetCategoryChanges,
-    deleteTempAssetCategory,
-    moveTempAssetCategory,
-    saveTempAssetCategoryChanges,
-    startEditTempAssetCategory,
-  } = useAdminAssetCategoryController({
-    authenticatedAdminId,
-    currentAuthAdminAccount,
-    dataAssetCategories: data.assetCategories,
-    dataLaptops: data.laptops,
-    editingAssetCategoryName,
-    isSplitStorageReady,
-    newAssetCategory,
-    setAdminSelectedAssetCategory,
-    setData,
-    setDraggingAssetCategoryIndex,
-    setEditingAssetCategoryIndex,
-    setEditingAssetCategoryName,
-    setNewAssetCategory,
-    setSelectedAssetCategory,
-    setTempAssetCategories,
-    setTempAssetCategoryRenameMap,
-    tempAssetCategories,
-    tempAssetCategoryRenameMap,
-    triggerToast,
-  });
-
-
-
   useSelectedRentalAssetAvailabilityGuard({
     selectedLaptop,
     selectedLaptopAvailability,
@@ -1607,16 +984,6 @@ function UserApp({ runtimeSurface = 'user' }) {
   });
 
   const rentalStartAdjustmentInfo = getRentalStartAdjustmentInfo(data.settings);
-  const tempBusinessDayAdjustmentEnabled =
-    tempSettings.adjustStartDateToNextBusinessDay ??
-    tempSettings.adjustStartDateAfterWorkEnd ??
-    DEFAULT_ADJUST_START_DATE_TO_NEXT_BUSINESS_DAY;
-  const tempHolidayList = normalizeHolidayList(tempSettings.holidays);
-
-  const tempAllowNonOverlappingSameAssetRequests =
-    tempSettings.allowNonOverlappingSameAssetRequests ??
-    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
-
 
   const loadFreshRentalRestrictionStatus =
     createFreshRentalRestrictionStatusLoader({
@@ -1624,7 +991,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     });
 
   const { submitRequest } = useUserRentalRequestController({
-    currentAuthAdminAccount,
+    currentAuthAdminAccount: null,
     currentAuthRoleErrorMessage,
     currentAuthRoleReady,
     currentUserRentalRestrictionStatus,
@@ -1636,7 +1003,7 @@ function UserApp({ runtimeSurface = 'user' }) {
     form,
     goToUserLogin,
     goToUserMypage,
-    isAdminAuthenticated,
+    isAdminAuthenticated: false,
     isSplitStorageReady,
     loadFreshRentalRestrictionStatus,
     requestSubmitInProgressRef,
@@ -1679,413 +1046,169 @@ function UserApp({ runtimeSurface = 'user' }) {
     userActionSaving,
   });
 
-  const getCurrentAdminAuditActor =
-    createCurrentAdminAuditActorResolver({
-      firebaseAuth,
-      authenticatedAdminAccount,
-    });
-
-  const {
-    closeFaqPostDialog,
-    closeNoticePostDialog,
-    confirmDeleteFaqPost,
-    confirmDeleteNoticePost,
-    openFaqPostDialog,
-    openNoticePostDialog,
-    saveFaqPost,
-    saveNoticePost,
-  } = useAdminBoardPostController({
-    adminExpandedFaqPostId,
-    expandedFaqPostId,
-    faqCategories,
-    faqCategoryNameById,
-    faqPostDialog,
-    faqPostForm,
-    faqPostSaving,
-    faqPosts,
-    getCurrentAdminAuditActor,
-    isAdminAuthenticated,
-    noticePostDialog,
-    noticePostForm,
-    noticePostSaving,
-    noticePosts,
-    selectedNoticePostId,
-    setAdminExpandedFaqPostId,
-    setExpandedFaqPostId,
-    setFaqPostDeletingId,
-    setFaqPostDialog,
-    setFaqPostForm,
-    setFaqPostSaving,
-    setNoticePostDeletingId,
-    setNoticePostDialog,
-    setNoticePostForm,
-    setNoticePostSaving,
-    setSelectedNoticePostId,
-    triggerConfirm,
-    triggerToast,
-  });
-
-
-
-  const {
-    closePopupPostDialog,
-    confirmDeletePopupPost,
-    movePopupPost,
-    openPopupPostDialog,
-    savePopupPost,
-    togglePopupPostEnabled,
-  } = useAdminPopupPostController({
-    getCurrentAdminAuditActor,
-    isAdminAuthenticated,
-    popupPostDialog,
-    popupPostForm,
-    popupPostSaving,
-    popupPosts,
-    setPopupPostDeletingId,
-    setPopupPostDialog,
-    setPopupPostForm,
-    setPopupPostSaving,
-    setPopupPostToggleSavingId,
-    triggerConfirm,
-    triggerToast,
-  });
-
-  const {
-    closeFooterPageDialog,
-    confirmDeleteFooterPage,
-    moveFooterPage,
-    openFooterPageDialog,
-    saveFooterConfig,
-    saveFooterPage,
-    toggleFooterPageEnabled,
-  } = useAdminFooterContentController({
-    footerConfigDraft,
-    footerPageDialog,
-    footerPageForm,
-    footerPageSaving,
-    footerPages,
-    getCurrentAdminAuditActor,
-    isAdminAuthenticated,
-    selectedFooterPageId,
-    setFooterConfigSaving,
-    setFooterPageDeletingId,
-    setFooterPageDialog,
-    setFooterPageForm,
-    setFooterPageSaving,
-    setFooterPageToggleSavingId,
-    setSelectedFooterPageId,
-    triggerConfirm,
-    triggerToast,
-  });
-
-
-  const {
-    goToAppHome,
-    handleAdminTabChange,
-    openAdminMemberAccounts,
-    openAdminRequests,
-  } = useAdminNavigationController({
-    adminTab,
-    assetCategorySettingsDirty,
-    cancelTempAssetCategoryChanges,
-    discardFaqBoardConfigChanges,
-    discardHolidayChanges,
-    discardNoticeBoardConfigChanges,
-    discardRentalPolicyChanges,
-    faqBoardSettingsDirty,
-    footerConfig,
-    footerConfigDirty,
-    goToUserHome,
-    holidaySettingsDirty,
-    memberDirectoryDeferredActionsRef,
-    navigateToAdminHome,
-    noticeBoardSettingsDirty,
-    peopleSettingsDirty,
-    rentalPolicySettingsDirty,
-    saveFaqBoardConfig,
-    saveFooterConfig,
-    saveHolidaySettings,
-    saveNoticeBoardConfig,
-    saveSystemSettings,
-    saveTempAssetCategoryChanges,
-    setAdminMemberAccountsNavigationRequest,
-    setAdminRequestsNavigationRequest,
-    setAdminTab,
-    setConfirmModal,
-    setFooterConfigDraft,
-    signupPolicyDeferredActionsRef,
-    signupPolicyDirty,
-    view,
-  });
-
-
-
   const toggleFaqPost = (postId) => {
-    setExpandedFaqPostId(
-      (currentPostId) =>
-        currentPostId === postId
-          ? ''
-          : postId
+    setExpandedFaqPostId((currentPostId) =>
+      currentPostId === postId ? '' : postId
     );
   };
-
-  const toggleAdminFaqPost = (postId) => {
-    setAdminExpandedFaqPostId(
-      (currentPostId) =>
-        currentPostId === postId
-          ? ''
-          : postId
-    );
-  };
-
-  const {
-    commitAdminRequestEdit,
-    commitAdminRequestStatusRestore,
-    saveRequestMemo,
-    updateRequest,
-    updateRequestMemo,
-  } = useAdminRequestMutationController({
-    clearAdminRequestPanelSelection,
-    dataSettings: data.settings,
-    getAdminRequestById,
-    getCurrentAdminAuditActor,
-    isSplitStorageReady,
-    notifyAdminRequestMutation,
-    resetAdminRequestPanelPage,
-    setData,
-    triggerToast,
-    updateAdminRequestPanelRequests,
-  });
-
-
-  const { reviewUserActionRequest } =
-    useAdminUserActionReviewController({
-      dataSettings: data.settings,
-      getAdminRequestById,
-      getCurrentAdminAuditActor,
-      getUserRequestActionLabel,
-      isSplitStorageReady,
-      notifyAdminRequestMutation,
-      setAdminUserActionSavingRequestId,
-      setData,
-      triggerToast,
-      updateAdminRequestPanelRequests,
-    });
-
-  const renderRequestActionButtons = (request) => {
-    const displayStatus = getDisplayRentalStatus(
-      request.status,
-      request.startDate,
-      request.dueDate
-    );
-    const actionButtonClassName = 'px-2.5 py-1.5 text-xs rounded-lg';
-
-    if (request.status === STATUS.REQUESTED) {
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.APPROVED)}
-            variant="primary"
-            className={actionButtonClassName}
-          >
-            승인
-          </Button>
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.ON_HOLD)}
-            variant="secondary"
-            className={`${actionButtonClassName} text-purple-700 bg-purple-50 hover:bg-purple-100`}
-          >
-            보류
-          </Button>
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.DENIED)}
-            variant="dangerOutline"
-            className={actionButtonClassName}
-          >
-            불허
-          </Button>
-        </div>
-      );
-    }
-
-    if (request.status === STATUS.APPROVED) {
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.RETURNED)}
-            variant="outline"
-            className={`${actionButtonClassName} text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200`}
-          >
-            반납확정
-          </Button>
-        </div>
-      );
-    }
-
-    if (request.status === STATUS.ON_HOLD) {
-      return (
-        <div className="flex flex-wrap gap-1">
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.APPROVED)}
-            variant="primary"
-            className={actionButtonClassName}
-          >
-            승인
-          </Button>
-          <Button
-            onClick={() => updateRequest(request.id, STATUS.DENIED)}
-            variant="dangerOutline"
-            className={actionButtonClassName}
-          >
-            불허
-          </Button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500">
-        {displayStatus} 상태는 추가 처리 버튼이 없습니다.
-      </div>
-    );
-  };
-
-
-  const {
-    createLaptop,
-    deleteLaptop,
-    handleAddLaptopClick,
-    saveLaptop,
-  } = useAdminAssetCrudController({
-    authenticatedAdminId,
-    currentAuthAdminAccount,
-    data,
-    editLaptop,
-    isSplitStorageReady,
-    newLaptop,
-    selectedLaptopId,
-    setData,
-    setEditLaptop,
-    setNewLaptop,
-    setSelectedLaptopId,
-    setShowUploadPanel,
-    splitRentalAssets,
-    triggerConfirm,
-    triggerToast,
-  });
 
   const dynamicContextSourceValues = {
-    authenticatedAdminAccount, authenticatedAdminId, currentAuthAdminAccount,
-    currentAuthRoleErrorMessage, currentAuthRoleReady, data, setData, siteSettings, faqCategories,
-    faqPosts, firebaseAuthReady, firebaseAuthUser, getUserRequestActionLabel, goToUserHome,
-    goToProtectedUserTab, goToUserLogin, goToUserMypage, handleAdminTabChange,
-    openAdminMemberAccounts, isAdminAuthenticated, isCurrentFirebaseAuthGeneralUser,
-    isSplitStorageReady, noticePosts, noticePostsLoadErrorMessage, noticePostsReady,
-    openNoticePost, triggerConfirm, triggerToast, userActionSaving, userProfile, userProfileReady,
-    footerPagesReady, footerPagesLoadErrorMessage, userTab, accountRecoveryForm,
-    accountRecoveryLoading, accountRecoveryResult, resetAccountRecoverySearch,
-    adminAccountEditForm, adminAccountForm, adminAccountTotalPages, adminAccountUserOptions,
-    adminAccountsLoadErrorMessage, adminAuthForm, adminAuthLoading, adminMyProfileForm,
-    adminMyProfileSaving, adminTab, authenticateAdmin, cancelEditAdminAccount, cancelWithdrawal,
-    cancelUserSignup, deleteAdminAccount, toggleAdminAccountLock, editingAdminAccountId,
-    goToUserEmailRecovery, goToUserFaq, goToUserInquiry, goToUserNotice, goToUserPasswordReset, goToUserSignup,
-    hasEstablishedUserSession, hasFirebaseAuthSession, isUserDirectoryAccessRestricted,
-    logoutAdmin, logoutUser, memberDirectoryAudit, adminMemberAccountsNavigationRequest,
-    memberDirectoryPolicyEnabled, memberIdentityClaimsReady, openWithdrawalDialog,
-    paginatedAdminAccounts, passwordResetForm, passwordResetLoading,
-    passwordResetStage, passwordResetVerificationResult, registerAdminAccount, registeredAdminAccounts,
-    safeAdminAccountPage, saveAdminAccountEdit, saveMyAdminProfile, saveMyUserProfile,
-    sendAdminAccountPasswordResetEmail, setAccountRecoveryForm, setAdminAccountEditForm,
-    setAdminAccountForm, setAdminAccountPage, setAdminAuthForm, setAdminMyProfileForm, setAdminTab,
-    updatePasswordResetForm, setUserAuthForm, setUserProfileForm, setView, setWithdrawalPassword,
-    shouldShowAdminAccountsErrorPage, shouldShowAdminLoadingPage, shouldShowAdminLoginPage,
-    startEditAdminAccount, submitAccountRecovery, submitMembershipWithdrawal, submitPasswordReset,
-    submitUserAuthForm, stats, userAccountStatusView, userAuthForm, userAuthLoading,
-    userDirectoryVerificationLoading, userProfileForm, userProfileSaving, withdrawalBlockMessage,
-    withdrawalDialogOpen, withdrawalLoading, withdrawalPassword, selectedFooterPage,
-    addTempAssetCategory, adminAvailabilityFilter, adminFilteredLaptops, adminLaptopQuery,
-    adminSelectedAssetCategory, adminUserActionSavingRequestId, applyEditTempAssetCategory,
-    availabilityFilter, availableFilterLabel, cancelTempAssetCategoryChanges, createLaptop,
-    currentUserRentalRestrictionStatus, currentUserRestrictionReady, currentUserRequests,
-    rentalRequestsLoadErrorMessage, rentalRequestsReady, dashboardSummary,
-    dashboardSummaryLoadErrorMessage, dashboardSummaryReady, dashboardSummaryRefreshing,
-    deleteLaptop, deleteTempAssetCategory, draggingAssetCategoryIndex, editLaptop,
-    editLaptopInsertIndex, editingAssetCategoryIndex, editingAssetCategoryName, filteredLaptops,
-    form, getUserRequestReviewStatusLabel, handleAddLaptopClick, openAdminRequests,
-    isPeriodBasedRentalMode, adminRequestsMutationVersion, adminRequestsNavigationRequest,
-    commitAdminRequestEdit, commitAdminRequestStatusRestore, moveTempAssetCategory,
-    newAssetCategory, newLaptop, openUserActionDialog, orphanedRentalAvailabilityRequests, query,
-    refreshDashboardSummary, renderRequestActionButtons, rentalDeviceSectionDescription,
-    rentalDeviceSectionTitle, rentalStartAdjustmentInfo, requestSubmitLoading,
-    reviewUserActionRequest, saveLaptop, saveRequestMemo, saveTempAssetCategoryChanges,
-    selectedAssetCategory, selectedLaptop, selectedLaptopAvailability, selectedLaptopId,
-    setAdminAvailabilityFilter, setAdminLaptopQuery, setAdminSelectedAssetCategory,
-    setAvailabilityFilter, setDraggingAssetCategoryIndex, setEditLaptop,
-    setEditingAssetCategoryIndex, setEditingAssetCategoryName, setForm, setNewAssetCategory,
-    setNewLaptop, setQuery, setSelectedAssetCategory, setSelectedLaptopId, setShowUploadPanel,
-    showUploadPanel, splitRentalAssets, startEditTempAssetCategory, submitRequest,
-    tempAssetCategories, unavailableFilterLabel, updateRequestMemo, activeFaqCategoryId,
-    activeFaqCategoryName, addFaqCategory, adminExpandedFaqPostId, adminFaqTotalPages,
-    adminNoticeQuery, adminNoticeTotalPages, adminPinnedFaqPosts, adminPinnedNoticePosts,
-    adminRegularFaqPosts, adminRegularNoticePosts, categoryFilteredFaqPosts, closeNoticePost,
-    confirmDeleteFaqCategory, confirmDeleteFaqPost, confirmDeleteNoticePost, displayedFaqPosts,
-    editingFaqCategoryId, editingFaqCategoryName, expandedFaqPostId,
-    faqBoardConfigLoadErrorMessage, faqBoardConfigReady, faqBoardConfigSaving,
-    faqCategoriesLoadErrorMessage, faqCategoriesReady, faqCategoryDeletingId, faqCategoryNameById,
-    faqCategorySavingId, faqPostDeletingId, faqPostsLoadErrorMessage, faqPostsPerPageInput,
-    faqPostsReady, faqQuery, faqSearchWithinCategory, faqTotalPages, newFaqCategoryName,
-    noticeBoardConfigLoadErrorMessage, noticeBoardConfigReady, noticeBoardConfigSaving,
-    noticePostDeletingId, noticePostsPerPageInput, noticeRegularPostNumberById, noticeTotalPages,
-    openFaqPostDialog, openNoticePostDialog, paginatedAdminFaqPosts, paginatedAdminNoticePosts,
-    paginatedNoticePosts, pinnedNoticePosts, regularFaqPosts, regularNoticePosts, safeAdminFaqPage,
-    safeAdminNoticePage, safeFaqPage, safeNoticePage, saveFaqBoardConfig, saveFaqCategoryName,
-    saveNoticeBoardConfig, selectedNoticePost, setActiveFaqCategoryId, setAdminExpandedFaqPostId,
-    setAdminFaqPage, setAdminNoticePage, setAdminNoticeQuery, setEditingFaqCategoryId,
-    setEditingFaqCategoryName, setExpandedFaqPostId, setFaqPage, setFaqPostsPerPageInput,
-    setFaqQuery, setFaqSearchWithinCategory, setNewFaqCategoryName, setNoticePage,
-    setUserNoticeQuery, setNoticePostsPerPageInput, startEditFaqCategory, toggleAdminFaqPost,
-    toggleFaqPost, userNoticeQuery, addTempHoliday, siteSettingsReady,
-    siteSettingsLoadErrorMessage, systemAdminSettings, systemAdminSettingsReady,
-    systemAdminSettingsLoadErrorMessage, userSessionPolicy, userSessionPolicyReady,
-    userSessionPolicyLoadErrorMessage, deleteTempHoliday, finalizeSplitStorageMigration,
-    holidayImportConflictModal, holidayImportLoading, holidayImportYear, holidayManagementMonth,
-    holidayManagementView, holidayManagementYear, holidaySettingsDirty,
-    importKoreanPublicHolidaysFromJson, applyHolidayImportConflictChoice, newHolidayDate,
-    newHolidayName, newHolidayType, saveHolidaySettings, saveSystemSettings,
-    setHolidayImportConflictModal, setHolidayImportYear, setHolidayManagementMonth,
-    setHolidayManagementView, setHolidayManagementYear, setNewHolidayDate, setNewHolidayName,
-    setNewHolidayType, setTempSettings, splitStorageFinalizeLoading,
-    tempAllowNonOverlappingSameAssetRequests, tempBusinessDayAdjustmentEnabled, tempHolidayList,
-    discardHolidayChanges, tempSettings, updateTempHolidayReason,
-    temporarilyDismissedPopupVersions, dismissedPopupSessionVersions, dismissedPopupLocalVersions,
-    dismissUserPopup, dismissAllUserPopups, popupPosts, popupPostsReady,
-    popupPostsLoadErrorMessage, popupPostDeletingId, popupPostToggleSavingId, openPopupPostDialog,
-    togglePopupPostEnabled, movePopupPost, confirmDeletePopupPost, footerConfig, footerConfigDraft,
-    footerConfigReady, footerConfigLoadErrorMessage, footerConfigSaving, footerPages,
-    footerPageDialog, footerPageForm, footerPageSaving, footerPageDeletingId,
-    footerPageToggleSavingId, selectedFooterPageId, setFooterConfigDraft, setFooterPageForm,
-    saveFooterConfig, openFooterPageDialog, closeFooterPageDialog, saveFooterPage,
-    toggleFooterPageEnabled, moveFooterPage, confirmDeleteFooterPage, openFooterPage,
-    activeUserActionRentalRequest, closeFaqPostDialog, closeNoticePostDialog,
-    closeUserActionDialog, confirmModal, faqPostDialog, faqPostForm, faqPostSaving,
-    noticePostDialog, noticePostForm, noticePostSaving, saveFaqPost, saveNoticePost,
-    setConfirmModal, setFaqPostForm, setNoticePostForm, setToast, setUserActionForm,
-    submitUserActionRequest, toast, userActionDialog, userActionForm, popupPostDialog,
-    popupPostForm, popupPostSaving, closePopupPostDialog, savePopupPost, setPopupPostForm,
-    handleMemberDirectoryDeferredStateChange, handleSignupPolicyDeferredStateChange,
-    handleAdminRequestsControllerStateChange,
+    accountRecoveryForm,
+    accountRecoveryLoading,
+    accountRecoveryResult,
+    activeFaqCategoryId,
+    activeFaqCategoryName,
+    activeUserActionRentalRequest,
+    availabilityFilter,
+    availableFilterLabel,
+    cancelUserSignup,
+    cancelWithdrawal,
+    categoryFilteredFaqPosts,
+    closeNoticePost,
+    closeUserActionDialog,
+    confirmModal,
+    currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    currentUserRentalRestrictionStatus,
+    currentUserRequests,
+    currentUserRestrictionReady,
+    data,
+    dismissAllUserPopups,
+    dismissedPopupLocalVersions,
+    dismissedPopupSessionVersions,
+    dismissUserPopup,
+    displayedFaqPosts,
+    expandedFaqPostId,
+    faqCategories,
+    faqCategoriesLoadErrorMessage,
+    faqCategoriesReady,
+    faqCategoryNameById,
+    faqPostsLoadErrorMessage,
+    faqPostsReady,
+    faqQuery,
+    faqSearchWithinCategory,
+    faqTotalPages,
+    filteredLaptops,
+    firebaseAuthReady,
+    firebaseAuthUser,
+    footerConfig,
+    footerPages,
+    footerPagesLoadErrorMessage,
+    footerPagesReady,
+    form,
+    getUserRequestActionLabel,
+    getUserRequestReviewStatusLabel,
+    goToProtectedUserTab,
+    goToUserEmailRecovery,
+    goToUserFaq,
+    goToUserHome,
+    goToUserInquiry,
+    goToUserLogin,
+    goToUserMypage,
+    goToUserNotice,
+    goToUserPasswordReset,
+    goToUserSignup,
+    hasEstablishedUserSession,
+    hasFirebaseAuthSession,
+    isCurrentFirebaseAuthGeneralUser,
+    isPeriodBasedRentalMode,
+    isUserDirectoryAccessRestricted,
+    logoutUser,
+    noticePosts,
+    noticePostsLoadErrorMessage,
+    noticePostsReady,
+    noticeRegularPostNumberById,
+    noticeTotalPages,
+    openFooterPage,
+    openNoticePost,
+    openUserActionDialog,
+    openWithdrawalDialog,
+    paginatedNoticePosts,
+    passwordResetForm,
+    passwordResetLoading,
+    passwordResetStage,
+    passwordResetVerificationResult,
+    pinnedNoticePosts,
+    popupPosts,
+    query,
+    regularFaqPosts,
+    regularNoticePosts,
+    rentalDeviceSectionDescription,
+    rentalDeviceSectionTitle,
+    rentalRequestsLoadErrorMessage,
+    rentalRequestsReady,
+    rentalStartAdjustmentInfo,
+    requestSubmitLoading,
+    resetAccountRecoverySearch,
+    safeFaqPage,
+    safeNoticePage,
+    saveMyUserProfile,
+    selectedAssetCategory,
+    selectedFooterPage,
+    selectedFooterPageId,
+    selectedLaptop,
+    selectedLaptopAvailability,
+    selectedLaptopId,
+    selectedNoticePost,
+    setAccountRecoveryForm,
+    setActiveFaqCategoryId,
+    setAvailabilityFilter,
+    setConfirmModal,
+    setExpandedFaqPostId,
+    setFaqPage,
+    setFaqQuery,
+    setFaqSearchWithinCategory,
+    setForm,
+    setNoticePage,
+    setQuery,
+    setSelectedAssetCategory,
+    setSelectedLaptopId,
+    setToast,
+    setUserActionForm,
+    setUserAuthForm,
+    setUserNoticeQuery,
+    setUserProfileForm,
+    setWithdrawalPassword,
+    siteSettings,
+    stats,
+    submitAccountRecovery,
+    submitMembershipWithdrawal,
+    submitPasswordReset,
+    submitRequest,
+    submitUserActionRequest,
+    submitUserAuthForm,
+    temporarilyDismissedPopupVersions,
+    toast,
+    toggleFaqPost,
+    triggerToast,
+    unavailableFilterLabel,
+    updatePasswordResetForm,
+    userAccountStatusView,
+    userActionDialog,
+    userActionForm,
+    userActionSaving,
+    userAuthForm,
+    userAuthLoading,
+    userDirectoryVerificationLoading,
+    userNoticeQuery,
+    userProfile,
+    userProfileForm,
+    userProfileReady,
+    userProfileSaving,
+    userTab,
+    withdrawalBlockMessage,
+    withdrawalDialogOpen,
+    withdrawalLoading,
+    withdrawalPassword,
   };
 
-  const {
-    adminPanelContextKey,
-    contextGroups,
-    userPanelContextKey,
-  } = useUserContextAssembler({
+  const { contextGroups, userPanelContextKey } = useUserContextAssembler({
     dynamicSourceValues: dynamicContextSourceValues,
     hasFirebaseAuthSession,
     isUserDirectoryAccessRestricted,
     userTab,
   });
+
   const appBlockingState = getAppBlockingState({
     firebaseLoadErrorMessage,
     normalizedSiteSettings,
@@ -2105,9 +1228,6 @@ function UserApp({ runtimeSurface = 'user' }) {
 
   return (
     <UserShell
-      adminLogoutInProgress={adminLogoutInProgress}
-      adminPanelContextKey={adminPanelContextKey}
-      authenticatedAdminAccount={authenticatedAdminAccount}
       communityMenuRef={communityMenuRef}
       contextGroups={contextGroups}
       currentAuthRoleErrorMessage={currentAuthRoleErrorMessage}
@@ -2115,7 +1235,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       firebaseAuthReady={firebaseAuthReady}
       firebaseAuthUser={firebaseAuthUser}
       firebaseReady={firebaseReady}
-      goToAppHome={goToAppHome}
+      goToAppHome={goToUserHome}
       goToProtectedUserTab={goToProtectedUserTab}
       goToUserFaq={goToUserFaq}
       goToUserInquiry={goToUserInquiry}
@@ -2123,10 +1243,7 @@ function UserApp({ runtimeSurface = 'user' }) {
       goToUserMypage={goToUserMypage}
       goToUserNotice={goToUserNotice}
       goToUserSignup={goToUserSignup}
-      isAdminAuthenticated={isAdminAuthenticated}
       isCommunityMenuOpen={isCommunityMenuOpen}
-      isCurrentFirebaseAuthAdmin={isCurrentFirebaseAuthAdmin}
-      logoutAdmin={logoutAdmin}
       logoutUser={logoutUser}
       normalizedSiteSettings={normalizedSiteSettings}
       popupPosts={popupPosts}

@@ -60,7 +60,7 @@ assert.match(createDialog, /관리자 계정 등록/);
 assert.match(createDialog, /기타 직접 입력/);
 assert.match(editDialog, /관리자 계정 수정/);
 assert.match(adminApp, /관리자 계정 관리 정보를 확인해 주세요/);
-assert.match(userApp, /관리자 계정 관리 정보를 확인해 주세요/);
+assert.doesNotMatch(userApp, /관리자 계정 관리 정보를 확인해 주세요/, 'user-only app must not retain administrator account error copy');
 assert.match(contextSlices, /adminAccounts: contextKeys\('[^']*\bSearch\b[^']*'\)/);
 assert.match(workspace, /AdminPanelRuntimeErrorBoundary/);
 assert.match(workspace, /resetKey=\{adminTab\}/);

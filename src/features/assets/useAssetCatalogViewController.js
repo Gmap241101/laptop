@@ -3,6 +3,22 @@ import { useState } from 'react';
 import { STATUS } from '../../constants/appConstants.js';
 import useResponsiveAssetGridColumns from '../../hooks/useResponsiveAssetGridColumns.js';
 
+
+export const useUserAssetCatalogViewController = () => {
+  const [query, setQuery] = useState('');
+  const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');
+  const [availabilityFilter, setAvailabilityFilter] = useState(STATUS.AVAILABLE);
+
+  return {
+    availabilityFilter,
+    query,
+    selectedAssetCategory,
+    setAvailabilityFilter,
+    setQuery,
+    setSelectedAssetCategory,
+  };
+};
+
 export default function useAssetCatalogViewController() {
   const [query, setQuery] = useState('');
   const [selectedAssetCategory, setSelectedAssetCategory] = useState('전체');

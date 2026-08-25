@@ -37,7 +37,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
     Search,
     USER_REQUEST_ACTION,
     USER_REQUEST_REVIEW_STATUS,
-    currentAuthAdminAccount,
     currentAuthRoleReady,
     currentUserRequests,
     currentUserRentalRestrictionStatus,
@@ -55,7 +54,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
     getUserRequestActionLabel,
     getUserRequestReviewStatusLabel,
     goToProtectedUserTab,
-    isAdminAuthenticated,
     openUserActionDialog,
     rentalRequestsLoadErrorMessage,
     rentalRequestsReady,
@@ -426,10 +424,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
           ) : requestLoadErrorMessage ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-xs leading-5 text-rose-800">
               {requestLoadErrorMessage}
-            </div>
-          ) : currentAuthAdminAccount || isAdminAuthenticated ? (
-            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
-              관리자 계정의 전체 대여신청은 관리자 모드의 대여 신청 관리에서 확인해 주세요.
             </div>
           ) : !hasAnyRequest ? (
             <div className="space-y-4">

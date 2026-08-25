@@ -71,24 +71,14 @@ export default function UserMyPagePanel({ ctx }) {
     CardContent,
     Input,
     Users,
-    adminMyProfileForm,
-    adminMyProfileSaving,
-    currentAuthAdminAccount,
-    currentAuthRoleReady,
     data,
     firebaseAuthUser,
     goToUserHome,
     goToUserLogin,
     goToUserSignup,
-    isAdminAuthenticated,
     isCurrentFirebaseAuthGeneralUser,
-    logoutAdmin,
-    pushAppPath,
-    saveMyAdminProfile,
     saveMyUserProfile,
-    setAdminMyProfileForm,
     setUserProfileForm,
-    setView,
     triggerToast,
     userProfile,
     userProfileForm,
@@ -106,7 +96,6 @@ export default function UserMyPagePanel({ ctx }) {
   } = ctx;
 
   const [generalUserTab, setGeneralUserTab] = useState('profile');
-  const [adminMyPageTab, setAdminMyPageTab] = useState('profile');
   const security = useUserMyPageSecurity({
     firebaseAuthUser,
     triggerToast,
@@ -134,7 +123,7 @@ export default function UserMyPagePanel({ ctx }) {
         </div>
 
         <CardContent className="p-6">
-          {!firebaseAuthUser && !isAdminAuthenticated ? (
+          {!firebaseAuthUser ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-xs leading-5 text-orange-800">
                 마이페이지는 로그인 후 사용할 수 있습니다.
@@ -188,15 +177,7 @@ export default function UserMyPagePanel({ ctx }) {
                     type="button"
                     variant="outline"
                     disabled={security.verificationLoading}
-                    onClick={() => {
-                      if (isAdminAuthenticated) {
-                        pushAppPath('admin');
-                        setView('admin');
-                        return;
-                      }
-
-                      goToUserHome();
-                    }}
+                    onClick={goToUserHome}
                   >
                     취소
                   </Button>
@@ -212,156 +193,6 @@ export default function UserMyPagePanel({ ctx }) {
             </form>
           ) : (
             <div className="space-y-6">
-              {currentAuthRoleReady &&
-                currentAuthAdminAccount &&
-                !isAdminAuthenticated && (
-                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-                    <h3 className="text-sm font-bold text-orange-900">
-                      관리자 재인증이 필요합니다
-                    </h3>
-
-                    <p className="mt-2 text-xs leading-5 text-orange-800">
-                      현재 계정은 관리자 계정입니다. 관리자 모드에서 다시 인증한 뒤
-                      관리자 마이페이지를 이용해 주세요.
-                    </p>
-
-                    <div className="mt-4 flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={logoutAdmin}
-                      >
-                        로그아웃
-                      </Button>
-
-                      <Button
-                        type="button"
-                        variant="primary"
-                        onClick={() => {
-                          pushAppPath('admin');
-                          setView('admin');
-                        }}
-                      >
-                        관리자 모드로 이동
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-              {isAdminAuthenticated && (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
-                  <div className="mb-5 grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[11px] font-bold">
-                    {[
-                      ['profile', '기본 정보'],
-                      ['password', '비밀번호 변경'],
-                    ].map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setAdminMyPageTab(value)}
-                        className={`px-3 py-2.5 transition ${adminMyPageTab === value ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {adminMyPageTab === 'profile' ? (
-                    <div>
-                      <div className="mb-4">
-                        <h3 className="text-base font-bold text-slate-900">관리자 내 정보</h3>
-                        <p className="mt-1 text-xs text-slate-500">
-                          관리자 본인의 표시 정보와 연락처를 수정합니다.
-                        </p>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <Input
-                          label="관리자 ID"
-                          value={adminMyProfileForm.adminLoginId}
-                          onChange={(v) =>
-                            setAdminMyProfileForm({
-                              ...adminMyProfileForm,
-                              adminLoginId: v,
-                            })
-                          }
-                          placeholder="관리자 ID 입력"
-                        />
-
-                        <Input
-                          label="로그인 이메일"
-                          type="email"
-                          value={adminMyProfileForm.email}
-                          onChange={(v) =>
-                            setAdminMyProfileForm({
-                              ...adminMyProfileForm,
-                              email: v,
-                            })
-                          }
-                          disabled
-                          placeholder="Clerk 로그인 이메일"
-                        />
-
-                        <Input
-                          label="조직명"
-                          value={adminMyProfileForm.organizationName}
-                          onChange={(v) =>
-                            setAdminMyProfileForm({
-                              ...adminMyProfileForm,
-                              organizationName: v,
-                            })
-                          }
-                          placeholder="조직명 입력"
-                        />
-
-                        <Input
-                          label="사용자명"
-                          value={adminMyProfileForm.userName}
-                          onChange={(v) =>
-                            setAdminMyProfileForm({
-                              ...adminMyProfileForm,
-                              userName: v,
-                            })
-                          }
-                          placeholder="사용자명 입력"
-                        />
-
-                        <Input
-                          label="전화번호"
-                          value={adminMyProfileForm.phone}
-                          onChange={(v) =>
-                            setAdminMyProfileForm({
-                              ...adminMyProfileForm,
-                              phone: v,
-                            })
-                          }
-                          placeholder="전화번호 입력"
-                        />
-                      </div>
-
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-                        Clerk 로그인 이메일은 이 화면에서 변경하지 않습니다.
-                      </div>
-
-                      <div className="mt-5 flex justify-end">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          onClick={saveMyAdminProfile}
-                          disabled={adminMyProfileSaving}
-                        >
-                          {adminMyProfileSaving ? '저장 중...' : '관리자 내 정보 저장'}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {adminMyPageTab === 'password' ? (
-                    <PasswordChangePanel Button={Button} Input={Input} security={security} />
-                  ) : null}
-                </div>
-              )}
-
               {isCurrentFirebaseAuthGeneralUser && (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
                   <div className="mb-5 grid grid-cols-4 overflow-hidden rounded-xl border border-slate-200 bg-white text-center text-[11px] font-bold">

@@ -5,6 +5,43 @@ import {
 } from '../features/members/memberAccountPolicy.js';
 import { SPLIT_STORAGE_VERSION } from '../features/settings/splitStorageConstants.js';
 
+
+export const selectUserAppReadiness = ({
+  currentAuthRoleErrorMessage,
+  currentAuthRoleReady,
+  dataSettings,
+  firebaseAuthCurrentUser,
+  firebaseAuthUser,
+  splitPublicConfig,
+  splitStorageVersion,
+  userProfile,
+}) => {
+  const hasFirebaseAuthSession = Boolean(firebaseAuthUser || firebaseAuthCurrentUser);
+  const isCurrentFirebaseAuthGeneralUser = Boolean(
+    firebaseAuthUser && currentAuthRoleReady && !currentAuthRoleErrorMessage
+  );
+  const memberDirectoryPolicyEnabled = isRegisteredMemberSignupRequired(dataSettings);
+  const memberIdentityClaimsReady = Boolean(dataSettings?.memberIdentityClaimsReady);
+  const currentMemberDirectoryVersion = getSafeMemberDirectoryVersion(dataSettings);
+  const isUserDirectoryAccessRestricted = Boolean(
+    userProfile &&
+      (userProfile.status === USER_PROFILE_STATUS.PROFILE_REQUIRED ||
+        (memberDirectoryPolicyEnabled &&
+          userProfile.status === USER_PROFILE_STATUS.ACTIVE &&
+          Number(userProfile.directoryVerifiedVersion || 0) !== currentMemberDirectoryVersion))
+  );
+
+  return {
+    hasFirebaseAuthSession,
+    isCurrentFirebaseAuthGeneralUser,
+    isSplitStorageReady: splitStorageVersion >= SPLIT_STORAGE_VERSION,
+    isUserDirectoryAccessRestricted,
+    memberDirectoryAudit: splitPublicConfig?.memberDirectoryAudit || null,
+    memberDirectoryPolicyEnabled,
+    memberIdentityClaimsReady,
+  };
+};
+
 export const selectAppReadiness = ({
   adminAccountsLoadErrorMessage,
   adminAccountsReady,

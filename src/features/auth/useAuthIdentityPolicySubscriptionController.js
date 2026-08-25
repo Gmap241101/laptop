@@ -94,6 +94,48 @@ export const normalizeAdminAccounts = function(adminAccounts) {
 }
 ;
 
+
+export const useUserAuthIdentityPolicySubscriptionState = () => {
+  const [userSessionPolicy, setUserSessionPolicy] = useState(
+    DEFAULT_USER_SESSION_POLICY
+  );
+  const [userSessionPolicyReady, setUserSessionPolicyReady] = useState(false);
+  const [userSessionPolicyLoadErrorMessage, setUserSessionPolicyLoadErrorMessage] = useState('');
+  const [firebaseAuthUser, setFirebaseAuthUser] = useState(null);
+  const [firebaseAuthReady, setFirebaseAuthReady] = useState(false);
+  const [currentAuthRoleReady, setCurrentAuthRoleReady] = useState(false);
+  const [currentAuthRoleErrorMessage, setCurrentAuthRoleErrorMessage] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
+  const [userProfileReady, setUserProfileReady] = useState(false);
+  const [currentUserRestriction, setCurrentUserRestriction] = useState(null);
+  const [currentUserRestrictionReady, setCurrentUserRestrictionReady] = useState(false);
+
+  return {
+    currentAuthRoleErrorMessage,
+    currentAuthRoleReady,
+    currentUserRestriction,
+    currentUserRestrictionReady,
+    firebaseAuthReady,
+    firebaseAuthUser,
+    setCurrentAuthRoleErrorMessage,
+    setCurrentAuthRoleReady,
+    setCurrentUserRestriction,
+    setCurrentUserRestrictionReady,
+    setFirebaseAuthReady,
+    setFirebaseAuthUser,
+    setUserProfile,
+    setUserProfileReady,
+    setUserSessionPolicy,
+    setUserSessionPolicyLoadErrorMessage,
+    setUserSessionPolicyReady,
+    userProfile,
+    userProfileReady,
+    userSessionPolicy,
+    userSessionPolicyLoadErrorMessage,
+    userSessionPolicyReady,
+  };
+};
+
 export const useAuthIdentityPolicySubscriptionState = () => {
   const [systemAdminSettings, setSystemAdminSettings] = useState(
     DEFAULT_SYSTEM_ADMIN_SETTINGS

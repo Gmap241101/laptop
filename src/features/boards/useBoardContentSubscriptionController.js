@@ -92,6 +92,123 @@ export const getSafeFaqPostsPerPage = (value) => {
     : DEFAULT_FAQ_POSTS_PER_PAGE;
 };
 
+
+export const useUserBoardContentSubscriptionState = () => {
+  const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
+  const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);
+  const [noticeHasNextPage, setNoticeHasNextPage] = useState(false);
+  const [noticeRegularTotalCount, setNoticeRegularTotalCount] = useState(0);
+  const noticeCursorByPageRef = useRef(new Map([[1, null]]));
+  const noticeCursorKeyRef = useRef('');
+  const [noticePostsReady, setNoticePostsReady] = useState(false);
+  const [noticePostsLoadErrorMessage, setNoticePostsLoadErrorMessage] = useState('');
+  const [noticeBoardConfig, setNoticeBoardConfig] = useState({ postsPerPage: DEFAULT_NOTICE_POSTS_PER_PAGE });
+  const [noticeBoardConfigReady, setNoticeBoardConfigReady] = useState(false);
+  const [noticeBoardConfigLoadErrorMessage, setNoticeBoardConfigLoadErrorMessage] = useState('');
+  const [selectedNoticePostId, setSelectedNoticePostId] = useState('');
+  const [selectedNoticePostOverride, setSelectedNoticePostOverride] = useState(null);
+  const [noticePage, setNoticePage] = useState(1);
+  const [userNoticeQuery, setUserNoticeQuery] = useState('');
+
+  const [faqCategories, setFaqCategories] = useState([]);
+  const [faqCategoriesReady, setFaqCategoriesReady] = useState(false);
+  const [faqCategoriesLoadErrorMessage, setFaqCategoriesLoadErrorMessage] = useState('');
+  const [faqPinnedPosts, setFaqPinnedPosts] = useState([]);
+  const [faqRegularPagePosts, setFaqRegularPagePosts] = useState([]);
+  const [faqHasNextPage, setFaqHasNextPage] = useState(false);
+  const [faqRegularTotalCount, setFaqRegularTotalCount] = useState(0);
+  const faqCursorByPageRef = useRef(new Map([[1, null]]));
+  const faqCursorKeyRef = useRef('');
+  const [faqPostsReady, setFaqPostsReady] = useState(false);
+  const [faqPostsLoadErrorMessage, setFaqPostsLoadErrorMessage] = useState('');
+  const [faqBoardConfig, setFaqBoardConfig] = useState({ postsPerPage: DEFAULT_FAQ_POSTS_PER_PAGE });
+  const [faqBoardConfigReady, setFaqBoardConfigReady] = useState(false);
+  const [faqBoardConfigLoadErrorMessage, setFaqBoardConfigLoadErrorMessage] = useState('');
+  const [activeFaqCategoryId, setActiveFaqCategoryId] = useState('all');
+  const [faqQuery, setFaqQuery] = useState('');
+  const [faqSearchWithinCategory, setFaqSearchWithinCategory] = useState(false);
+  const [expandedFaqPostId, setExpandedFaqPostId] = useState('');
+  const [faqPage, setFaqPage] = useState(1);
+
+  const noticePosts = useMemo(
+    () => [...(noticePinnedPosts || []), ...(noticeRegularPagePosts || [])],
+    [noticePinnedPosts, noticeRegularPagePosts]
+  );
+  const faqPosts = useMemo(
+    () => [...(faqPinnedPosts || []), ...(faqRegularPagePosts || [])],
+    [faqPinnedPosts, faqRegularPagePosts]
+  );
+
+  return {
+    activeFaqCategoryId,
+    expandedFaqPostId,
+    faqBoardConfig,
+    faqBoardConfigLoadErrorMessage,
+    faqBoardConfigReady,
+    faqCategories,
+    faqCategoriesLoadErrorMessage,
+    faqCategoriesReady,
+    faqCursorByPageRef,
+    faqCursorKeyRef,
+    faqHasNextPage,
+    faqPage,
+    faqPinnedPosts,
+    faqPosts,
+    faqPostsLoadErrorMessage,
+    faqPostsReady,
+    faqQuery,
+    faqRegularPagePosts,
+    faqRegularTotalCount,
+    faqSearchWithinCategory,
+    noticeBoardConfig,
+    noticeBoardConfigLoadErrorMessage,
+    noticeBoardConfigReady,
+    noticeCursorByPageRef,
+    noticeCursorKeyRef,
+    noticeHasNextPage,
+    noticePage,
+    noticePinnedPosts,
+    noticePosts,
+    noticePostsLoadErrorMessage,
+    noticePostsReady,
+    noticeRegularPagePosts,
+    noticeRegularTotalCount,
+    selectedNoticePostId,
+    selectedNoticePostOverride,
+    setActiveFaqCategoryId,
+    setExpandedFaqPostId,
+    setFaqBoardConfig,
+    setFaqBoardConfigLoadErrorMessage,
+    setFaqBoardConfigReady,
+    setFaqCategories,
+    setFaqCategoriesLoadErrorMessage,
+    setFaqCategoriesReady,
+    setFaqHasNextPage,
+    setFaqPage,
+    setFaqPinnedPosts,
+    setFaqPostsLoadErrorMessage,
+    setFaqPostsReady,
+    setFaqQuery,
+    setFaqRegularPagePosts,
+    setFaqRegularTotalCount,
+    setFaqSearchWithinCategory,
+    setNoticeBoardConfig,
+    setNoticeBoardConfigLoadErrorMessage,
+    setNoticeBoardConfigReady,
+    setNoticeHasNextPage,
+    setNoticePage,
+    setNoticePinnedPosts,
+    setNoticePostsLoadErrorMessage,
+    setNoticePostsReady,
+    setNoticeRegularPagePosts,
+    setNoticeRegularTotalCount,
+    setSelectedNoticePostId,
+    setSelectedNoticePostOverride,
+    setUserNoticeQuery,
+    userNoticeQuery,
+  };
+};
+
 export const useBoardContentSubscriptionState = () => {
   const [noticePinnedPosts, setNoticePinnedPosts] = useState([]);
   const [noticeRegularPagePosts, setNoticeRegularPagePosts] = useState([]);

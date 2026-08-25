@@ -271,6 +271,151 @@ export const getEditLaptopInsertIndex = ({
   );
 };
 
+
+export const useUserRentalDerivedSelectors = ({
+  availabilityFilter,
+  currentUserRestriction,
+  dataBorrowers,
+  dataLaptops,
+  dataRequests,
+  dataSettings,
+  firebaseAuthUser,
+  form,
+  query,
+  rentalRequests,
+  selectedAssetCategory,
+  selectedLaptopId,
+  userProfile,
+  userTab,
+}) => {
+  const mergedRentalRequests = useMemo(
+    () =>
+      mergeRentalRequestSources({
+        availabilityRequests: dataRequests,
+        ownRequests: rentalRequests,
+        includeAvailabilitySummaries: true,
+      }),
+    [dataRequests, rentalRequests]
+  );
+
+  const currentUserRequests = useMemo(
+    () =>
+      selectCurrentUserRequests({
+        requests: mergedRentalRequests,
+        firebaseUid: firebaseAuthUser?.uid,
+        firebaseEmail: firebaseAuthUser?.email,
+        profileEmail: userProfile?.email,
+        previousAccountUids: userProfile?.previousAccountUids,
+      }),
+    [
+      mergedRentalRequests,
+      firebaseAuthUser?.uid,
+      firebaseAuthUser?.email,
+      userProfile?.email,
+      userProfile?.previousAccountUids,
+    ]
+  );
+
+  const currentUserRentalRestrictionStatus = useMemo(
+    () =>
+      getRentalRestrictionStatus({
+        requests: currentUserRequests,
+        requesterUid: firebaseAuthUser?.uid || '',
+        settings: dataSettings,
+        restriction: currentUserRestriction,
+        referenceDate: today(),
+      }),
+    [currentUserRequests, firebaseAuthUser?.uid, dataSettings, currentUserRestriction]
+  );
+
+  const shouldPrepareUserRentalList = userTab === 'rental';
+  const shouldPrepareRentalStatus = ['home', 'rental'].includes(userTab);
+  const rentalStatusSummary = useMemo(
+    () =>
+      createRentalStatusSummary({
+        enabled: shouldPrepareRentalStatus,
+        requests: dataRequests,
+        laptops: dataLaptops,
+        referenceDate: today(),
+      }),
+    [shouldPrepareRentalStatus, dataRequests, dataLaptops]
+  );
+
+  const filteredLaptops = useMemo(
+    () =>
+      filterUserRentalLaptops({
+        enabled: shouldPrepareUserRentalList,
+        laptops: dataLaptops,
+        requests: dataRequests,
+        settings: dataSettings,
+        startDate: form.startDate,
+        dueDate: form.dueDate,
+        query,
+        selectedCategory: selectedAssetCategory,
+        availabilityFilter,
+      }),
+    [
+      shouldPrepareUserRentalList,
+      dataLaptops,
+      dataRequests,
+      dataSettings,
+      form.startDate,
+      form.dueDate,
+      query,
+      selectedAssetCategory,
+      availabilityFilter,
+    ]
+  );
+
+  const selectedLaptop = useMemo(
+    () => (dataLaptops || []).find((laptop) => laptop.id === selectedLaptopId),
+    [dataLaptops, selectedLaptopId]
+  );
+
+  const selectedLaptopAvailability = useMemo(
+    () =>
+      selectedLaptop
+        ? getLaptopRentalAvailability(
+            selectedLaptop,
+            dataRequests || [],
+            dataSettings || {},
+            form.startDate,
+            form.dueDate
+          )
+        : null,
+    [selectedLaptop, dataRequests, dataSettings, form.startDate, form.dueDate]
+  );
+
+  const isPeriodBasedRentalMode =
+    dataSettings.allowNonOverlappingSameAssetRequests ??
+    DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS;
+
+  const filteredBorrowers = useMemo(
+    () => (dataBorrowers || []).filter((borrower) => borrower.team === form.team),
+    [dataBorrowers, form.team]
+  );
+
+  return {
+    availableFilterLabel: STATUS.AVAILABLE,
+    currentUserRentalRestrictionStatus,
+    currentUserRequests,
+    filteredBorrowers,
+    filteredLaptops,
+    isPeriodBasedRentalMode,
+    mergedRentalRequests,
+    rentalDeviceSectionDescription: isPeriodBasedRentalMode
+      ? '선택 기간 중 [대여가능] 기기만 신청할 수 있습니다.'
+      : '[대여가능] 기기만 신청할 수 있습니다.',
+    rentalDeviceSectionTitle: '대여 기기 선택',
+    selectedLaptop,
+    selectedLaptopAvailability,
+    shouldShowStats: userTab === 'rental',
+    stats: rentalStatusSummary.stats,
+    statsLoading: false,
+    unavailableFilterLabel: STATUS.UNAVAILABLE,
+  };
+};
+
 export default function useRentalDerivedSelectors({
   adminAvailabilityFilter,
   adminLaptopQuery,
