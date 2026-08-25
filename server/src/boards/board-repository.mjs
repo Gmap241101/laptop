@@ -1,5 +1,10 @@
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
+const nullableMetricNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+};
 
 const repositoryError = (code, message, details = {}) => {
   const error = new Error(message);
@@ -40,6 +45,8 @@ const mapPost = (row) => row?.post_id ? Object.freeze({
   attachments: Object.freeze((Array.isArray(row.attachments) ? row.attachments : []).map((attachment) => Object.freeze({
     id: attachment?.id || attachment?.attachment_id || '',
     name: attachment?.name || attachment?.display_name || '',
+    fileSizeBytes: nullableMetricNumber(attachment?.fileSizeBytes ?? attachment?.file_size_bytes),
+    downloadCount: Math.max(0, Number(attachment?.downloadCount ?? attachment?.download_count) || 0),
     downloadPath: attachment?.downloadPath || attachment?.download_path || '',
   })).filter((attachment) => attachment.id && attachment.name)),
 }) : null;
@@ -84,7 +91,9 @@ const richPostProjection = (ownerType) => `
       jsonb_build_object(
         'id',a.attachment_id,
         'name',a.display_name,
-        'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+        'downloadPath','/api/attachments/' || a.attachment_id || '/download',
+                    'fileSizeBytes',a.file_size_bytes,
+                    'downloadCount',a.download_count
       ) ORDER BY a.sort_order,a.created_at,a.attachment_id
     )
       FROM app_secure_attachments a
@@ -275,7 +284,9 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
                     jsonb_build_object(
                       'id',a.attachment_id,
                       'name',a.display_name,
-                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download',
+                    'fileSizeBytes',a.file_size_bytes,
+                    'downloadCount',a.download_count
                     ) ORDER BY a.sort_order,a.created_at,a.attachment_id
                   )
                     FROM app_secure_attachments a
@@ -448,7 +459,9 @@ export const createBoardRepository = (pool, { attachmentRepository = null } = {}
                     jsonb_build_object(
                       'id',a.attachment_id,
                       'name',a.display_name,
-                      'downloadPath','/api/attachments/' || a.attachment_id || '/download'
+                      'downloadPath','/api/attachments/' || a.attachment_id || '/download',
+                    'fileSizeBytes',a.file_size_bytes,
+                    'downloadCount',a.download_count
                     ) ORDER BY a.sort_order,a.created_at,a.attachment_id
                   )
                     FROM app_secure_attachments a

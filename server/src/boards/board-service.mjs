@@ -7,6 +7,8 @@ const normalizePageSize = (value, fallback = 10) => {
   return Number.isFinite(parsed) && parsed >= 5 && parsed <= 50 ? parsed : fallback;
 };
 
+const hasAttachments = (input) => Object.prototype.hasOwnProperty.call(input || {}, 'attachments');
+
 const serviceError = (code, message, status = 400, details = {}) => {
   const error = new Error(message);
   error.name = 'BoardServiceError';
@@ -38,9 +40,6 @@ const normalizePostInput = (boardType, input, { id, isEditing, actorClerkUserId 
     authorName: trim(input?.authorName),
     isEditing: Boolean(isEditing),
     actorClerkUserId: trim(actorClerkUserId),
-    attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
-      ? normalizeSecureAttachmentInputs(input?.attachments)
-      : null,
   });
 };
 
@@ -63,8 +62,11 @@ const mapRepositoryError = (error) => {
   throw serviceError(mapped[0], mapped[1], mapped[2], { postCount: Number(error?.postCount || 0) });
 };
 
-export const createBoardService = ({ repository }) => {
+export const createBoardService = ({ repository, attachmentService = null }) => {
   if (!repository) throw new TypeError('Board repository is required.');
+  const prepareAttachments = async (input) => attachmentService?.prepareInputs
+    ? attachmentService.prepareInputs(input)
+    : normalizeSecureAttachmentInputs(input);
   const verifyAdmin = async (identity) => {
     if (identity?.source !== 'clerk-postgresql') throw serviceError('admin_postgresql_identity_required', 'Clerk/PostgreSQL administrator identity is required.', 401);
     return Object.freeze({ uid: identity.uid, role: 'admin', source: 'postgresql-admin-registry' });
@@ -114,7 +116,8 @@ export const createBoardService = ({ repository }) => {
     async saveNotice(identity, actorClerkUserId, input) {
       const admin = await verifyAdmin(identity);
       const id = trim(input?.id) || `notice-${randomUUID().replaceAll('-', '')}`;
-      const post = normalizePostInput('notice', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
+      const basePost = normalizePostInput('notice', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
+      const post = Object.freeze({ ...basePost, attachments: hasAttachments(input) ? await prepareAttachments(input?.attachments) : null });
       try {
         const result = await repository.saveNoticePostAuthoritative({ post });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', post: result.post });
@@ -132,7 +135,8 @@ export const createBoardService = ({ repository }) => {
     async saveFaq(identity, actorClerkUserId, input) {
       const admin = await verifyAdmin(identity);
       const id = trim(input?.id) || `faq-${randomUUID().replaceAll('-', '')}`;
-      const post = normalizePostInput('faq', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
+      const basePost = normalizePostInput('faq', input, { id, isEditing: Boolean(trim(input?.id)), actorClerkUserId });
+      const post = Object.freeze({ ...basePost, attachments: hasAttachments(input) ? await prepareAttachments(input?.attachments) : null });
       try {
         const result = await repository.saveFaqPostAuthoritative({ post });
         return Object.freeze({ admin, authority: 'postgresql', firestoreMirror: 'retired', post: result.post });

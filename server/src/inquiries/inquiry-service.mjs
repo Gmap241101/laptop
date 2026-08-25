@@ -61,12 +61,7 @@ const validateInquiryContent = (input = {}) => {
   if (title.length > 200) throw serviceError('inquiry_title_too_long', 'Inquiry title is too long.', 400);
   if (!bodyText) throw serviceError('inquiry_body_required', 'Inquiry body is required.', 400);
   if (bodyText.length > 20000 || bodyHtml.length > 100000) throw serviceError('inquiry_body_too_long', 'Inquiry body is too long.', 413);
-  return Object.freeze({
-    categoryId, title, bodyHtml, bodyText,
-    attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
-      ? normalizeSecureAttachmentInputs(input?.attachments)
-      : null,
-  });
+  return Object.freeze({ categoryId, title, bodyHtml, bodyText });
 };
 
 const validateGuestIdentity = (input = {}) => {
@@ -183,7 +178,16 @@ const requireAdmin = (admin) => {
   });
 };
 
-export const createInquiryService = ({ repository }) => {
+export const createInquiryService = ({ repository, attachmentService = null }) => {
+  const prepareAttachments = async (input) => attachmentService?.prepareInputs
+    ? attachmentService.prepareInputs(input)
+    : normalizeSecureAttachmentInputs(input);
+  const prepareInquiryContent = async (input) => Object.freeze({
+    ...validateInquiryContent(input),
+    attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
+      ? await prepareAttachments(input?.attachments)
+      : null,
+  });
   if (!repository) throw new TypeError('Inquiry repository is required.');
 
   const getTermCatalog = async ({ includeDisabledInquiryTerms = false } = {}) => {
@@ -278,7 +282,7 @@ export const createInquiryService = ({ repository }) => {
 
     async createMember({ clerkUserId, input }) {
       const member = await resolveMember(clerkUserId);
-      const content = validateInquiryContent(input);
+      const content = await prepareInquiryContent(input);
       try {
         const created = await repository.createMemberInquiry({
           inquiryId: `inq-${randomUUID().replaceAll('-', '')}`,
@@ -317,7 +321,7 @@ export const createInquiryService = ({ repository }) => {
 
     async updateMember({ clerkUserId, publicId, input }) {
       const member = await resolveMember(clerkUserId);
-      const content = validateInquiryContent(input);
+      const content = await prepareInquiryContent(input);
       try {
         const updated = await repository.updateOwnedInquiry({ ownerType: 'member', memberUid: member.memberUid, publicId: trim(publicId), ...content });
         return updated;
@@ -351,7 +355,7 @@ export const createInquiryService = ({ repository }) => {
       const settings = await repository.getSettings();
       if (!settings.allowGuest) throw serviceError('guest_inquiry_disabled', 'Guest inquiries are disabled.', 403);
       const author = validateGuestAuthor(input?.author || input);
-      const content = validateInquiryContent(input);
+      const content = await prepareInquiryContent(input);
       const password = validateGuestPasswordInput(input?.password);
       if (password !== String(input?.passwordConfirm || '')) {
         throw serviceError('guest_inquiry_password_confirmation_mismatch', 'Guest inquiry password confirmation does not match.', 400);
@@ -464,7 +468,7 @@ export const createInquiryService = ({ repository }) => {
     async updateGuest({ token, publicId, input }) {
       const session = await requireGuestSession(token);
       if (!session.publicIds.includes(trim(publicId))) throw serviceError('inquiry_not_found', 'Inquiry was not found.', 404);
-      const content = validateInquiryContent(input);
+      const content = await prepareInquiryContent(input);
       try {
         const updated = await repository.updateOwnedInquiry({ ownerType: 'guest', publicId: trim(publicId), ...content });
         return updated;
@@ -520,7 +524,7 @@ export const createInquiryService = ({ repository }) => {
           bodyText,
           adminIdentityId: actor.id,
           adminDisplayName: actor.displayName,
-          attachments: normalizeSecureAttachmentInputs(input?.attachments),
+          attachments: await prepareAttachments(input?.attachments),
         });
         const storedAnswer = Array.isArray(updated?.answers) ? updated.answers.find((answer) => trim(answer?.id) === answerId) : null;
         return updated;
@@ -542,7 +546,7 @@ export const createInquiryService = ({ repository }) => {
           bodyText,
           actorId: actor.id,
           attachments: Object.prototype.hasOwnProperty.call(input || {}, 'attachments')
-            ? normalizeSecureAttachmentInputs(input?.attachments)
+            ? await prepareAttachments(input?.attachments)
             : null,
         });
         const storedAnswer = Array.isArray(updated?.answers) ? updated.answers.find((answer) => trim(answer?.id) === normalizedAnswerId) : null;

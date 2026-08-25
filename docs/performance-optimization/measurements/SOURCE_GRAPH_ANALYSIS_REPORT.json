@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T11:32:21.523Z",
+  "generatedAt": "2026-08-25T12:18:25.855Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1472408,
+        "sourceBytes": 1473099,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -327,16 +327,16 @@
             "bytes": 4569
           },
           {
-            "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4302
-          },
-          {
             "file": "src/selectors/appReadinessSelectors.js",
             "bytes": 4283
           },
           {
             "file": "src/features/settings/useSiteSettingsController.js",
             "bytes": 4281
+          },
+          {
+            "file": "src/components/SecureAttachmentEditor.jsx",
+            "bytes": 4141
           },
           {
             "file": "src/platform/appDataRefs.js",
@@ -377,6 +377,10 @@
           {
             "file": "src/services/publicAssetCatalog.js",
             "bytes": 3257
+          },
+          {
+            "file": "src/components/SecureAttachmentList.jsx",
+            "bytes": 3254
           },
           {
             "file": "src/hooks/useStableContextGroups.js",
@@ -437,10 +441,6 @@
           {
             "file": "src/components/DomesticPhoneInput.jsx",
             "bytes": 2414
-          },
-          {
-            "file": "src/components/SecureAttachmentList.jsx",
-            "bytes": 2402
           },
           {
             "file": "src/features/content/useSiteContentRefreshRevision.js",
@@ -554,7 +554,7 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 94,
-        "sourceBytes": 1056809,
+        "sourceBytes": 1056648,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -761,16 +761,16 @@
             "bytes": 4569
           },
           {
-            "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4302
-          },
-          {
             "file": "src/selectors/appReadinessSelectors.js",
             "bytes": 4283
           },
           {
             "file": "src/features/settings/useSiteSettingsController.js",
             "bytes": 4281
+          },
+          {
+            "file": "src/components/SecureAttachmentEditor.jsx",
+            "bytes": 4141
           },
           {
             "file": "src/platform/appDataRefs.js",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2044414,
+        "sourceBytes": 2045105,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1355,16 +1355,16 @@
             "bytes": 4345
           },
           {
-            "file": "src/components/SecureAttachmentEditor.jsx",
-            "bytes": 4302
-          },
-          {
             "file": "src/selectors/appReadinessSelectors.js",
             "bytes": 4283
           },
           {
             "file": "src/features/settings/useSiteSettingsController.js",
             "bytes": 4281
+          },
+          {
+            "file": "src/components/SecureAttachmentEditor.jsx",
+            "bytes": 4141
           },
           {
             "file": "src/services/adminRequestQuery.js",
@@ -1409,6 +1409,10 @@
           {
             "file": "src/services/publicAssetCatalog.js",
             "bytes": 3257
+          },
+          {
+            "file": "src/components/SecureAttachmentList.jsx",
+            "bytes": 3254
           },
           {
             "file": "src/hooks/useStableContextGroups.js",
@@ -1485,10 +1489,6 @@
           {
             "file": "src/utils/popupUtils.js",
             "bytes": 2488
-          },
-          {
-            "file": "src/components/SecureAttachmentList.jsx",
-            "bytes": 2402
           },
           {
             "file": "src/features/members/useAdminMemberAccountPasswordActions.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 601095,
+    "sourceBytes": 601786,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1769,16 +1769,16 @@
         "bytes": 4569
       },
       {
-        "file": "src/components/SecureAttachmentEditor.jsx",
-        "bytes": 4302
-      },
-      {
         "file": "src/selectors/appReadinessSelectors.js",
         "bytes": 4283
       },
       {
         "file": "src/features/settings/useSiteSettingsController.js",
         "bytes": 4281
+      },
+      {
+        "file": "src/components/SecureAttachmentEditor.jsx",
+        "bytes": 4141
       },
       {
         "file": "src/platform/appDataRefs.js",
@@ -1803,6 +1803,10 @@
       {
         "file": "src/services/publicAssetCatalog.js",
         "bytes": 3257
+      },
+      {
+        "file": "src/components/SecureAttachmentList.jsx",
+        "bytes": 3254
       },
       {
         "file": "src/hooks/useStableContextGroups.js",
@@ -1843,10 +1847,6 @@
       {
         "file": "src/utils/popupUtils.js",
         "bytes": 2488
-      },
-      {
-        "file": "src/components/SecureAttachmentList.jsx",
-        "bytes": 2402
       },
       {
         "file": "src/features/content/useSiteContentRefreshRevision.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2903073,
+      "sourceBytes": 2903764,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3080,16 +3080,16 @@
           "bytes": 4345
         },
         {
-          "file": "src/components/SecureAttachmentEditor.jsx",
-          "bytes": 4302
-        },
-        {
           "file": "src/selectors/appReadinessSelectors.js",
           "bytes": 4283
         },
         {
           "file": "src/features/settings/useSiteSettingsController.js",
           "bytes": 4281
+        },
+        {
+          "file": "src/components/SecureAttachmentEditor.jsx",
+          "bytes": 4141
         },
         {
           "file": "src/services/adminRequestQuery.js",
@@ -3150,6 +3150,10 @@
         {
           "file": "src/services/publicAssetCatalog.js",
           "bytes": 3257
+        },
+        {
+          "file": "src/components/SecureAttachmentList.jsx",
+          "bytes": 3254
         },
         {
           "file": "src/hooks/useStableContextGroups.js",
@@ -3246,10 +3250,6 @@
         {
           "file": "src/components/DomesticPhoneInput.jsx",
           "bytes": 2414
-        },
-        {
-          "file": "src/components/SecureAttachmentList.jsx",
-          "bytes": 2402
         },
         {
           "file": "src/features/members/useAdminMemberAccountPasswordActions.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2915727,
+      "sourceBytes": 2916418,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3962,16 +3962,16 @@
           "bytes": 4345
         },
         {
-          "file": "src/components/SecureAttachmentEditor.jsx",
-          "bytes": 4302
-        },
-        {
           "file": "src/selectors/appReadinessSelectors.js",
           "bytes": 4283
         },
         {
           "file": "src/features/settings/useSiteSettingsController.js",
           "bytes": 4281
+        },
+        {
+          "file": "src/components/SecureAttachmentEditor.jsx",
+          "bytes": 4141
         },
         {
           "file": "src/services/adminRequestQuery.js",
@@ -4032,6 +4032,10 @@
         {
           "file": "src/services/publicAssetCatalog.js",
           "bytes": 3257
+        },
+        {
+          "file": "src/components/SecureAttachmentList.jsx",
+          "bytes": 3254
         },
         {
           "file": "src/hooks/useStableContextGroups.js",
@@ -4128,10 +4132,6 @@
         {
           "file": "src/components/DomesticPhoneInput.jsx",
           "bytes": 2414
-        },
-        {
-          "file": "src/components/SecureAttachmentList.jsx",
-          "bytes": 2402
         },
         {
           "file": "src/features/members/useAdminMemberAccountPasswordActions.js",

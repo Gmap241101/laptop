@@ -2,6 +2,25 @@ import { useState } from 'react';
 import { Download, Paperclip } from 'lucide-react';
 import { downloadSecureAttachment, getSecureAttachmentUrl } from '../features/attachments/secureAttachmentApi.js';
 
+const formatFileSize = (value) => {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return '용량 미확인';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 ** 2)).toFixed(bytes < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+};
+
+const normalizeDownloadCount = (value) => Math.max(0, Math.trunc(Number(value) || 0));
+
+const AttachmentLabel = ({ attachment }) => (
+  <span className="min-w-0">
+    <span className="block truncate font-semibold text-slate-700">{attachment.name}</span>
+    <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+      {formatFileSize(attachment.fileSizeBytes)} · 다운로드 {normalizeDownloadCount(attachment.downloadCount)}회
+    </span>
+  </span>
+);
+
 export default function SecureAttachmentList({ attachments = [], authMode = 'public', guestToken = '' }) {
   const items = Array.isArray(attachments) ? attachments.filter((item) => item?.id && item?.name) : [];
   const [downloadingId, setDownloadingId] = useState('');
@@ -25,12 +44,14 @@ export default function SecureAttachmentList({ attachments = [], authMode = 'pub
       <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-700"><Paperclip size={14} />첨부파일 {items.length}개</div>
       <div className="space-y-2">
         {items.map((attachment) => authMode === 'public' ? (
-          <a key={attachment.id} href={getSecureAttachmentUrl(attachment.id)} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-orange-600">
-            <span className="min-w-0 truncate font-semibold">{attachment.name}</span><Download size={14} className="shrink-0" />
+          <a key={attachment.id} href={getSecureAttachmentUrl(attachment.id)} className="group flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-xs transition hover:border-slate-300 hover:bg-white">
+            <AttachmentLabel attachment={attachment} />
+            <Download size={14} className="shrink-0 text-slate-500 transition group-hover:text-orange-600" />
           </a>
         ) : (
-          <button key={attachment.id} type="button" disabled={downloadingId === attachment.id} onClick={() => void downloadProtected(attachment)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-left text-xs text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-orange-600 disabled:cursor-wait disabled:opacity-60">
-            <span className="min-w-0 truncate font-semibold">{attachment.name}</span><Download size={14} className="shrink-0" />
+          <button key={attachment.id} type="button" disabled={downloadingId === attachment.id} onClick={() => void downloadProtected(attachment)} className="group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-left text-xs transition hover:border-slate-300 hover:bg-white disabled:cursor-wait disabled:opacity-60">
+            <AttachmentLabel attachment={attachment} />
+            <Download size={14} className="shrink-0 text-slate-500 transition group-hover:text-orange-600" />
           </button>
         ))}
       </div>

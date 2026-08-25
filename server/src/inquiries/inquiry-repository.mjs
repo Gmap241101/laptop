@@ -195,7 +195,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                   JSONB_BUILD_OBJECT(
                     'id',att.attachment_id,
                     'name',att.display_name,
-                    'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                    'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                   ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                 )
                   FROM app_secure_attachments att
@@ -726,7 +728,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                           JSONB_BUILD_OBJECT(
                             'id',att.attachment_id,
                             'name',att.display_name,
-                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                           ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                         )
                           FROM app_secure_attachments att
@@ -745,7 +749,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                     JSONB_BUILD_OBJECT(
                       'id',att.attachment_id,
                       'name',att.display_name,
-                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                     ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                   )
                     FROM app_secure_attachments att
@@ -1045,7 +1051,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                           JSONB_BUILD_OBJECT(
                             'id',att.attachment_id,
                             'name',att.display_name,
-                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                           ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                         )
                           FROM app_secure_attachments att
@@ -1080,7 +1088,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                     JSONB_BUILD_OBJECT(
                       'id',att.attachment_id,
                       'name',att.display_name,
-                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                     ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                   )
                     FROM app_secure_attachments att
@@ -1214,7 +1224,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                           JSONB_BUILD_OBJECT(
                             'id',att.attachment_id,
                             'name',att.display_name,
-                            'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                            'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                           ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                         )
                           FROM app_secure_attachments att
@@ -1249,7 +1261,9 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
                     JSONB_BUILD_OBJECT(
                       'id',att.attachment_id,
                       'name',att.display_name,
-                      'downloadPath','/api/attachments/' || att.attachment_id || '/download'
+                      'downloadPath','/api/attachments/' || att.attachment_id || '/download',
+                    'fileSizeBytes',att.file_size_bytes,
+                    'downloadCount',att.download_count
                     ) ORDER BY att.sort_order,att.created_at,att.attachment_id
                   )
                     FROM app_secure_attachments att

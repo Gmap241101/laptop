@@ -92,10 +92,13 @@ const siteContentService = createSiteContentService({ repository: siteContentRep
 const assetRepository = createAssetRepository(pool);
 const secureAttachmentRepository = createSecureAttachmentRepository(pool);
 const secureAttachmentService = createSecureAttachmentService({ repository: secureAttachmentRepository });
+queueMicrotask(() => {
+  void secureAttachmentService.backfillMissingMetadata({ limit: 25, concurrency: 3 }).catch(() => null);
+});
 const boardRepository = createBoardRepository(pool, { attachmentRepository: secureAttachmentRepository });
-const boardService = createBoardService({ repository: boardRepository });
+const boardService = createBoardService({ repository: boardRepository, attachmentService: secureAttachmentService });
 const inquiryRepository = createInquiryRepository(pool, { attachmentRepository: secureAttachmentRepository });
-const inquiryService = createInquiryService({ repository: inquiryRepository });
+const inquiryService = createInquiryService({ repository: inquiryRepository, attachmentService: secureAttachmentService });
 const accountLifecycleService = createAccountLifecycleService({
   repository: accountLifecycleRepository,
   siteContentRepository,

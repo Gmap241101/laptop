@@ -34,6 +34,7 @@ const phase34RejoinApprovalConsolidation = readFileSync('server/migrations/032_p
 const phase34AdminMemberDirectoryOverride = readFileSync('server/migrations/033_phase34_admin_member_directory_override.sql', 'utf8');
 const phase34PrivateInquiryBoard = readFileSync('server/migrations/034_phase34_private_inquiry_board.sql', 'utf8');
 const phase34SecureExternalAttachments = readFileSync('server/migrations/035_phase34_secure_external_attachments.sql', 'utf8');
+const phase34SecureAttachmentMetadataMetrics = readFileSync('server/migrations/036_phase34_secure_attachment_metadata_metrics.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -598,4 +599,21 @@ if (/(BYTEA|BLOB|large_object)/i.test(phase34SecureExternalAttachments)) {
   throw new Error('Migration 035 must store external attachment references only, not file bytes.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, and 035 secure external attachments, are type-safe)');
+
+
+for (const marker of [
+  'ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT',
+  'ADD COLUMN IF NOT EXISTS download_count BIGINT NOT NULL DEFAULT 0',
+  'ADD COLUMN IF NOT EXISTS last_downloaded_at TIMESTAMPTZ',
+  'ADD COLUMN IF NOT EXISTS metadata_checked_at TIMESTAMPTZ',
+  'app_secure_attachments_file_size_nonnegative',
+  'app_secure_attachments_download_count_nonnegative',
+  "'phase34_secure_attachment_metadata_metrics'",
+  "'downloadCount', 'atomic-successful-download-completion-only'",
+  "'sourceUrlExposure', 'server-only'",
+]) {
+  if (!phase34SecureAttachmentMetadataMetrics.includes(marker)) {
+    throw new Error(`Phase 34 secure attachment metadata metrics migration marker is missing: ${marker}`);
+  }
+}
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, 035 secure external attachments, and 036 attachment metadata metrics, are type-safe)');

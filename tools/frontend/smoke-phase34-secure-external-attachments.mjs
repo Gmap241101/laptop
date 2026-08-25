@@ -12,7 +12,7 @@ const userBoard = read('src/user/UserBoardPanel.jsx');
 const userInquiry = read('src/user/UserInquiryPanel.jsx');
 const adminInquiry = read('src/admin/AdminInquiryPanel.jsx');
 
-for (const marker of ['첨부파일', '외부 HTTPS 직접 다운로드 주소', '기존 보안 링크 유지', '최대 {MAX_ATTACHMENTS}개']) {
+for (const marker of ['첨부파일', '외부 HTTPS 직접 다운로드 파일 주소', '기존 보안 링크 유지', '최대 {MAX_ATTACHMENTS}개']) {
   assert.ok(editor.includes(marker), `secure attachment editor marker missing: ${marker}`);
 }
 assert.match(editor, /targetUrl/);
@@ -20,6 +20,11 @@ assert.match(editor, /attachments\.length >= MAX_ATTACHMENTS/);
 assert.match(list, /if \(!items\.length\) return null/);
 assert.match(list, /getSecureAttachmentUrl/);
 assert.match(list, /downloadSecureAttachment/);
+assert.match(list, /formatFileSize/);
+assert.match(list, /fileSizeBytes/);
+assert.match(list, /downloadCount/);
+assert.match(list, /다운로드 \{normalizeDownloadCount\(attachment\.downloadCount\)\}회/);
+assert.match(list, /용량 미확인/);
 assert.doesNotMatch(list, /targetUrl|\.url\b/, 'reader attachment list must not receive or render the external target URL');
 assert.match(api, /\/api\/attachments\/\$\{encodeURIComponent\(trim\(attachmentId\)\)\}\/download/);
 assert.match(api, /headers\.Authorization = `Bearer/);
