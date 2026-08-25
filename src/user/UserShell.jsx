@@ -261,7 +261,6 @@ const UserShell = ({
                   aria-expanded={normalizedSiteSettings.memberRentalStatusEnabled !== false ? isRentalStatusMenuOpen : undefined}
                 >
                   대여현황
-                  {normalizedSiteSettings.memberRentalStatusEnabled !== false ? <ChevronDown size={15} /> : null}
                 </button>
 
                 <AnimatePresence>

@@ -1,3 +1,4 @@
+import { sortKoreanNaturalTexts } from '../utils/appUtils.js';
 import UserRentalPeriodFields from './UserRentalPeriodFields.jsx';
 
 export default function UserRentalPanel({ ctx }) {
@@ -50,6 +51,8 @@ export default function UserRentalPanel({ ctx }) {
     userProfile,
     userProfileReady,
   } = ctx;
+
+  const rentalAssetCategories = sortKoreanNaturalTexts(data.assetCategories || []);
 
   if (
     !firebaseAuthReady ||
@@ -204,7 +207,7 @@ export default function UserRentalPanel({ ctx }) {
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
                       >
                         <option value="전체">전체</option>
-                        {(data.assetCategories || []).map((category) => (
+                        {rentalAssetCategories.map((category) => (
                           <option key={category} value={category}>{category}</option>
                         ))}
                       </select>

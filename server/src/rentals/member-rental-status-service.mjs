@@ -1,5 +1,6 @@
 const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const naturalTextCompare = (left, right) => String(left ?? '').localeCompare(String(right ?? ''), 'ko-KR', { numeric: true, sensitivity: 'base' });
 
 const errorWith = (code, message, status) => Object.assign(new Error(message), { code, status });
 
@@ -75,6 +76,7 @@ const buildSegments = ({ row, referenceDate, isMine, monthStart, monthEnd }) => 
   };
 
   if (row.status === '신청중' || row.status === '보류') {
+    // A pending review blocks only the member's requested rental period, never the application date-to-today range.
     add('신청 검토중', startDate, dueDate);
     return segments;
   }
@@ -165,10 +167,15 @@ export const createMemberRentalStatusService = ({ repository, todayProvider = ko
         }));
       });
 
+      categories.sort(naturalTextCompare);
+      const assets = [...assetsById.values()].sort((left, right) =>
+        naturalTextCompare(left.category, right.category) ||
+        naturalTextCompare(left.assetNo, right.assetNo) ||
+        naturalTextCompare(left.id, right.id));
       events.sort((left, right) =>
         left.visibleStartDate.localeCompare(right.visibleStartDate) ||
-        left.assetNo.localeCompare(right.assetNo, 'ko') ||
-        left.status.localeCompare(right.status, 'ko'));
+        naturalTextCompare(left.assetNo, right.assetNo) ||
+        naturalTextCompare(left.status, right.status));
 
       const currentSummary = rows?.[0]?.currentSummary || Object.freeze({ total: 0, available: 0, requested: 0, reserved: 0, approved: 0, overdue: 0 });
 
@@ -180,7 +187,7 @@ export const createMemberRentalStatusService = ({ repository, todayProvider = ko
         referenceDate,
         currentSummary,
         categories: Object.freeze(categories),
-        assets: Object.freeze([...assetsById.values()]),
+        assets: Object.freeze(assets),
         events: Object.freeze(events),
       });
     },

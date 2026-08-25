@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Filter,
   Laptop,
   RotateCcw,
@@ -15,12 +13,11 @@ import { Button, Card, CardContent } from '../components/CommonUI.jsx';
 import RentalStatusBoard from '../components/RentalStatusBoard.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import { getHolidayDisplayName, normalizeHolidayList } from '../domain/rentalPolicy.js';
-import UserRentalStatusSectionNav from './UserRentalStatusSectionNav.jsx';
 import {
   getCachedMemberRentalStatusMonth,
   loadMemberRentalStatusMonth,
 } from '../features/requests/memberRentalStatusReadService.js';
-import { today } from '../utils/appUtils.js';
+import { compareKoreanNaturalText, compareRentalAssetDisplay, sortKoreanNaturalTexts, today } from '../utils/appUtils.js';
 
 const SELECTED_ASSET_STORAGE_KEY = 'mk-rental-status-selected-assets-v1';
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -107,12 +104,20 @@ const eventIncludesDate = (event, date) =>
   String(event?.visibleEndDate || event?.endDate || '') >= date;
 const eventSort = (left, right) =>
   (EVENT_PRIORITY[right.status] || 0) - (EVENT_PRIORITY[left.status] || 0) ||
-  String(left.assetNo || '').localeCompare(String(right.assetNo || ''), 'ko');
+  compareKoreanNaturalText(left.assetNo, right.assetNo);
 const getAssetStatusOnDate = (asset, events, date, referenceDate) => {
   const candidates = events.filter((event) => event.assetId === asset.id && eventIncludesDate(event, date)).sort(eventSort);
   if (candidates.length > 0) return { status: candidates[0].status, event: candidates[0] };
   if (asset.baseStatus === '대여불가' && date >= referenceDate) return { status: '대여불가', event: null };
   return { status: '대여가능', event: null };
+};
+const getAssetStatusCountsOnDate = (assets, events, date, referenceDate) => {
+  const counts = {};
+  (assets || []).forEach((asset) => {
+    const { status } = getAssetStatusOnDate(asset, events, date, referenceDate);
+    counts[status] = (counts[status] || 0) + 1;
+  });
+  return counts;
 };
 const statusClass = (status) => STATUS_TONE[status] || STATUS_TONE.대여가능;
 const safeReadSelectedAssets = () => {
@@ -138,7 +143,7 @@ const ModalFrame = ({ title, description = '', onClose, children, maxWidth = 'ma
     <div className={`flex max-h-[92vh] w-full ${maxWidth} flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl`}>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
         <div>
-          <h3 className="text-base font-black text-slate-950 sm:text-lg">{title}</h3>
+          <h3 className="text-base font-bold text-slate-950 sm:text-lg">{title}</h3>
           {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
         </div>
         <button type="button" onClick={onClose} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100" aria-label="닫기">
@@ -179,17 +184,18 @@ function UserRentalStatusPanel({ ctx }) {
     if (!enabled) return undefined;
     let cancelled = false;
     const cached = getCachedMemberRentalStatusMonth(month);
-    if (cached) {
+    if (cached?.month === month) {
       setPayload(cached);
       setLoading(false);
     } else {
+      setPayload(null);
       setLoading(true);
     }
     setErrorMessage('');
     loadMemberRentalStatusMonth(month)
       .then((value) => {
         if (cancelled) return;
-        setPayload(value);
+        if (value?.month === month) setPayload(value);
         setLoading(false);
       })
       .catch((error) => {
@@ -210,17 +216,24 @@ function UserRentalStatusPanel({ ctx }) {
       const cached = getCachedMemberRentalStatusMonth(month);
       if (cached && Date.now() - Number(cached.loadedAt || 0) < 30000) return;
       loadMemberRentalStatusMonth(month, { force: true })
-        .then((value) => setPayload(value))
+        .then((value) => { if (value?.month === month) setPayload(value); })
         .catch(() => {});
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [enabled, month]);
 
-  const assets = Array.isArray(payload?.assets) ? payload.assets : [];
-  const events = Array.isArray(payload?.events) ? payload.events : [];
-  const categories = Array.isArray(payload?.categories) ? payload.categories : [];
-  const referenceDate = String(payload?.referenceDate || today());
+  const activePayload = payload?.month === month ? payload : null;
+  const assets = useMemo(
+    () => [...(Array.isArray(activePayload?.assets) ? activePayload.assets : [])].sort(compareRentalAssetDisplay),
+    [activePayload]
+  );
+  const events = Array.isArray(activePayload?.events) ? activePayload.events : [];
+  const categories = useMemo(
+    () => sortKoreanNaturalTexts(activePayload?.categories || []),
+    [activePayload]
+  );
+  const referenceDate = String(activePayload?.referenceDate || today());
   const weeks = useMemo(() => buildMonthWeeks(month), [month]);
   const holidayMap = useMemo(() => new Map(
     normalizeHolidayList(data?.settings?.holidays || [])
@@ -305,18 +318,14 @@ function UserRentalStatusPanel({ ctx }) {
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
         {WEEKDAYS.map((label, index) => (
-          <div key={label} className={`px-1 py-2.5 text-center text-xs font-black ${index === 0 ? 'text-rose-500' : index === 6 ? 'text-sky-600' : 'text-slate-700'}`}>{label}</div>
+          <div key={label} className={`px-1 py-2.5 text-center text-xs font-bold ${index === 0 ? 'text-rose-500' : index === 6 ? 'text-sky-600' : 'text-slate-700'}`}>{label}</div>
         ))}
       </div>
       {weeks.map((week) => (
         <div key={week[0].value} className="grid grid-cols-7 border-b border-slate-200 last:border-b-0">
           {week.map((day) => {
             const holiday = holidayMap.get(day.value) || '';
-            const statuses = allModeAssets.reduce((map, asset) => {
-              const result = getAssetStatusOnDate(asset, events, day.value, referenceDate);
-              map[result.status] = (map[result.status] || 0) + 1;
-              return map;
-            }, {});
+            const statuses = getAssetStatusCountsOnDate(allModeAssets, events, day.value, referenceDate);
             const available = Number(statuses.대여가능 || 0);
             const occupied = Object.entries(statuses)
               .filter(([status, count]) => status !== '대여가능' && count > 0)
@@ -327,21 +336,21 @@ function UserRentalStatusPanel({ ctx }) {
                 type="button"
                 onClick={() => day.inMonth && setDateModal(day.value)}
                 disabled={!day.inMonth}
-                className={`min-h-[118px] border-r border-slate-200 p-1.5 text-left align-top transition last:border-r-0 sm:min-h-[145px] sm:p-2 ${day.inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/70 text-slate-300'}`}
+                className={`flex h-full min-h-[118px] flex-col items-stretch justify-start border-r border-slate-200 p-1.5 text-left transition last:border-r-0 sm:min-h-[145px] sm:p-2 ${day.inMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/70 text-slate-300'}`}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <span className={`text-xs font-black sm:text-sm ${!day.inMonth ? 'text-slate-300' : day.weekday === 0 ? 'text-rose-500' : day.weekday === 6 ? 'text-sky-600' : 'text-slate-800'}`}>{day.day}</span>
-                  {holiday && day.inMonth ? <span className="max-w-[70%] truncate text-[9px] font-bold text-rose-500 sm:text-[10px]" title={holiday}>{holiday}</span> : null}
+                  <span className={`text-xs font-bold sm:text-sm ${!day.inMonth ? 'text-slate-300' : day.weekday === 0 ? 'text-rose-500' : day.weekday === 6 ? 'text-sky-600' : 'text-slate-800'}`}>{day.day}</span>
+                  {holiday && day.inMonth ? <span className="max-w-[70%] truncate text-[9px] font-semibold text-rose-500 sm:text-[10px]" title={holiday}>{holiday}</span> : null}
                 </div>
                 {day.inMonth ? (
                   <div className="mt-2 space-y-1">
-                    <div className="text-[10px] font-bold text-slate-600 sm:text-xs">가용 {available} / {allModeAssets.length}</div>
+                    <div className="text-[10px] font-semibold text-slate-600 sm:text-xs">가용 {available} / {allModeAssets.length}</div>
                     {occupied.slice(0, 3).map(([status, count]) => (
-                      <div key={status} className={`flex items-center justify-between rounded-lg border px-1.5 py-0.5 text-[9px] font-bold sm:px-2 sm:text-[10px] ${statusClass(status)}`}>
+                      <div key={status} className={`flex items-center justify-between rounded-lg border px-1.5 py-0.5 text-[9px] font-semibold sm:px-2 sm:text-[10px] ${statusClass(status)}`}>
                         <span className="truncate">{status}</span><span>{count}</span>
                       </div>
                     ))}
-                    {occupied.length > 3 ? <div className="text-[9px] font-bold text-slate-500">+ {occupied.length - 3}개 상태</div> : null}
+                    {occupied.length > 3 ? <div className="text-[9px] font-semibold text-slate-500">+ {occupied.length - 3}개 상태</div> : null}
                   </div>
                 ) : null}
               </button>
@@ -356,7 +365,7 @@ function UserRentalStatusPanel({ ctx }) {
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
         {WEEKDAYS.map((label, index) => (
-          <div key={label} className={`px-1 py-2.5 text-center text-xs font-black ${index === 0 ? 'text-rose-500' : index === 6 ? 'text-sky-600' : 'text-slate-700'}`}>{label}</div>
+          <div key={label} className={`px-1 py-2.5 text-center text-xs font-bold ${index === 0 ? 'text-rose-500' : index === 6 ? 'text-sky-600' : 'text-slate-700'}`}>{label}</div>
         ))}
       </div>
       {weeks.map((week) => {
@@ -367,7 +376,7 @@ function UserRentalStatusPanel({ ctx }) {
         const laneEnds = [];
         candidates
           .slice()
-          .sort((left, right) => left.visibleStartDate.localeCompare(right.visibleStartDate) || right.visibleEndDate.localeCompare(left.visibleEndDate) || String(left.assetNo).localeCompare(String(right.assetNo), 'ko'))
+          .sort((left, right) => left.visibleStartDate.localeCompare(right.visibleStartDate) || right.visibleEndDate.localeCompare(left.visibleEndDate) || compareKoreanNaturalText(left.assetNo, right.assetNo))
           .forEach((event) => {
             const startDate = event.visibleStartDate < weekStart ? weekStart : event.visibleStartDate;
             const endDate = event.visibleEndDate > weekEnd ? weekEnd : event.visibleEndDate;
@@ -386,8 +395,8 @@ function UserRentalStatusPanel({ ctx }) {
                 return (
                   <div key={day.value} className={`border-r border-slate-200 p-1.5 last:border-r-0 sm:p-2 ${day.inMonth ? 'bg-white' : 'bg-slate-50/70'}`}>
                     <div className="flex items-start justify-between gap-1">
-                      <span className={`text-xs font-black sm:text-sm ${!day.inMonth ? 'text-slate-300' : day.weekday === 0 ? 'text-rose-500' : day.weekday === 6 ? 'text-sky-600' : 'text-slate-800'}`}>{day.day}</span>
-                      {holiday && day.inMonth ? <span className="max-w-[65%] truncate text-[8px] font-bold text-rose-500 sm:text-[9px]" title={holiday}>{holiday}</span> : null}
+                      <span className={`text-xs font-bold sm:text-sm ${!day.inMonth ? 'text-slate-300' : day.weekday === 0 ? 'text-rose-500' : day.weekday === 6 ? 'text-sky-600' : 'text-slate-800'}`}>{day.day}</span>
+                      {holiday && day.inMonth ? <span className="max-w-[65%] truncate text-[8px] font-semibold text-rose-500 sm:text-[9px]" title={holiday}>{holiday}</span> : null}
                     </div>
                   </div>
                 );
@@ -399,7 +408,7 @@ function UserRentalStatusPanel({ ctx }) {
                   key={`${event.assetId}-${event.status}-${event.startDate}-${index}`}
                   type="button"
                   onClick={() => setSelectedEvent(event)}
-                  className={`pointer-events-auto mx-[1px] flex min-w-0 items-center gap-1 overflow-hidden rounded-md border px-1.5 text-left text-[9px] font-black shadow-sm transition sm:text-[10px] ${EVENT_BAR_TONE[event.status] || EVENT_BAR_TONE.반납완료} ${event.isMine ? 'ring-2 ring-orange-400/70 ring-offset-1' : ''}`}
+                  className={`pointer-events-auto mx-[1px] flex min-w-0 items-center gap-1 overflow-hidden rounded-md border px-1.5 text-left text-[9px] font-bold shadow-sm transition sm:text-[10px] ${EVENT_BAR_TONE[event.status] || EVENT_BAR_TONE.반납완료} ${event.isMine ? 'ring-2 ring-orange-400/70 ring-offset-1' : ''}`}
                   style={{ gridColumn: `${startCol + 1} / ${endCol + 2}`, gridRow: lane + 1 }}
                   title={`${event.assetNo} · ${event.status} · ${event.startDate} ~ ${event.endDate}`}
                 >
@@ -408,7 +417,7 @@ function UserRentalStatusPanel({ ctx }) {
               ))}
             </div>
             {hidden.length > 0 ? (
-              <button type="button" onClick={() => setOverflowEvents(hidden)} className="absolute bottom-2 right-2 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-black text-slate-600 shadow-sm hover:bg-slate-50">
+              <button type="button" onClick={() => setOverflowEvents(hidden)} className="absolute bottom-2 right-2 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 shadow-sm hover:bg-slate-50">
                 + {hidden.length}건 더보기
               </button>
             ) : null}
@@ -421,15 +430,10 @@ function UserRentalStatusPanel({ ctx }) {
   if (!enabled) {
     return (
       <div className="w-full space-y-6">
-        <UserRentalStatusSectionNav
-          activeTab="rentalStatus"
-          goToProtectedUserTab={goToProtectedUserTab}
-          memberRentalStatusEnabled={false}
-        />
         <Card>
           <CardContent className="py-14 text-center">
             <CalendarDays className="mx-auto h-10 w-10 text-slate-300" />
-            <h2 className="mt-4 text-lg font-black text-slate-900">전체 대여현황을 이용할 수 없습니다.</h2>
+            <h2 className="mt-4 text-lg font-bold text-slate-900">전체 대여현황을 이용할 수 없습니다.</h2>
             <p className="mt-2 text-sm text-slate-500">현재 회원용 전체 대여현황이 공개되지 않습니다.</p>
           </CardContent>
         </Card>
@@ -439,26 +443,21 @@ function UserRentalStatusPanel({ ctx }) {
 
   return (
     <div className="w-full space-y-6">
-      <UserRentalStatusSectionNav
-        activeTab="rentalStatus"
-        goToProtectedUserTab={goToProtectedUserTab}
-        memberRentalStatusEnabled={enabled}
-      />
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-9 text-white sm:px-8 sm:py-10">
           <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-20 left-16 h-44 w-44 rounded-full bg-orange-400/10 blur-3xl" />
           <div className="relative mx-auto max-w-3xl text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10"><CalendarDays size={24} /></div>
-            <h2 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">전체 대여현황</h2>
+            <h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">전체 대여현황</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">월별 기기 이용 일정과 과거 대여 이력을 확인할 수 있습니다.</p>
           </div>
         </div>
       </Card>
 
       <RentalStatusBoard
-        stats={payload?.currentSummary || {}}
-        loading={loading && !payload}
+        stats={activePayload?.currentSummary || {}}
+        loading={loading && !activePayload}
         title="오늘 기준 대여현황"
         referenceLabel={formatFullDate(referenceDate)}
         desktopGridClassName="xl:grid-cols-6"
@@ -469,15 +468,15 @@ function UserRentalStatusPanel({ ctx }) {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="inline-flex w-fit rounded-xl border border-slate-200 bg-slate-50 p-1">
               {[['all', '전체 자산'], ['selected', '선택 자산']].map(([value, label]) => (
-                <button key={value} type="button" onClick={() => setMode(value)} className={`rounded-lg px-4 py-2 text-sm font-black transition ${mode === value ? 'bg-white mk-brand-text shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
+                <button key={value} type="button" onClick={() => setMode(value)} className={`rounded-lg px-4 py-2 text-sm font-bold transition ${mode === value ? 'bg-white mk-brand-text shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
               ))}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               {mode === 'all' ? (
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                   <Filter size={14} />
-                  <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none mk-form-focus">
+                  <select value={category} onChange={(event) => setCategory(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none mk-form-focus">
                     <option value="all">전체 카테고리</option>
                     {categories.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
@@ -494,41 +493,41 @@ function UserRentalStatusPanel({ ctx }) {
                 <div className="text-xs text-slate-500">조회할 기기를 선택해 주세요.</div>
               ) : selectedAssets.length <= 6 ? (
                 <div className="flex flex-wrap gap-2">
-                  {selectedAssets.map((asset) => <span key={asset.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">{asset.assetNo}</span>)}
+                  {selectedAssets.map((asset) => <span key={asset.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{asset.assetNo}</span>)}
                 </div>
               ) : (
-                <div className="text-xs font-bold text-slate-700">선택한 기기 {selectedAssets.length}대 · {selectedAssets.slice(0, 4).map((asset) => asset.assetNo).join(' · ')} 외 {selectedAssets.length - 4}대</div>
+                <div className="text-xs font-semibold text-slate-700">선택한 기기 {selectedAssets.length}대 · {selectedAssets.slice(0, 4).map((asset) => asset.assetNo).join(' · ')} 외 {selectedAssets.length - 4}대</div>
               )}
             </div>
           ) : null}
 
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <div className="flex items-center gap-1">
-              <Button type="button" variant="outline" onClick={() => setMonth((current) => shiftMonth(current, -1))} className="h-9 w-9 p-0" aria-label="이전 달"><ChevronLeft size={17} /></Button>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-slate-100 pt-4">
+            <Button type="button" variant="outline" onClick={() => setMonth((current) => shiftMonth(current, -1))} className="h-9 w-9 justify-self-start p-0" aria-label="이전 달"><span aria-hidden="true" className="text-lg leading-none">‹</span></Button>
+            <div className="flex items-center justify-center gap-2">
+              <div className="text-center text-lg font-bold text-slate-950 sm:text-xl">{parseMonthKey(month).year}년 {parseMonthKey(month).monthIndex + 1}월</div>
               <Button type="button" variant="outline" onClick={() => setMonth(currentMonthKey())} className="px-3 py-2 text-xs">오늘</Button>
             </div>
-            <div className="text-center text-lg font-black text-slate-950 sm:text-xl">{parseMonthKey(month).year}년 {parseMonthKey(month).monthIndex + 1}월</div>
-            <Button type="button" variant="outline" onClick={() => setMonth((current) => shiftMonth(current, 1))} className="h-9 w-9 p-0" aria-label="다음 달"><ChevronRight size={17} /></Button>
+            <Button type="button" variant="outline" onClick={() => setMonth((current) => shiftMonth(current, 1))} className="h-9 w-9 justify-self-end p-0" aria-label="다음 달"><span aria-hidden="true" className="text-lg leading-none">›</span></Button>
           </div>
 
-          <div className="flex flex-wrap gap-1.5 text-[10px] font-bold sm:text-xs">
+          <div className="flex flex-wrap gap-1.5 text-[10px] font-semibold sm:text-xs">
             {['신청 검토중', '예약중', '대여중', '연체중', '반납완료', '연체반납'].map((status) => <span key={status} className={`rounded-full border px-2.5 py-1 ${statusClass(status)}`}>{status}</span>)}
             <span className="rounded-full border-2 border-orange-300 bg-white px-2.5 py-1 text-slate-700">내 신청</span>
           </div>
 
-          {loading && !payload ? (
+          {loading && !activePayload ? (
             <div className="grid grid-cols-7 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200" aria-label="대여현황 불러오는 중">
               {Array.from({ length: 35 }).map((_, index) => <div key={index} className="h-28 animate-pulse bg-slate-50" />)}
             </div>
           ) : errorMessage ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-8 text-center">
-              <div className="text-sm font-black text-rose-900">{errorMessage}</div>
-              <Button type="button" variant="outline" onClick={() => { setLoading(true); loadMemberRentalStatusMonth(month, { force: true }).then((value) => { setPayload(value); setErrorMessage(''); setLoading(false); }).catch(() => setLoading(false)); }} className="mt-4"><RotateCcw size={14} />다시 조회</Button>
+              <div className="text-sm font-bold text-rose-900">{errorMessage}</div>
+              <Button type="button" variant="outline" onClick={() => { setLoading(true); loadMemberRentalStatusMonth(month, { force: true }).then((value) => { if (value?.month === month) setPayload(value); setErrorMessage(''); setLoading(false); }).catch(() => setLoading(false)); }} className="mt-4"><RotateCcw size={14} />다시 조회</Button>
             </div>
           ) : mode === 'all' ? renderAllCalendar() : selectedAssets.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center">
               <Laptop className="mx-auto h-9 w-9 text-slate-300" />
-              <div className="mt-3 text-sm font-black text-slate-800">조회할 기기를 선택해 주세요.</div>
+              <div className="mt-3 text-sm font-bold text-slate-800">조회할 기기를 선택해 주세요.</div>
               <Button type="button" variant="outline" onClick={openPicker} className="mt-4"><Laptop size={14} />기기 선택</Button>
             </div>
           ) : renderSelectedCalendar()}
@@ -540,7 +539,7 @@ function UserRentalStatusPanel({ ctx }) {
           <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[1.35fr_0.9fr]">
             <div className="min-h-0 border-b border-slate-200 p-5 md:border-b-0 md:border-r sm:p-6">
               <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
-                <select value={pickerCategory} onChange={(event) => setPickerCategory(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 outline-none mk-form-focus">
+                <select value={pickerCategory} onChange={(event) => setPickerCategory(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 outline-none mk-form-focus">
                   <option value="all">전체 카테고리</option>
                   {categories.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
@@ -550,8 +549,8 @@ function UserRentalStatusPanel({ ctx }) {
                 </label>
               </div>
               <div className="mt-3 flex justify-between gap-2">
-                <div className="text-xs font-bold text-slate-500">선택 가능한 기기 {pickerAssets.length}대</div>
-                <button type="button" onClick={selectCurrentPickerList} className="text-xs font-black mk-brand-text hover:underline">현재 목록 전체 선택</button>
+                <div className="text-xs font-semibold text-slate-500">선택 가능한 기기 {pickerAssets.length}대</div>
+                <button type="button" onClick={selectCurrentPickerList} className="text-xs font-bold mk-brand-text hover:underline">현재 목록 전체 선택</button>
               </div>
               <div className="mt-3 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
                 {pickerAssets.map((asset) => {
@@ -559,30 +558,30 @@ function UserRentalStatusPanel({ ctx }) {
                   return (
                     <button key={asset.id} type="button" onClick={() => toggleDraftAsset(asset.id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${checked ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
                       <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${checked ? 'border-orange-500 mk-brand-bg text-white' : 'border-slate-300 bg-white'}`}>{checked ? <Check size={13} /> : null}</span>
-                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-black text-slate-900">{asset.assetNo}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{asset.category}{asset.model ? ` · ${asset.model}` : ''}</span></span>
-                      {asset.baseStatus === '대여불가' ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">현재 대여불가</span> : null}
+                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-900">{asset.assetNo}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{asset.category}{asset.model ? ` · ${asset.model}` : ''}</span></span>
+                      {asset.baseStatus === '대여불가' ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">현재 대여불가</span> : null}
                     </button>
                   );
                 })}
               </div>
             </div>
             <div className="min-h-0 bg-slate-50 p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-2"><div className="text-sm font-black text-slate-900">현재 선택한 기기</div><button type="button" onClick={() => setDraftSelectedAssetIds([])} className="text-xs font-black text-slate-500 hover:text-slate-900">전체 해제</button></div>
+              <div className="flex items-center justify-between gap-2"><div className="text-sm font-bold text-slate-900">현재 선택한 기기</div><button type="button" onClick={() => setDraftSelectedAssetIds([])} className="text-xs font-bold text-slate-500 hover:text-slate-900">전체 해제</button></div>
               <div className="mt-3 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
                 {pickerSelectedAssets.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-xs text-slate-500">선택된 기기가 없습니다.</div> : pickerSelectedAssets.map((asset) => (
-                  <div key={asset.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"><div className="min-w-0"><div className="truncate text-xs font-black text-slate-800">{asset.assetNo}</div><div className="truncate text-[10px] text-slate-500">{asset.category}</div></div><button type="button" onClick={() => toggleDraftAsset(asset.id)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={`${asset.assetNo} 선택 해제`}><X size={14} /></button></div>
+                  <div key={asset.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"><div className="min-w-0"><div className="truncate text-xs font-bold text-slate-800">{asset.assetNo}</div><div className="truncate text-[10px] text-slate-500">{asset.category}</div></div><button type="button" onClick={() => toggleDraftAsset(asset.id)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label={`${asset.assetNo} 선택 해제`}><X size={14} /></button></div>
                 ))}
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:px-6"><div className="text-xs font-bold text-slate-500">{draftSelectedAssetIds.length}대 선택</div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setPickerOpen(false)}>취소</Button><Button type="button" onClick={applyPicker}>선택 적용</Button></div></div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:px-6"><div className="text-xs font-semibold text-slate-500">{draftSelectedAssetIds.length}대 선택</div><div className="flex gap-2"><Button type="button" variant="outline" onClick={() => setPickerOpen(false)}>취소</Button><Button type="button" onClick={applyPicker}>선택 적용</Button></div></div>
         </ModalFrame>
       ) : null}
 
       {selectedDate ? (
         <ModalFrame title={`${formatFullDate(selectedDate)} 기기 현황`} description="선택한 날짜의 기기별 상태를 확인합니다." onClose={() => setSelectedDate('')}>
           <div className="grid gap-3 border-b border-slate-200 p-5 sm:grid-cols-[180px_1fr] sm:p-6">
-            <select value={dateStatusFilter} onChange={(event) => setDateStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 outline-none mk-form-focus">
+            <select value={dateStatusFilter} onChange={(event) => setDateStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 outline-none mk-form-focus">
               <option value="all">전체 상태</option>
               {['대여가능', '신청 검토중', '예약중', '대여중', '연체중', '반납완료', '연체반납', '대여불가'].map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
@@ -592,8 +591,8 @@ function UserRentalStatusPanel({ ctx }) {
             <div className="space-y-2">
               {dateAssets.map(({ asset, status, event }) => (
                 <button key={asset.id} type="button" onClick={() => event && setSelectedEvent(event)} disabled={!event} className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left ${event ? 'transition hover:bg-slate-50' : ''}`}>
-                  <div className="min-w-0"><div className="truncate text-sm font-black text-slate-900">{asset.assetNo}</div><div className="mt-0.5 truncate text-xs text-slate-500">{asset.category}{asset.model ? ` · ${asset.model}` : ''}</div>{event ? <div className="mt-1 text-[10px] text-slate-500">{formatShortDate(event.startDate)} ~ {formatShortDate(event.endDate)}</div> : null}</div>
-                  <div className="flex shrink-0 items-center gap-2">{event?.isMine ? <span className="rounded-full border-2 border-orange-300 bg-white px-2 py-0.5 text-[10px] font-black text-slate-700">내 신청</span> : null}<span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${statusClass(status)}`}>{status}</span></div>
+                  <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{asset.assetNo}</div><div className="mt-0.5 truncate text-xs text-slate-500">{asset.category}{asset.model ? ` · ${asset.model}` : ''}</div>{event ? <div className="mt-1 text-[10px] text-slate-500">{formatShortDate(event.startDate)} ~ {formatShortDate(event.endDate)}</div> : null}</div>
+                  <div className="flex shrink-0 items-center gap-2">{event?.isMine ? <span className="rounded-full border-2 border-orange-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-700">내 신청</span> : null}<span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusClass(status)}`}>{status}</span></div>
                 </button>
               ))}
               {dateAssets.length === 0 ? <div className="py-12 text-center text-sm text-slate-500">조건에 맞는 기기가 없습니다.</div> : null}
@@ -605,15 +604,15 @@ function UserRentalStatusPanel({ ctx }) {
       {selectedEvent ? (
         <ModalFrame title={selectedEvent.assetNo || '기기 대여 일정'} onClose={() => setSelectedEvent(null)} maxWidth="max-w-md">
           <div className="space-y-4 p-5 sm:p-6">
-            <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs font-black ${statusClass(selectedEvent.status)}`}>{selectedEvent.status}</span>{selectedEvent.isMine ? <span className="rounded-full border-2 border-orange-300 bg-white px-2.5 py-1 text-xs font-black text-slate-700">내 신청</span> : null}</div>
+            <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${statusClass(selectedEvent.status)}`}>{selectedEvent.status}</span>{selectedEvent.isMine ? <span className="rounded-full border-2 border-orange-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700">내 신청</span> : null}</div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <div className="font-black text-slate-900">{selectedEvent.category}{selectedEvent.model ? ` · ${selectedEvent.model}` : ''}</div>
+              <div className="font-bold text-slate-900">{selectedEvent.category}{selectedEvent.model ? ` · ${selectedEvent.model}` : ''}</div>
               <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-600">
-                <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">대여기간</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.startDate)} ~ {formatFullDate(selectedEvent.endDate)}</span></div>
-                {selectedEvent.dueDate ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">반납 예정일</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.dueDate)}</span></div> : null}
-                {selectedEvent.actualReturnDate ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">실제 반납일</span><span className="text-right font-bold text-slate-700">{formatFullDate(selectedEvent.actualReturnDate)}</span></div> : null}
-                {selectedEvent.status === '연체중' ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">현재 상태</span><span className="text-right font-bold text-rose-700">미반납 · {Number(selectedEvent.overdueDays || 0)}일 연체</span></div> : null}
-                {selectedEvent.status === '연체반납' ? <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">반납 상태</span><span className="text-right font-bold text-orange-700">{Number(selectedEvent.overdueDays || 0)}일 연체 후 반납</span></div> : null}
+                <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">대여기간</span><span className="text-right font-semibold text-slate-700">{formatFullDate(selectedEvent.startDate)} ~ {formatFullDate(selectedEvent.endDate)}</span></div>
+                {selectedEvent.dueDate ? <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">반납 예정일</span><span className="text-right font-semibold text-slate-700">{formatFullDate(selectedEvent.dueDate)}</span></div> : null}
+                {selectedEvent.actualReturnDate ? <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">실제 반납일</span><span className="text-right font-semibold text-slate-700">{formatFullDate(selectedEvent.actualReturnDate)}</span></div> : null}
+                {selectedEvent.status === '연체중' ? <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">현재 상태</span><span className="text-right font-semibold text-rose-700">미반납 · {Number(selectedEvent.overdueDays || 0)}일 연체</span></div> : null}
+                {selectedEvent.status === '연체반납' ? <div className="flex items-start justify-between gap-4"><span className="font-medium text-slate-500">반납 상태</span><span className="text-right font-semibold text-orange-700">{Number(selectedEvent.overdueDays || 0)}일 연체 후 반납</span></div> : null}
               </div>
             </div>
             <p className="text-xs leading-5 text-slate-500">한 대여 신청은 하나의 일정 막대로 표시하며, 연체중·연체반납은 해당 신청의 전체 이용기간에 대표 상태로 표시됩니다.</p>
@@ -625,7 +624,7 @@ function UserRentalStatusPanel({ ctx }) {
       {overflowEvents.length > 0 ? (
         <ModalFrame title="추가 대여 일정" description="같은 주에 겹쳐 표시되지 않은 일정을 확인합니다." onClose={() => setOverflowEvents([])} maxWidth="max-w-xl">
           <div className="max-h-[65vh] space-y-2 overflow-y-auto p-5 sm:p-6">
-            {overflowEvents.map((event, index) => <button key={`${event.assetId}-${event.status}-${index}`} type="button" onClick={() => { setOverflowEvents([]); setSelectedEvent(event); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"><div className="min-w-0"><div className="truncate text-sm font-black text-slate-900">{event.assetNo}</div><div className="mt-1 text-[10px] text-slate-500">{formatShortDate(event.startDate)} ~ {formatShortDate(event.endDate)}</div></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${statusClass(event.status)}`}>{event.status}</span></button>)}
+            {overflowEvents.map((event, index) => <button key={`${event.assetId}-${event.status}-${index}`} type="button" onClick={() => { setOverflowEvents([]); setSelectedEvent(event); }} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"><div className="min-w-0"><div className="truncate text-sm font-bold text-slate-900">{event.assetNo}</div><div className="mt-1 text-[10px] text-slate-500">{formatShortDate(event.startDate)} ~ {formatShortDate(event.endDate)}</div></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusClass(event.status)}`}>{event.status}</span></button>)}
           </div>
         </ModalFrame>
       ) : null}

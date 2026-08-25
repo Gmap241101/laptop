@@ -70,7 +70,13 @@ assert.deepEqual(
 );
 assert.equal(activeOverdueEvent?.dueDate, '2026-08-10');
 assert.equal(activeOverdueEvent?.overdueDays, 14);
-assert.equal(findEvent('asset-review', '신청 검토중')?.status, '신청 검토중');
+const reviewEvent = findEvent('asset-review', '신청 검토중');
+assert.equal(reviewEvent?.status, '신청 검토중');
+assert.deepEqual(
+  { startDate: reviewEvent?.startDate, endDate: reviewEvent?.endDate },
+  { startDate: '2026-08-26', endDate: '2026-08-28' },
+  'pending/review status must cover only the requested rental dates, not application date through today',
+);
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.visibleStartDate, '2026-08-01');
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.visibleEndDate, '2026-08-02');
 assert.equal(findEvent('asset-returned-normal', '반납완료')?.isMine, true);
@@ -91,12 +97,17 @@ const serviceSource = read('server/src/rentals/member-rental-status-service.mjs'
 const appSource = read('server/src/app.mjs');
 const indexSource = read('server/src/index.mjs');
 assert.ok(repositorySource.includes("request.status IN ('신청중', '보류', '대여중', '반납완료')"));
+assert.ok(repositorySource.includes('LEFT JOIN app_rental_asset_reservation_guards guard'), 'active blocking periods must prefer reservation-guard dates');
+assert.ok(repositorySource.includes('COALESCE(guard.start_date, request.start_date)'), 'calendar start dates must follow the active reservation guard when present');
+assert.ok(repositorySource.includes('COALESCE(guard.due_date, request.due_date)'), 'calendar due dates must follow the active reservation guard when present');
 assert.ok(repositorySource.includes('request.actual_return_date'));
 assert.ok(repositorySource.includes('request.overdue_days_at_return'));
 assert.ok(repositorySource.includes('current_summary AS'));
 assert.ok(!repositorySource.includes('requester_name') && !repositorySource.includes('requester_email') && !repositorySource.includes('purpose'));
 assert.ok(serviceSource.includes("add('연체중', startDate, referenceDate"));
 assert.ok(serviceSource.includes("add('연체반납', startDate, actualReturnDate"));
+assert.ok(serviceSource.includes("add('신청 검토중', startDate, dueDate"), 'pending review must use requested start/due dates');
+assert.ok(serviceSource.includes('naturalTextCompare'), 'calendar service must naturally order categories/assets/events');
 assert.equal(serviceSource.includes("add('대여중', startDate, dueDate);\n      add('연체중'"), false, 'overdue requests must not be split into normal and overdue bars');
 assert.ok(appSource.includes("url.pathname === '/api/users/me/rental-status'"));
 assert.ok(appSource.includes("memberStatus !== 'active'"));

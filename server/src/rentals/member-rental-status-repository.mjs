@@ -39,8 +39,8 @@ export const createMemberRentalStatusRepository = (pool) => {
                     request.request_id,
                     request.app_user_id,
                     item.laptop_id,
-                    request.start_date::text AS start_date,
-                    request.due_date::text AS due_date,
+                    COALESCE(guard.start_date, request.start_date)::text AS start_date,
+                    COALESCE(guard.due_date, request.due_date)::text AS due_date,
                     request.status,
                     request.actual_return_date,
                     request.overdue_days_at_return,
@@ -50,26 +50,30 @@ export const createMemberRentalStatusRepository = (pool) => {
                         THEN request.actual_return_date::date
                       WHEN request.status = '반납완료'
                         AND request.overdue_days_at_return > 0
-                        THEN request.due_date + request.overdue_days_at_return::int
-                      WHEN request.status = '대여중' AND request.due_date < $3::date
+                        THEN COALESCE(guard.due_date, request.due_date) + request.overdue_days_at_return::int
+                      WHEN request.status = '대여중' AND COALESCE(guard.due_date, request.due_date) < $3::date
                         THEN $3::date
-                      ELSE request.due_date
+                      ELSE COALESCE(guard.due_date, request.due_date)
                     END AS effective_end_date
                FROM app_rental_requests request
                JOIN app_rental_request_items item
                  ON item.rental_request_id = request.id
+               LEFT JOIN app_rental_asset_reservation_guards guard
+                 ON guard.request_id = request.request_id
+                AND guard.laptop_id = item.laptop_id
+                AND guard.active = TRUE
               WHERE request.status IN ('신청중', '보류', '대여중', '반납완료')
-                AND request.start_date <= $2::date
+                AND COALESCE(guard.start_date, request.start_date) <= $2::date
                 AND CASE
                       WHEN request.status = '반납완료'
                         AND request.actual_return_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
                         THEN request.actual_return_date::date
                       WHEN request.status = '반납완료'
                         AND request.overdue_days_at_return > 0
-                        THEN request.due_date + request.overdue_days_at_return::int
-                      WHEN request.status = '대여중' AND request.due_date < $3::date
+                        THEN COALESCE(guard.due_date, request.due_date) + request.overdue_days_at_return::int
+                      WHEN request.status = '대여중' AND COALESCE(guard.due_date, request.due_date) < $3::date
                         THEN $3::date
-                      ELSE request.due_date
+                      ELSE COALESCE(guard.due_date, request.due_date)
                     END >= $1::date
            ),
            current_summary AS (

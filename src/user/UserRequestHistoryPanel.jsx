@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import PaginationControls from '../components/PaginationControls.jsx';
-import UserRentalStatusSectionNav from './UserRentalStatusSectionNav.jsx';
 
 const getRequestCreatedAtMillis = (request = {}) => {
   const timestamp = request.createdAt;
@@ -61,7 +60,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
     rentalRequestsLoadErrorMessage,
     rentalRequestsReady,
     userActionSaving,
-    siteSettings,
     userProfile,
   } = ctx;
 
@@ -406,11 +404,6 @@ export default function UserRequestHistoryPanel({ ctx }) {
 
   return (
     <div className="w-full space-y-6">
-      <UserRentalStatusSectionNav
-        activeTab="history"
-        goToProtectedUserTab={goToProtectedUserTab}
-        memberRentalStatusEnabled={siteSettings?.memberRentalStatusEnabled !== false}
-      />
       <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
           <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />

@@ -120,7 +120,6 @@ export default function UserHomeBootstrapScreen() {
             <div className="group relative">
               <a href="/history" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-2 hover:bg-slate-100">
                 대여현황
-                {siteSettings.memberRentalStatusEnabled !== false ? <ChevronDown size={15} /> : null}
               </a>
               {siteSettings.memberRentalStatusEnabled !== false ? (
                 <div className="invisible absolute left-0 top-full z-40 mt-2 w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 opacity-0 shadow-xl transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">

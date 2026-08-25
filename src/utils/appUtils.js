@@ -6,6 +6,23 @@ import {
 const KOREA_TIME_OFFSET_MS = 9 * 60 * 60 * 1000;
 const KOREAN_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
+const KOREAN_NATURAL_COLLATOR = new Intl.Collator('ko-KR', {
+  numeric: true,
+  sensitivity: 'base',
+});
+
+export const compareKoreanNaturalText = (left, right) =>
+  KOREAN_NATURAL_COLLATOR.compare(String(left ?? ''), String(right ?? ''));
+
+export const sortKoreanNaturalTexts = (values = []) =>
+  [...(Array.isArray(values) ? values : [])].sort(compareKoreanNaturalText);
+
+export const compareRentalAssetDisplay = (left = {}, right = {}) =>
+  compareKoreanNaturalText(left.category, right.category) ||
+  compareKoreanNaturalText(left.assetNo, right.assetNo) ||
+  compareKoreanNaturalText(left.model, right.model) ||
+  compareKoreanNaturalText(left.id, right.id);
+
 const parseLegacyKoreanDateTimeText = (value) => {
   const text = String(value || '').trim();
   const match = text.match(

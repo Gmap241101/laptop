@@ -1,4 +1,5 @@
 import useAssetBulkUpload from '../features/assets/useAssetBulkUpload.js';
+import { sortKoreanNaturalTexts } from '../utils/appUtils.js';
 
 export default function AdminAssetsPanel({ ctx }) {
   const {
@@ -41,6 +42,9 @@ export default function AdminAssetsPanel({ ctx }) {
     splitRentalAssets,
     triggerToast,
   } = ctx;
+
+  const adminAssetCategories = sortKoreanNaturalTexts(data.assetCategories || ['노트북']);
+  const defaultAdminAssetCategory = adminAssetCategories[0] || '노트북';
 
   const {
     assetUploadParserLoading,
@@ -94,7 +98,7 @@ export default function AdminAssetsPanel({ ctx }) {
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none transition mk-form-focus"
                         >
                           <option value="전체">전체</option>
-                          {(data.assetCategories || []).map((category) => (
+                          {adminAssetCategories.map((category) => (
                             <option key={category} value={category}>{category}</option>
                           ))}
                         </select>
@@ -192,10 +196,10 @@ export default function AdminAssetsPanel({ ctx }) {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <Select
                               label="자산 카테고리"
-                              value={newLaptop.category || data.assetCategories?.[0] || '노트북'}
+                              value={newLaptop.category || defaultAdminAssetCategory}
                               onChange={(v) => setNewLaptop({ ...newLaptop, category: v })}
                             >
-                              {(data.assetCategories || ['노트북']).map((category) => (
+                              {adminAssetCategories.map((category) => (
                                 <option key={category} value={category}>{category}</option>
                               ))}
                             </Select>
@@ -325,10 +329,10 @@ export default function AdminAssetsPanel({ ctx }) {
                                 <div className="grid gap-4 sm:grid-cols-2">
                                   <Select
                                     label="자산 카테고리"
-                                    value={editLaptop.category || data.assetCategories?.[0] || '노트북'}
+                                    value={editLaptop.category || defaultAdminAssetCategory}
                                     onChange={(v) => setEditLaptop({ ...editLaptop, category: v })}
                                   >
-                                    {(data.assetCategories || ['노트북']).map((category) => (
+                                    {adminAssetCategories.map((category) => (
                                       <option key={category} value={category}>{category}</option>
                                     ))}
                                   </Select>

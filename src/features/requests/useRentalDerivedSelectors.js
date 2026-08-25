@@ -5,7 +5,7 @@ import {
   DEFAULT_ALLOW_NON_OVERLAPPING_SAME_ASSET_REQUESTS,
   getLaptopRentalAvailability,
 } from '../../domain/rentalPolicy.js';
-import { getDisplayRentalStatus, today } from '../../utils/appUtils.js';
+import { compareRentalAssetDisplay, getDisplayRentalStatus, today } from '../../utils/appUtils.js';
 import { normalizeEmailAddress } from '../../utils/memberPolicy.js';
 import { getRentalRestrictionStatus } from '../../utils/overduePolicy.js';
 
@@ -204,7 +204,7 @@ export const filterUserRentalLaptops = ({
           : laptopAvailability.blocked;
 
     return keywordMatched && categoryMatched && availabilityMatched;
-  });
+  }).sort(compareRentalAssetDisplay);
 };
 
 export const filterAdminRentalLaptops = ({
@@ -234,7 +234,7 @@ export const filterAdminRentalLaptops = ({
           : blockedIds.has(laptop.id) || laptop.status === STATUS.UNAVAILABLE;
 
     return keywordMatched && categoryMatched && availabilityMatched;
-  });
+  }).sort(compareRentalAssetDisplay);
 };
 
 export const getUserLaptopStatusLabel = (laptopAvailability) => {
