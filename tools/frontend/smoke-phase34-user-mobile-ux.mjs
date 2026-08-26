@@ -98,6 +98,24 @@ assert.ok(
   inquiryPanel.includes('grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
   'inquiry mobile list must use a compact number/title layout',
 );
+assert.match(
+  inquiryPanel,
+  /flex min-w-0 items-start gap-1\.5[\s\S]*InquiryStatusBadge status=\{item\.status\}[\s\S]*item\.title[\s\S]*mt-1\.5 flex flex-wrap items-center gap-x-1\.5[\s\S]*item\.categoryName[\s\S]*formatDateTime\(item\.createdAt\)/,
+  'inquiry mobile rows must place status and title on the first line, then category and created time on the second line',
+);
+assert.ok(
+  inquiryPanel.includes('space-y-3 sm:hidden'),
+  'inquiry mobile footer must use a dedicated stacked layout instead of the desktop three-column grid',
+);
+assert.match(
+  inquiryPanel,
+  /space-y-3 sm:hidden[\s\S]*justify-between gap-2[\s\S]*전체 문의 \{totalCount\}건[\s\S]*문의 작성[\s\S]*PaginationControls/,
+  'inquiry mobile footer must keep summary/actions together and move pagination to its own centered row',
+);
+assert.ok(
+  inquiryPanel.includes('hidden grid-cols-[1fr_auto_1fr] items-center gap-3 sm:grid'),
+  'inquiry desktop footer must preserve the existing three-column navigation layout',
+);
 assert.ok(
   inquiryPanel.includes('hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block'),
   'inquiry desktop table must remain isolated behind the sm breakpoint',
@@ -123,10 +141,11 @@ assert.ok(
   'inquiry mobile list must remove the nested rounded card while retaining row separators',
 );
 assert.ok(
-  inquiryPanel.includes('flex min-w-0 items-baseline gap-1.5') &&
-    inquiryPanel.includes('shrink-0 text-[10px] font-normal leading-4 text-slate-500') &&
-    inquiryPanel.includes('min-w-0 flex-1 break-words text-left text-sm font-semibold'),
-  'inquiry mobile list must place inquiry type and title on the same first line using compact type metadata styling',
+  inquiryPanel.includes('flex min-w-0 items-start gap-1.5') &&
+    inquiryPanel.includes('InquiryStatusBadge status={item.status}') &&
+    inquiryPanel.includes('min-w-0 flex-1 break-words text-left text-sm font-semibold') &&
+    inquiryPanel.includes('gap-x-1.5 gap-y-1 text-[10px] font-normal leading-4 text-slate-500'),
+  'inquiry mobile list must place status + title on the first line and category + created time below',
 );
 assert.ok(
   inquiryPanel.includes('-mx-1 overflow-hidden border-y border-slate-200 bg-white sm:mx-0 sm:rounded-2xl sm:border'),

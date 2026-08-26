@@ -1068,9 +1068,8 @@ export default function UserInquiryPanel({ ctx }) {
               <div key={item.publicId} className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-100 px-1 py-3 last:border-b-0">
                 <div className="pt-0.5 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</div>
                 <div className="min-w-0 px-1.5">
-                  <div className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="shrink-0 text-[10px] font-normal leading-4 text-slate-500">{item.categoryName || '-'}</span>
-                    <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-300">·</span>
+                  <div className="flex min-w-0 items-start gap-1.5">
+                    <span className="shrink-0 pt-px"><InquiryStatusBadge status={item.status} /></span>
                     <button
                       type="button"
                       className="min-w-0 flex-1 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
@@ -1082,8 +1081,8 @@ export default function UserInquiryPanel({ ctx }) {
                       {item.title}
                     </button>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] leading-4 text-slate-500">
-                    <InquiryStatusBadge status={item.status} />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] font-normal leading-4 text-slate-500">
+                    <span>{item.categoryName || '-'}</span>
                     <span aria-hidden="true" className="text-slate-300">·</span>
                     <span className="whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
                   </div>
@@ -1110,16 +1109,41 @@ export default function UserInquiryPanel({ ctx }) {
         </>
       )}
 
-      <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-        <div className="text-[11px] text-slate-500 sm:justify-self-start">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
-        <PaginationControls className="sm:justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage, search: memberSearchQuery, targetPageSize: pageSize })} />
-        <div className="flex flex-wrap gap-2 sm:justify-self-end">
-          {guest ? (
-            <>
-              <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button>
-              <Button type="button" variant="primary" onClick={startGuestCreateFromList}>문의하기</Button>
-            </>
-          ) : <Button type="button" variant="primary" onClick={() => void showMemberCompose()}>문의 작성</Button>}
+      <div className="border-t border-slate-100 pt-4">
+        <div className="space-y-3 sm:hidden">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 text-[10px] leading-4 text-slate-500">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {guest ? (
+                <>
+                  <Button type="button" variant="outline" className="px-2.5 py-2 text-[11px]" onClick={clearGuestSession}>인증 종료</Button>
+                  <Button type="button" variant="primary" className="px-2.5 py-2 text-[11px]" onClick={startGuestCreateFromList}>문의하기</Button>
+                </>
+              ) : <Button type="button" variant="primary" className="px-3 py-2 text-[11px]" onClick={() => void showMemberCompose()}>문의 작성</Button>}
+            </div>
+          </div>
+          <PaginationControls
+            className="w-full"
+            buttonClassName="px-3 py-2 text-xs"
+            indicatorClassName="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+            currentPage={page}
+            totalPages={totalPages}
+            disabled={listLoading}
+            onPageChange={(nextPage) => loadList({ targetPage: nextPage, search: memberSearchQuery, targetPageSize: pageSize })}
+          />
+        </div>
+
+        <div className="hidden grid-cols-[1fr_auto_1fr] items-center gap-3 sm:grid">
+          <div className="justify-self-start text-[11px] text-slate-500">전체 문의 {totalCount}건 · {page} / {totalPages}페이지</div>
+          <PaginationControls className="justify-self-center" currentPage={page} totalPages={totalPages} disabled={listLoading} onPageChange={(nextPage) => loadList({ targetPage: nextPage, search: memberSearchQuery, targetPageSize: pageSize })} />
+          <div className="flex flex-wrap gap-2 justify-self-end">
+            {guest ? (
+              <>
+                <Button type="button" variant="outline" onClick={clearGuestSession}>인증 종료</Button>
+                <Button type="button" variant="primary" onClick={startGuestCreateFromList}>문의하기</Button>
+              </>
+            ) : <Button type="button" variant="primary" onClick={() => void showMemberCompose()}>문의 작성</Button>}
+          </div>
         </div>
       </div>
     </div>

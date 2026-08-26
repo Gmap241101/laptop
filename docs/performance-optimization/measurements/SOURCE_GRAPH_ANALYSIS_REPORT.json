@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T07:03:03.754Z",
+  "generatedAt": "2026-08-26T07:32:04.977Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1484849,
+        "sourceBytes": 1486152,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -40,7 +40,7 @@
           },
           {
             "file": "src/user/UserInquiryPanel.jsx",
-            "bytes": 63233
+            "bytes": 64536
           },
           {
             "file": "src/clerk/clerkUserClient.js",
@@ -1912,11 +1912,11 @@
   },
   "userOnlyComplete": {
     "moduleCount": 56,
-    "sourceBytes": 879907,
+    "sourceBytes": 881210,
     "files": [
       {
         "file": "src/user/UserInquiryPanel.jsx",
-        "bytes": 63233
+        "bytes": 64536
       },
       {
         "file": "src/clerk/clerkUserClient.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2911687,
+      "sourceBytes": 2912990,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2528,12 +2528,12 @@
           "bytes": 93761
         },
         {
-          "file": "src/admin/AdminSettingsPanel.jsx",
-          "bytes": 63394
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 64536
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 63233
+          "file": "src/admin/AdminSettingsPanel.jsx",
+          "bytes": 63394
         },
         {
           "file": "src/clerk/clerkUserClient.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2924341,
+      "sourceBytes": 2925644,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3406,12 +3406,12 @@
           "bytes": 93761
         },
         {
-          "file": "src/admin/AdminSettingsPanel.jsx",
-          "bytes": 63394
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 64536
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 63233
+          "file": "src/admin/AdminSettingsPanel.jsx",
+          "bytes": 63394
         },
         {
           "file": "src/clerk/clerkUserClient.js",

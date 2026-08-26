@@ -84,6 +84,8 @@ assert.doesNotMatch(userPanel, /variant=\{guestMode === 'verify' \? 'primary' : 
 assert.match(userPanel, /const startGuestCreateFromList = async \(\) =>/);
 assert.match(userPanel, /onClick=\{startGuestCreateFromList\}>문의하기<\/Button>/);
 assert.match(userPanel, /인증 종료<\/Button>[\s\S]*문의하기<\/Button>/);
+assert.match(userPanel, /space-y-3 sm:hidden[\s\S]*전체 문의 \{totalCount\}건[\s\S]*PaginationControls/, 'mobile inquiry list navigation must separate summary/actions from pagination');
+assert.match(userPanel, /InquiryStatusBadge status=\{item\.status\}[\s\S]*\{item\.title\}[\s\S]*\{item\.categoryName \|\| '-'\}[\s\S]*formatDateTime\(item\.createdAt\)/, 'mobile inquiry row must show status + title before category + created time');
 assert.match(userPanel, /const cancelGuestCreate = \(\) =>/);
 assert.match(userPanel, /onClick=\{cancelGuestCreate\}>취소<\/Button>[\s\S]*onClick=\{createGuest\}>\{saving \? '등록 중' : '문의 등록'\}<\/Button>/, 'guest inquiry compose must provide cancel next to submit');
 const guestCancelStart = userPanel.indexOf('const cancelGuestCreate = () =>');
