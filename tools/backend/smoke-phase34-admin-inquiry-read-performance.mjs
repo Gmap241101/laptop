@@ -63,5 +63,30 @@ requireText(api, 'admin-list|', 'admin list cache namespace missing');
 requireText(api, 'admin-detail|', 'admin detail cache namespace missing');
 requireText(api, 'admin-settings|', 'admin settings cache namespace missing');
 requireText(api, 'async prefetchAdminDetail(publicId)', 'admin detail prefetch API missing');
+requireText(api, 'const runtimeClient = getActiveClerkRuntimeClient();', 'authenticated inquiry requests must use the active user/admin Clerk runtime client');
+requireText(api, "typeof runtimeClient.getSessionToken === 'function'", 'authenticated inquiry requests must obtain the token from the active runtime client');
+rejectText(api, 'typeof clerkStagingClient.getSessionToken', 'inquiry API must not reference the retired undefined clerkStagingClient binding after user/admin client isolation');
+
+const { setActiveClerkRuntimeClient } = await import('../../src/clerk/clerkRuntimeClient.js');
+setActiveClerkRuntimeClient({
+  config: { apiBaseUrl: 'https://inquiry-smoke.invalid' },
+  async initialize() {
+    return { session: { id: 'admin-inquiry-smoke-session', getToken: async () => 'fallback-token' }, user: { id: 'admin-inquiry-smoke-user' } };
+  },
+  async getSessionToken() { return 'admin-inquiry-smoke-token'; },
+}, 'admin');
+let adminInquiryRequestSeen = null;
+globalThis.fetch = async (url, options = {}) => {
+  adminInquiryRequestSeen = { url: String(url), authorization: options?.headers?.Authorization || '' };
+  return new Response(JSON.stringify({ inquiryList: { items: [], categories: [], totalCount: 0, page: 1, pageSize: 10 } }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+};
+const { inquiryApi: inquiryApiRuntime } = await import('../../src/features/inquiries/inquiryApi.js');
+const adminInquiryListResult = await inquiryApiRuntime.listAdmin({ page: 1, pageSize: 10 });
+if (adminInquiryRequestSeen?.authorization !== 'Bearer admin-inquiry-smoke-token') fail('admin inquiry list must authenticate with the active admin Clerk runtime token');
+if (!adminInquiryRequestSeen?.url.includes('/api/admin/inquiries?')) fail('admin inquiry list must call the authenticated admin inquiry endpoint');
+if (!Array.isArray(adminInquiryListResult?.items)) fail('admin inquiry list runtime smoke must receive the list payload');
 
 console.log('[phase34-admin-inquiry-read-performance] PASS');

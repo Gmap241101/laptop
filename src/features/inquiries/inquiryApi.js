@@ -95,10 +95,11 @@ const requestJson = async ({ path, method = 'GET', body, auth = 'public', guestT
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   if (auth === 'clerk') {
-    const token = typeof clerkStagingClient.getSessionToken === 'function'
-      ? await clerkStagingClient.getSessionToken()
+    const runtimeClient = getActiveClerkRuntimeClient();
+    const token = typeof runtimeClient.getSessionToken === 'function'
+      ? await runtimeClient.getSessionToken()
       : await (async () => {
-          const clerk = await getActiveClerkRuntimeClient().initialize();
+          const clerk = await runtimeClient.initialize();
           return clerk?.session?.getToken?.();
         })();
     if (!token) {

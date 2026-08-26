@@ -22,7 +22,7 @@ assert.equal(config.readRequested, true, 'Phase 34 retirement must not require a
 assert.equal(config.writeRequested, true, 'Phase 34 retirement must not require a query/session latch for asset writes');
 
 const read = async (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
-const [subscription, crud, categories, bulk, dashboard, client, diagnostics, hardRetirement] = await Promise.all([
+const [subscription, crud, categories, bulk, dashboard, client, diagnostics, hardRetirement, adminAssetsPanel] = await Promise.all([
   read('src/features/requests/useRentalDataSubscriptionController.js'),
   read('src/features/assets/useAdminAssetCrudController.js'),
   read('src/features/assets/useAdminAssetCategoryController.js'),
@@ -31,6 +31,7 @@ const [subscription, crud, categories, bulk, dashboard, client, diagnostics, har
   read('src/clerk/clerkStagingClient.js'),
   read('src/clerk/ClerkStagingDiagnostics.jsx'),
   read('src/features/auth/firebaseRuntimeRetirement.js'),
+  read('src/admin/AdminAssetsPanel.jsx'),
 ]);
 
 for (const marker of ['readAssetDomainCutoverConfig', 'bootstrapAdminAssets', 'getAssetCatalog', 'assetWatcherDisabled', 'availabilityWatcherDisabled']) {
@@ -63,4 +64,19 @@ assert.match(diagnostics, /Asset source: postgresql/);
 assert.match(diagnostics, /Phase 34 runtime authority/);
 assert.doesNotMatch(diagnostics, /External Firebase SDK\/network|Legacy Firestore sync controls|Firebase runtime:/);
 
-console.log('[asset-domain-cutover-frontend-smoke] PASS (Phase34 forced PostgreSQL authority, no retired-provider session gate on active asset mutations, PG dashboard/catalog)');
+for (const marker of [
+  "import ModalPortal from '../components/ModalPortal.jsx'",
+  'const AdminAssetModal = (',
+  'title=\"엑셀/CSV 자산 일괄 등록\"',
+  'title=\"신규 대여 자산 등록\"',
+  'title=\"자산 정보 변경\"',
+  'setShowUploadPanel(true);',
+  'setEditLaptop(l);',
+]) {
+  assert.ok(adminAssetsPanel.includes(marker), `admin asset modal contract missing: ${marker}`);
+}
+assert.doesNotMatch(adminAssetsPanel, /\{editLaptopInsertIndex === index && editLaptop && \(/, 'asset edit form must not be inserted inline into the asset card grid');
+assert.doesNotMatch(adminAssetsPanel, /\{showUploadPanel && \(\s*<div className=\"rounded-2xl border-2 border-dashed/, 'bulk upload editor must not expand inline inside the page');
+assert.doesNotMatch(adminAssetsPanel, /\{newLaptop && \(\s*<div className=\"rounded-2xl border-2 border-emerald/, 'new asset editor must not expand inline inside the page');
+
+console.log('[asset-domain-cutover-frontend-smoke] PASS (Phase34 forced PostgreSQL authority, modal asset create/edit/upload, no retired-provider session gate on active asset mutations, PG dashboard/catalog)');

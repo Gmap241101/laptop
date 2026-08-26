@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T14:03:33.349Z",
+  "generatedAt": "2026-08-26T01:14:30.646Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1476451,
+        "sourceBytes": 1476482,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -136,7 +136,7 @@
           },
           {
             "file": "src/features/inquiries/inquiryApi.js",
-            "bytes": 18211
+            "bytes": 18242
           },
           {
             "file": "src/context/appContextSlices.js",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2048758,
+        "sourceBytes": 2044625,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1043,10 +1043,6 @@
             "bytes": 23338
           },
           {
-            "file": "src/admin/AdminAssetsPanel.jsx",
-            "bytes": 22887
-          },
-          {
             "file": "src/domain/rentalPolicy.js",
             "bytes": 22078
           },
@@ -1071,12 +1067,16 @@
             "bytes": 18859
           },
           {
+            "file": "src/admin/AdminAssetsPanel.jsx",
+            "bytes": 18723
+          },
+          {
             "file": "src/components/CommonUI.jsx",
             "bytes": 18375
           },
           {
             "file": "src/features/inquiries/inquiryApi.js",
-            "bytes": 18211
+            "bytes": 18242
           },
           {
             "file": "src/context/appContextSlices.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 605138,
+    "sourceBytes": 605169,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1654,7 +1654,7 @@
       },
       {
         "file": "src/features/inquiries/inquiryApi.js",
-        "bytes": 18211
+        "bytes": 18242
       },
       {
         "file": "src/context/appContextSlices.js",
@@ -2142,7 +2142,7 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 92,
-    "sourceBytes": 1443620,
+    "sourceBytes": 1439456,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
@@ -2233,10 +2233,6 @@
         "bytes": 23338
       },
       {
-        "file": "src/admin/AdminAssetsPanel.jsx",
-        "bytes": 22887
-      },
-      {
         "file": "src/features/requests/adminRequestMutationService.js",
         "bytes": 21408
       },
@@ -2251,6 +2247,10 @@
       {
         "file": "src/admin/AdminAccountsPanel.jsx",
         "bytes": 18897
+      },
+      {
+        "file": "src/admin/AdminAssetsPanel.jsx",
+        "bytes": 18723
       },
       {
         "file": "src/admin/useAdminNavigationController.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2907417,
+      "sourceBytes": 2903284,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2684,10 +2684,6 @@
           "bytes": 23338
         },
         {
-          "file": "src/admin/AdminAssetsPanel.jsx",
-          "bytes": 22887
-        },
-        {
           "file": "src/domain/rentalPolicy.js",
           "bytes": 22078
         },
@@ -2720,6 +2716,10 @@
           "bytes": 18859
         },
         {
+          "file": "src/admin/AdminAssetsPanel.jsx",
+          "bytes": 18723
+        },
+        {
           "file": "src/user/UserTermsConsentPanel.jsx",
           "bytes": 18626
         },
@@ -2729,7 +2729,7 @@
         },
         {
           "file": "src/features/inquiries/inquiryApi.js",
-          "bytes": 18211
+          "bytes": 18242
         },
         {
           "file": "src/context/appContextSlices.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2920071,
+      "sourceBytes": 2915938,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3562,10 +3562,6 @@
           "bytes": 23338
         },
         {
-          "file": "src/admin/AdminAssetsPanel.jsx",
-          "bytes": 22887
-        },
-        {
           "file": "src/domain/rentalPolicy.js",
           "bytes": 22078
         },
@@ -3598,6 +3594,10 @@
           "bytes": 18859
         },
         {
+          "file": "src/admin/AdminAssetsPanel.jsx",
+          "bytes": 18723
+        },
+        {
           "file": "src/user/UserTermsConsentPanel.jsx",
           "bytes": 18626
         },
@@ -3607,7 +3607,7 @@
         },
         {
           "file": "src/features/inquiries/inquiryApi.js",
-          "bytes": 18211
+          "bytes": 18242
         },
         {
           "file": "src/context/appContextSlices.js",
