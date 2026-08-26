@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T02:09:35.099Z",
+  "generatedAt": "2026-08-26T06:41:44.395Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,23 +32,27 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1476296,
+        "sourceBytes": 1484505,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
             "bytes": 93761
           },
           {
+            "file": "src/user/UserInquiryPanel.jsx",
+            "bytes": 62959
+          },
+          {
             "file": "src/clerk/clerkUserClient.js",
             "bytes": 62887
           },
           {
-            "file": "src/user/UserInquiryPanel.jsx",
-            "bytes": 59582
-          },
-          {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
             "bytes": 50559
+          },
+          {
+            "file": "src/user/UserBoardPanel.jsx",
+            "bytes": 41039
           },
           {
             "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -69,10 +73,6 @@
           {
             "file": "src/user/UserAuthPanel.jsx",
             "bytes": 36830
-          },
-          {
-            "file": "src/user/UserBoardPanel.jsx",
-            "bytes": 36207
           },
           {
             "file": "src/UserApp.jsx",
@@ -1912,15 +1912,19 @@
   },
   "userOnlyComplete": {
     "moduleCount": 56,
-    "sourceBytes": 871354,
+    "sourceBytes": 879563,
     "files": [
+      {
+        "file": "src/user/UserInquiryPanel.jsx",
+        "bytes": 62959
+      },
       {
         "file": "src/clerk/clerkUserClient.js",
         "bytes": 62887
       },
       {
-        "file": "src/user/UserInquiryPanel.jsx",
-        "bytes": 59582
+        "file": "src/user/UserBoardPanel.jsx",
+        "bytes": 41039
       },
       {
         "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -1937,10 +1941,6 @@
       {
         "file": "src/user/UserAuthPanel.jsx",
         "bytes": 36830
-      },
-      {
-        "file": "src/user/UserBoardPanel.jsx",
-        "bytes": 36207
       },
       {
         "file": "src/UserApp.jsx",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2903134,
+      "sourceBytes": 2911343,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2532,12 +2532,12 @@
           "bytes": 63394
         },
         {
-          "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62887
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 62959
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 59582
+          "file": "src/clerk/clerkUserClient.js",
+          "bytes": 62887
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",
@@ -2562,6 +2562,10 @@
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
           "bytes": 45255
+        },
+        {
+          "file": "src/user/UserBoardPanel.jsx",
+          "bytes": 41039
         },
         {
           "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -2590,10 +2594,6 @@
         {
           "file": "src/user/UserAuthPanel.jsx",
           "bytes": 36830
-        },
-        {
-          "file": "src/user/UserBoardPanel.jsx",
-          "bytes": 36207
         },
         {
           "file": "src/admin/AdminHolidayManagementPanel.jsx",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2915788,
+      "sourceBytes": 2923997,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3410,12 +3410,12 @@
           "bytes": 63394
         },
         {
-          "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62887
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 62959
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 59582
+          "file": "src/clerk/clerkUserClient.js",
+          "bytes": 62887
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",
@@ -3440,6 +3440,10 @@
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
           "bytes": 45255
+        },
+        {
+          "file": "src/user/UserBoardPanel.jsx",
+          "bytes": 41039
         },
         {
           "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -3468,10 +3472,6 @@
         {
           "file": "src/user/UserAuthPanel.jsx",
           "bytes": 36830
-        },
-        {
-          "file": "src/user/UserBoardPanel.jsx",
-          "bytes": 36207
         },
         {
           "file": "src/admin/AdminHolidayManagementPanel.jsx",

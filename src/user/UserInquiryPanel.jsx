@@ -895,11 +895,11 @@ export default function UserInquiryPanel({ ctx }) {
     if (!detail) return null;
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-5">
-        <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+        <article className="flex min-h-0 flex-1 flex-col bg-white sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
+          <div className="border-b border-slate-200 bg-white pb-4 sm:bg-slate-50 sm:px-5 sm:py-5">
             <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '문의 구분'}</span></div>
             <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
-            <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4 text-xs text-slate-600 sm:rounded-xl sm:border sm:border-slate-200 sm:bg-white sm:p-4 lg:grid-cols-3">
               <div><span className="text-slate-400">회원 구분</span><div className="mt-1 font-semibold text-slate-800">{detail.authorType === 'member' ? '회원' : '비회원'}</div></div>
               <div><span className="text-slate-400">성명</span><div className="mt-1 font-semibold text-slate-800">{detail.authorName || '-'}</div></div>
               <div><span className="text-slate-400">부서/팀</span><div className="mt-1 font-semibold text-slate-800">{detail.authorTeam || '-'}</div></div>
@@ -908,7 +908,7 @@ export default function UserInquiryPanel({ ctx }) {
               <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
             </div>
           </div>
-          <div className="flex-1 space-y-6 px-5 py-6">
+          <div className="flex-1 space-y-6 py-5 sm:px-5 sm:py-6">
             <RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" />
             <SecureAttachmentList
               attachments={detail.attachments}
@@ -921,12 +921,12 @@ export default function UserInquiryPanel({ ctx }) {
         <div className="space-y-3">
           <h4 className="text-sm font-bold text-slate-900">답변 {Number(detail.answerCount || 0)}건</h4>
           {Array.isArray(detail.answers) && detail.answers.length > 0 ? detail.answers.map((answer, index) => (
-            <article key={answer.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+            <article key={answer.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:rounded-2xl">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-3.5 sm:px-5 sm:py-4">
                 <div className="text-sm font-bold text-slate-900">{index === 0 ? '답변입니다.' : `${index}번째 추가답변입니다.`}</div>
                 <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName ? `${answer.adminDisplayName} · ` : ''}{formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
               </div>
-              <div className="space-y-5 px-5 py-5">
+              <div className="space-y-5 px-4 py-4 sm:px-5 sm:py-5">
                 <RichTextContent html={answer.bodyHtml} text={answer.bodyText} className="text-sm leading-7 text-slate-700" />
                 <SecureAttachmentList
                   attachments={answer.attachments}
@@ -938,7 +938,32 @@ export default function UserInquiryPanel({ ctx }) {
           )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 답변이 없습니다.</div>}
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <div className="divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden">
+          {[
+            ['이전글', detail.navigation?.previous],
+            ['다음글', detail.navigation?.next],
+          ].map(([label, item]) => (
+            <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 py-3">
+              <span className="text-[11px] text-slate-500">{label}</span>
+              {item ? (
+                <button
+                  type="button"
+                  className="min-w-0 truncate text-left text-sm text-slate-800 hover:text-orange-600 hover:underline"
+                  onPointerEnter={() => prefetchDetail(item.publicId)}
+                  onPointerDown={() => prefetchDetail(item.publicId)}
+                  onFocus={() => prefetchDetail(item.publicId)}
+                  onClick={() => void openDetail(item.publicId)}
+                >
+                  {item.title}
+                </button>
+              ) : (
+                <span className="text-xs text-slate-400">{label}이 없습니다.</span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block">
           <table className="min-w-[680px] w-full border-collapse text-left">
             <tbody>
               {[
@@ -998,7 +1023,7 @@ export default function UserInquiryPanel({ ctx }) {
 
   const renderList = ({ guest = false } = {}) => (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl sm:p-4">
         <div className="grid gap-3 md:grid-cols-[minmax(0,4fr)_minmax(150px,1fr)] md:items-end">
           <label className="block min-w-0">
             <span className="block text-[11px] font-semibold text-slate-600">문의내역 검색</span>
@@ -1033,7 +1058,39 @@ export default function UserInquiryPanel({ ctx }) {
       </div>
 
       {listLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+        <>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:hidden">
+            <div className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-[10px] font-semibold text-slate-500">
+              <span className="text-center">번호</span>
+              <span className="px-2">제목</span>
+            </div>
+            {items.map((item) => (
+              <div key={item.publicId} className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-100 px-2 py-3 last:border-b-0">
+                <div className="pt-0.5 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</div>
+                <div className="min-w-0 px-2">
+                  <button
+                    type="button"
+                    className="block w-full break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
+                    onPointerEnter={() => prefetchDetail(item.publicId)}
+                    onPointerDown={() => prefetchDetail(item.publicId)}
+                    onFocus={() => prefetchDetail(item.publicId)}
+                    onClick={() => void openDetail(item.publicId)}
+                  >
+                    {item.title}
+                  </button>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] leading-4 text-slate-500">
+                    <span className="max-w-[7rem] truncate">{item.categoryName || '-'}</span>
+                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <InquiryStatusBadge status={item.status} />
+                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <span className="whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-16 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-24 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-[200px] whitespace-nowrap border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
             <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button
@@ -1047,7 +1104,8 @@ export default function UserInquiryPanel({ ctx }) {
                   {item.title}
                 </button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="whitespace-nowrap px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
@@ -1066,7 +1124,7 @@ export default function UserInquiryPanel({ ctx }) {
   );
   const renderDetailLoading = () => (
     <div
-      className="min-h-[320px] flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-6"
+      className="min-h-[320px] flex-1 rounded-xl border border-slate-200 bg-white px-4 py-5 sm:rounded-2xl sm:px-5 sm:py-6"
       aria-busy="true"
       aria-label="문의 상세 불러오는 중"
     >
@@ -1087,8 +1145,8 @@ export default function UserInquiryPanel({ ctx }) {
   );
 
   const renderInquiryShell = (children) => (
-    <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
-      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+    <Card className="-mx-2 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
+      <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-8 text-white sm:px-6 sm:py-10">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
         <div className="relative mx-auto max-w-3xl text-center">
@@ -1098,7 +1156,7 @@ export default function UserInquiryPanel({ ctx }) {
           </p>
         </div>
       </div>
-      <CardContent className="flex flex-1 flex-col p-6">{children}</CardContent>
+      <CardContent className="flex flex-1 flex-col p-4 sm:p-6">{children}</CardContent>
     </Card>
   );
 

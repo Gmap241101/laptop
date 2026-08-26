@@ -6,6 +6,8 @@ const read = (relative) => fs.readFileSync(new URL(`../../${relative}`, import.m
 const homePanel = read('src/user/UserHomePanel.jsx');
 const userShell = read('src/user/UserShell.jsx');
 const popupLayer = read('src/user/UserPopupLayer.jsx');
+const boardPanel = read('src/user/UserBoardPanel.jsx');
+const inquiryPanel = read('src/user/UserInquiryPanel.jsx');
 
 assert.ok(
   homePanel.includes('grid min-h-0 grid-cols-2 gap-2 sm:gap-3 lg:h-full lg:min-h-[300px]'),
@@ -70,4 +72,46 @@ assert.match(
   'mobile popup second footer row must contain only close-all and close actions',
 );
 
+
+
+assert.ok(
+  boardPanel.includes('grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
+  'notice mobile list must use a compact number/title grid instead of a horizontally scrolling desktop table',
+);
+assert.ok(
+  boardPanel.includes('hidden overflow-x-auto rounded-2xl border border-slate-200 sm:block'),
+  'notice desktop table must remain isolated behind the sm breakpoint',
+);
+assert.ok(
+  boardPanel.includes('divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden'),
+  'notice previous/next navigation must use a non-scrolling mobile layout',
+);
+assert.ok(
+  boardPanel.includes('p-4 sm:p-6'),
+  'community board content must reduce nested mobile side padding while preserving desktop spacing',
+);
+assert.ok(
+  boardPanel.includes('sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200'),
+  'notice detail must avoid an extra bordered article shell on mobile and restore it on desktop',
+);
+assert.ok(
+  inquiryPanel.includes('grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
+  'inquiry mobile list must use a compact number/title layout',
+);
+assert.ok(
+  inquiryPanel.includes('hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block'),
+  'inquiry desktop table must remain isolated behind the sm breakpoint',
+);
+assert.ok(
+  inquiryPanel.includes('divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden'),
+  'inquiry previous/next navigation must avoid horizontal scrolling on mobile',
+);
+assert.ok(
+  inquiryPanel.includes('grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4'),
+  'inquiry detail metadata must flatten the nested mobile card into a compact two-column block',
+);
+assert.ok(
+  inquiryPanel.includes('p-4 sm:p-6'),
+  'inquiry shell content must reduce nested mobile side padding while preserving desktop spacing',
+);
 console.log('[phase34-user-mobile-ux-frontend-smoke] PASS');

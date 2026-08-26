@@ -207,8 +207,8 @@ export default function UserBoardPanel({ ctx }) {
   }
 
   return (
-            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm">
-              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-10 text-white">
+            <Card className="-mx-2 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-8 text-white sm:px-6 sm:py-10">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
 
@@ -229,12 +229,12 @@ export default function UserBoardPanel({ ctx }) {
                 </div>
               </div>
 
-              <CardContent className="flex flex-1 flex-col p-6">
+              <CardContent className="flex flex-1 flex-col p-4 sm:p-6">
                 {userTab === 'notice' ? (
                   selectedNoticePost ? (
                     <div className="flex min-h-0 flex-1 flex-col gap-5">
-                      <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                      <article className="flex min-h-0 flex-1 flex-col bg-white sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
+                        <div className="border-b border-slate-200 bg-white pb-4 sm:bg-slate-50 sm:px-5 sm:py-4">
                           <div className="flex flex-wrap items-center gap-2">
                             {selectedNoticePost.isPinned && (
                               <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
@@ -264,7 +264,7 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="flex-1 px-5 py-6">
+                        <div className="flex-1 py-5 sm:px-5 sm:py-6">
                           <RichTextContent
                             html={selectedNoticePost.contentHtml}
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
@@ -274,7 +274,29 @@ export default function UserBoardPanel({ ctx }) {
                         </div>
                       </article>
 
-                      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <div className="divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden">
+                        {[
+                          ['이전글', selectedNoticePost.navigation?.previous],
+                          ['다음글', selectedNoticePost.navigation?.next],
+                        ].map(([label, item]) => (
+                          <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 py-3">
+                            <span className="text-[11px] text-slate-500">{label}</span>
+                            {item ? (
+                              <button
+                                type="button"
+                                className="min-w-0 truncate text-left text-sm text-slate-800 hover:text-orange-600 hover:underline"
+                                onClick={() => handleOpenNoticePost(item)}
+                              >
+                                {item.title}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400">{label}이 없습니다.</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block">
                         <table className="min-w-[680px] w-full border-collapse text-left">
                           <tbody>
                             {[
@@ -323,7 +345,7 @@ export default function UserBoardPanel({ ctx }) {
                     </div>
                   ) : (
                     <div className="space-y-5">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl sm:p-4">
                         <label className="block text-[11px] font-semibold text-slate-600">
                           공지사항 검색
                         </label>
@@ -363,7 +385,54 @@ export default function UserBoardPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:hidden">
+                            <div className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-[10px] font-semibold text-slate-500">
+                              <span className="text-center">번호</span>
+                              <span className="px-2">제목</span>
+                            </div>
+                            {[
+                              ...pinnedNoticePosts.map((post) => ({ post, isPinned: true, number: null })),
+                              ...paginatedNoticePosts.map((post) => ({
+                                post,
+                                isPinned: false,
+                                number: noticeRegularPostNumberById.get(post.id) || '-',
+                              })),
+                            ].map((item) => (
+                              <div
+                                key={item.post.id}
+                                className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-100 px-2 py-3 last:border-b-0"
+                              >
+                                <div className="flex items-start justify-center pt-0.5 text-xs text-slate-500">
+                                  {item.isPinned ? (
+                                    <Pin size={14} className="text-orange-600" aria-label="상단 고정 공지" />
+                                  ) : item.number}
+                                </div>
+                                <div className="min-w-0 px-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenNoticePost(item.post)}
+                                    className="block w-full break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
+                                  >
+                                    {item.post.isPinned && (
+                                      <span className="mr-1.5 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 align-middle text-[9px] font-bold text-orange-700">
+                                        공지
+                                      </span>
+                                    )}
+                                    {item.post.title}
+                                  </button>
+                                  <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 text-slate-500">
+                                    <span className="max-w-[7rem] truncate">{item.post.authorName || '관리자'}</span>
+                                    <span aria-hidden="true" className="text-slate-300">·</span>
+                                    <span className="whitespace-nowrap">{formatFirestoreDate(item.post.createdAt)}</span>
+                                    <span aria-hidden="true" className="text-slate-300">·</span>
+                                    <span className="whitespace-nowrap">조회 {Number(item.post.viewCount) || 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 sm:block">
                             <table className="min-w-[720px] w-full border-collapse text-left">
                               <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600">
                                 <tr>
@@ -515,7 +584,7 @@ export default function UserBoardPanel({ ctx }) {
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
+                    <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl sm:p-4 sm:flex-row sm:items-center">
                       <div className="relative min-w-0 flex-1">
                         <Search
                           className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -575,7 +644,7 @@ export default function UserBoardPanel({ ctx }) {
                       </div>
                     ) : (
                       <>
-                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:rounded-2xl">
                           {displayedFaqPosts.map(
                             (post, index, displayedPosts) => {
                             const isExpanded =
@@ -599,7 +668,7 @@ export default function UserBoardPanel({ ctx }) {
                                       post.id
                                     )
                                   }
-                                  className="grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-3 px-4 py-4 text-left transition hover:bg-slate-50 sm:grid-cols-[150px_minmax(0,1fr)_28px] sm:px-5"
+                                  className="grid w-full grid-cols-[minmax(0,1fr)_28px] items-center gap-2 px-3 py-3.5 text-left transition hover:bg-slate-50 sm:grid-cols-[150px_minmax(0,1fr)_28px] sm:gap-3 sm:px-5 sm:py-4"
                                 >
                                   <div className="hidden sm:block">
                                     <span className="inline-flex max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
@@ -672,7 +741,7 @@ export default function UserBoardPanel({ ctx }) {
                                       }}
                                       className="overflow-hidden"
                                     >
-                                      <div className="grid grid-cols-[minmax(0,1fr)_28px] gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-5 sm:grid-cols-[150px_minmax(0,1fr)_28px] sm:px-5">
+                                      <div className="grid grid-cols-[minmax(0,1fr)_28px] gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-4 sm:grid-cols-[150px_minmax(0,1fr)_28px] sm:gap-3 sm:px-5 sm:py-5">
                                         <div
                                           className="hidden sm:block"
                                           aria-hidden="true"
