@@ -15,6 +15,7 @@ const api = read('src/features/inquiries/inquiryApi.js');
 const context = read('src/context/appContextSlices.js');
 const richTextEditor = read('src/components/RichTextEditor.jsx');
 const commonUi = read('src/components/CommonUI.jsx');
+const paginationControls = read('src/components/PaginationControls.jsx');
 
 assert.match(routes, /inquiry:\s*'\/board\/inquiry'/);
 assert.match(routes, /pathname === '\/board\/inquiry'/);
@@ -196,6 +197,16 @@ assert.doesNotMatch(adminPanel, /min-w-\[1180px\]/, 'admin inquiry list must not
 assert.doesNotMatch(adminPanel, /<th[^>]*>관리<\/th>/, 'admin inquiry list must not include redundant management column');
 assert.doesNotMatch(adminPanel, />상세<\/Button>/, 'admin inquiry list title click is the only detail entry action');
 assert.match(adminPanel, /<table className="w-full table-fixed border-collapse text-left">/);
+
+assert.doesNotMatch(
+  paginationControls,
+  /현재 디자인은 유지하고, 원하는 페이지 번호를 직접 입력해 바로 이동할 수 있도록 개선했습니다\./,
+  'shared user/admin pagination must not expose implementation or change-log guidance copy',
+);
+assert.ok(adminPanel.includes('w-[72px] border-b border-slate-200 px-2 py-3 text-center">상태</th>'), 'admin inquiry status column must use the compact width');
+assert.ok(adminPanel.includes('w-[56px] border-b border-slate-200 px-2 py-3 text-center">답변수</th>'), 'admin inquiry answer-count column must use the compact width');
+assert.ok((adminPanel.match(/w-\[140px\]/g) || []).length >= 2, 'created and latest-answer datetime columns must use the same width');
+assert.ok(adminPanel.includes('w-[140px] border-b border-slate-200 pl-2 pr-4 py-3 text-center">최근 답변일시</th>'), 'latest-answer datetime header must keep extra right breathing room');
 assert.match(adminPanel, /<AdminInquiryCategoryDialog/);
 assert.match(adminInquiryCategoryDialog, /문의 구분 관리/);
 assert.match(adminInquiryCategoryDialog, /문의 구분을 등록, 수정, 삭제합니다\./);

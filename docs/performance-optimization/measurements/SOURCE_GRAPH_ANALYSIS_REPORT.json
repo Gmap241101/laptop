@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T01:14:30.646Z",
+  "generatedAt": "2026-08-26T01:49:52.010Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1476482,
+        "sourceBytes": 1476255,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -292,7 +292,7 @@
           },
           {
             "file": "src/components/PaginationControls.jsx",
-            "bytes": 5489
+            "bytes": 5262
           },
           {
             "file": "src/user/UserFooter.jsx",
@@ -936,7 +936,7 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2044625,
+        "sourceBytes": 2044426,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -984,7 +984,7 @@
           },
           {
             "file": "src/admin/AdminInquiryPanel.jsx",
-            "bytes": 37317
+            "bytes": 37345
           },
           {
             "file": "src/admin/AdminHolidayManagementPanel.jsx",
@@ -1299,16 +1299,16 @@
             "bytes": 5592
           },
           {
-            "file": "src/components/PaginationControls.jsx",
-            "bytes": 5489
-          },
-          {
             "file": "src/admin/useAdminContextAssembler.js",
             "bytes": 5324
           },
           {
             "file": "src/admin/AdminShell.jsx",
             "bytes": 5265
+          },
+          {
+            "file": "src/components/PaginationControls.jsx",
+            "bytes": 5262
           },
           {
             "file": "src/features/assets/useAssetBulkUpload.js",
@@ -1622,7 +1622,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 605169,
+    "sourceBytes": 604942,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1738,7 +1738,7 @@
       },
       {
         "file": "src/components/PaginationControls.jsx",
-        "bytes": 5489
+        "bytes": 5262
       },
       {
         "file": "src/performance/DevPerformancePanel.jsx",
@@ -2142,7 +2142,7 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 92,
-    "sourceBytes": 1439456,
+    "sourceBytes": 1439484,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
@@ -2178,7 +2178,7 @@
       },
       {
         "file": "src/admin/AdminInquiryPanel.jsx",
-        "bytes": 37317
+        "bytes": 37345
       },
       {
         "file": "src/admin/AdminHolidayManagementPanel.jsx",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2903284,
+      "sourceBytes": 2903085,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2585,7 +2585,7 @@
         },
         {
           "file": "src/admin/AdminInquiryPanel.jsx",
-          "bytes": 37317
+          "bytes": 37345
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
@@ -3020,16 +3020,16 @@
           "bytes": 5592
         },
         {
-          "file": "src/components/PaginationControls.jsx",
-          "bytes": 5489
-        },
-        {
           "file": "src/admin/useAdminContextAssembler.js",
           "bytes": 5324
         },
         {
           "file": "src/admin/AdminShell.jsx",
           "bytes": 5265
+        },
+        {
+          "file": "src/components/PaginationControls.jsx",
+          "bytes": 5262
         },
         {
           "file": "src/features/assets/useAssetBulkUpload.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2915938,
+      "sourceBytes": 2915739,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3463,7 +3463,7 @@
         },
         {
           "file": "src/admin/AdminInquiryPanel.jsx",
-          "bytes": 37317
+          "bytes": 37345
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
@@ -3902,16 +3902,16 @@
           "bytes": 5592
         },
         {
-          "file": "src/components/PaginationControls.jsx",
-          "bytes": 5489
-        },
-        {
           "file": "src/admin/useAdminContextAssembler.js",
           "bytes": 5324
         },
         {
           "file": "src/admin/AdminShell.jsx",
           "bytes": 5265
+        },
+        {
+          "file": "src/components/PaginationControls.jsx",
+          "bytes": 5262
         },
         {
           "file": "src/features/assets/useAssetBulkUpload.js",

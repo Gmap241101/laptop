@@ -115,9 +115,6 @@ export default function PaginationControls({
       {isOpen ? (
         <div className="absolute left-1/2 top-full z-20 mt-2 w-64 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
           <div className="text-sm font-bold text-slate-900">페이지 이동</div>
-          <p className="mt-1 text-[11px] leading-5 text-slate-500">
-            현재 디자인은 유지하고, 원하는 페이지 번호를 직접 입력해 바로 이동할 수 있도록 개선했습니다.
-          </p>
           <div className="mt-3 flex gap-2">
             <input
               ref={inputRef}
