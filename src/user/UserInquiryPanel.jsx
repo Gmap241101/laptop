@@ -1069,7 +1069,7 @@ export default function UserInquiryPanel({ ctx }) {
                 <div className="pt-0.5 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</div>
                 <div className="min-w-0 px-1.5">
                   <div className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="shrink-0 self-baseline"><InquiryStatusBadge status={item.status} /></span>
+                    <span className="relative -top-px shrink-0 self-baseline"><InquiryStatusBadge status={item.status} /></span>
                     <button
                       type="button"
                       className="min-w-0 flex-1 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"

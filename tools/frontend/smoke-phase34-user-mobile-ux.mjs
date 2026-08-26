@@ -142,10 +142,11 @@ assert.ok(
 );
 assert.ok(
   inquiryPanel.includes('flex min-w-0 items-baseline gap-1.5') &&
+    inquiryPanel.includes('relative -top-px shrink-0 self-baseline') &&
     inquiryPanel.includes('InquiryStatusBadge status={item.status}') &&
     inquiryPanel.includes('min-w-0 flex-1 break-words text-left text-sm font-semibold') &&
     inquiryPanel.includes('gap-x-1.5 gap-y-1 text-[10px] font-normal leading-4 text-slate-500'),
-  'inquiry mobile list must place status + title on the first line and category + created time below',
+  'inquiry mobile list must optically lift the status badge while keeping status + title on the first line and category + created time below',
 );
 assert.ok(
   inquiryPanel.includes('-mx-1 overflow-hidden border-y border-slate-200 bg-white sm:mx-0 sm:rounded-2xl sm:border'),
@@ -153,8 +154,8 @@ assert.ok(
 );
 
 assert.ok(
-  boardPanel.includes('inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700'),
-  'notice mobile badge must use compact fixed-height vertical spacing aligned with the title line',
+  boardPanel.includes('relative -top-px inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700'),
+  'notice mobile badge must use compact fixed-height spacing with a one-pixel optical lift against the title line',
 );
 assert.ok(
   boardPanel.includes('flex h-5 items-center justify-center text-xs leading-5 text-slate-500'),

@@ -88,7 +88,7 @@ assert.match(userPanel, /space-y-3 sm:hidden[\s\S]*전체 문의 \{totalCount\}�
 assert.match(userPanel, /InquiryStatusBadge status=\{item\.status\}[\s\S]*\{item\.title\}[\s\S]*\{item\.categoryName \|\| '-'\}[\s\S]*formatDateTime\(item\.createdAt\)/, 'mobile inquiry row must show status + title before category + created time');
 
 assert.match(userPanel, /const InquiryStatusBadge = \(\{ status \}\) => \([\s\S]*inline-flex h-5 items-center whitespace-nowrap rounded-full border px-2\.5 text-\[10px\] font-bold leading-none/, 'inquiry status badge must keep compact vertical padding and single-line alignment');
-assert.match(userPanel, /flex min-w-0 items-baseline gap-1\.5[\s\S]*InquiryStatusBadge status=\{item\.status\}[\s\S]*\{item\.title\}/, 'mobile inquiry status badge and title must share a baseline');
+assert.match(userPanel, /flex min-w-0 items-baseline gap-1\.5[\s\S]*relative -top-px shrink-0 self-baseline[\s\S]*InquiryStatusBadge status=\{item\.status\}[\s\S]*\{item\.title\}/, 'mobile inquiry status badge must keep the shared baseline with a one-pixel optical lift');
 assert.match(userPanel, /grid grid-cols-\[52px_minmax\(0,1fr\)\] items-center gap-2 px-1\.5 py-3[\s\S]*text-center text-\[11px\] text-slate-500/, 'mobile inquiry previous\/next labels must align to the detail content inset');
 
 assert.match(userPanel, /const cancelGuestCreate = \(\) =>/);

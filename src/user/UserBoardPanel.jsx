@@ -414,7 +414,7 @@ export default function UserBoardPanel({ ctx }) {
                                     className="flex w-full items-baseline gap-1.5 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
                                   >
                                     {item.post.isPinned && (
-                                      <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700">
+                                      <span className="relative -top-px inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700">
                                         공지
                                       </span>
                                     )}
