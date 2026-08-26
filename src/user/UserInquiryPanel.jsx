@@ -894,9 +894,9 @@ export default function UserInquiryPanel({ ctx }) {
   const renderDetail = () => {
     if (!detail) return null;
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-5">
-        <article className="flex min-h-0 flex-1 flex-col bg-white sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
-          <div className="border-b border-slate-200 bg-white pb-4 sm:bg-slate-50 sm:px-5 sm:py-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 sm:gap-5">
+        <article className="-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
+          <div className="border-b border-slate-200 bg-white px-1 pb-4 sm:bg-slate-50 sm:px-5 sm:py-5">
             <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '문의 구분'}</span></div>
             <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4 text-xs text-slate-600 sm:rounded-xl sm:border sm:border-slate-200 sm:bg-white sm:p-4 lg:grid-cols-3">
@@ -908,7 +908,7 @@ export default function UserInquiryPanel({ ctx }) {
               <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
             </div>
           </div>
-          <div className="flex-1 space-y-6 py-5 sm:px-5 sm:py-6">
+          <div className="flex-1 space-y-5 px-1 py-4 sm:space-y-6 sm:px-5 sm:py-6">
             <RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" />
             <SecureAttachmentList
               attachments={detail.attachments}
@@ -921,7 +921,7 @@ export default function UserInquiryPanel({ ctx }) {
         <div className="space-y-3">
           <h4 className="text-sm font-bold text-slate-900">답변 {Number(detail.answerCount || 0)}건</h4>
           {Array.isArray(detail.answers) && detail.answers.length > 0 ? detail.answers.map((answer, index) => (
-            <article key={answer.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:rounded-2xl">
+            <article key={answer.id} className="-mx-1 overflow-hidden border-y border-slate-200 bg-white sm:mx-0 sm:rounded-2xl sm:border">
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-3.5 sm:px-5 sm:py-4">
                 <div className="text-sm font-bold text-slate-900">{index === 0 ? '답변입니다.' : `${index}번째 추가답변입니다.`}</div>
                 <div className="mt-1 text-[11px] text-slate-500">{answer.adminDisplayName ? `${answer.adminDisplayName} · ` : ''}{formatDateTime(answer.createdAt)}{answer.updatedAt && answer.updatedAt !== answer.createdAt ? ' · 수정됨' : ''}</div>
@@ -938,7 +938,7 @@ export default function UserInquiryPanel({ ctx }) {
           )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500">아직 등록된 답변이 없습니다.</div>}
         </div>
 
-        <div className="divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden">
+        <div className="-mx-1 divide-y divide-slate-100 border-y border-slate-200 bg-white sm:mx-0 sm:hidden">
           {[
             ['이전글', detail.navigation?.previous],
             ['다음글', detail.navigation?.next],
@@ -1023,7 +1023,7 @@ export default function UserInquiryPanel({ ctx }) {
 
   const renderList = ({ guest = false } = {}) => (
     <div className="space-y-5">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl sm:p-4">
+      <div className="border-y border-slate-100 bg-white py-3 sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-slate-50 sm:p-4">
         <div className="grid gap-3 md:grid-cols-[minmax(0,4fr)_minmax(150px,1fr)] md:items-end">
           <label className="block min-w-0">
             <span className="block text-[11px] font-semibold text-slate-600">문의내역 검색</span>
@@ -1059,28 +1059,30 @@ export default function UserInquiryPanel({ ctx }) {
 
       {listLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:hidden">
-            <div className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-[10px] font-semibold text-slate-500">
+          <div className="-mx-1 border-y border-slate-200 bg-white sm:hidden">
+            <div className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-1 py-2.5 text-[10px] font-semibold text-slate-500">
               <span className="text-center">번호</span>
               <span className="px-2">제목</span>
             </div>
             {items.map((item) => (
-              <div key={item.publicId} className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-100 px-2 py-3 last:border-b-0">
+              <div key={item.publicId} className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-100 px-1 py-3 last:border-b-0">
                 <div className="pt-0.5 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</div>
-                <div className="min-w-0 px-2">
-                  <button
-                    type="button"
-                    className="block w-full break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
-                    onPointerEnter={() => prefetchDetail(item.publicId)}
-                    onPointerDown={() => prefetchDetail(item.publicId)}
-                    onFocus={() => prefetchDetail(item.publicId)}
-                    onClick={() => void openDetail(item.publicId)}
-                  >
-                    {item.title}
-                  </button>
+                <div className="min-w-0 px-1.5">
+                  <div className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="shrink-0 text-[10px] font-normal leading-4 text-slate-500">{item.categoryName || '-'}</span>
+                    <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-300">·</span>
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
+                      onPointerEnter={() => prefetchDetail(item.publicId)}
+                      onPointerDown={() => prefetchDetail(item.publicId)}
+                      onFocus={() => prefetchDetail(item.publicId)}
+                      onClick={() => void openDetail(item.publicId)}
+                    >
+                      {item.title}
+                    </button>
+                  </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] leading-4 text-slate-500">
-                    <span className="max-w-[7rem] truncate">{item.categoryName || '-'}</span>
-                    <span aria-hidden="true" className="text-slate-300">·</span>
                     <InquiryStatusBadge status={item.status} />
                     <span aria-hidden="true" className="text-slate-300">·</span>
                     <span className="whitespace-nowrap">{formatDateTime(item.createdAt)}</span>
@@ -1145,7 +1147,7 @@ export default function UserInquiryPanel({ ctx }) {
   );
 
   const renderInquiryShell = (children) => (
-    <Card className="-mx-2 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
+    <Card className="-mx-3 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
       <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-8 text-white sm:px-6 sm:py-10">
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
         <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -1156,7 +1158,7 @@ export default function UserInquiryPanel({ ctx }) {
           </p>
         </div>
       </div>
-      <CardContent className="flex flex-1 flex-col p-4 sm:p-6">{children}</CardContent>
+      <CardContent className="flex flex-1 flex-col px-3 py-4 sm:p-6">{children}</CardContent>
     </Card>
   );
 

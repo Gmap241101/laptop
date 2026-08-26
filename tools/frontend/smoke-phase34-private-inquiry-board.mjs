@@ -38,7 +38,7 @@ assert.match(userPanel, />답변 \{Number\(detail\.answerCount \|\| 0\)\}건<\/h
 assert.match(userPanel, /index === 0 \? '답변입니다\.' : `\$\{index\}번째 추가답변입니다\.`/);
 assert.match(userPanel, /아직 등록된 답변이 없습니다\./);
 const userAnswerSectionStart = userPanel.indexOf('<div className="space-y-3">\n          <h4 className="text-sm font-bold text-slate-900">답변 ');
-const userAnswerSectionEnd = userPanel.indexOf('<div className="divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden">', userAnswerSectionStart);
+const userAnswerSectionEnd = userPanel.indexOf('<div className="-mx-1 divide-y divide-slate-100 border-y border-slate-200 bg-white sm:mx-0 sm:hidden">', userAnswerSectionStart);
 assert.ok(userAnswerSectionStart >= 0 && userAnswerSectionEnd > userAnswerSectionStart, 'user inquiry answer section must exist');
 const userAnswerSection = userPanel.slice(userAnswerSectionStart, userAnswerSectionEnd);
 assert.doesNotMatch(userAnswerSection, /관리자/, 'user inquiry answer presentation must not use administrator wording');
@@ -154,8 +154,8 @@ assert.doesNotMatch(userPanel, /categoryId: current\.categoryId \|\| next\.categ
 assert.doesNotMatch(userPanel, /categoryId: categories\[0\]\?\.id \|\| ''/, 'new inquiry forms must default inquiry type to the explicit 선택 option');
 assert.ok(!userPanel.includes('문의 카테고리'), 'user inquiry UI must use 문의 구분 terminology');
 assert.ok(!adminPanel.includes('문의 카테고리'), 'admin inquiry UI must use 문의 구분 terminology');
-assert.match(userPanel, /flex min-h-0 flex-1 flex-col gap-5/, 'short inquiry detail must flex-fill the available viewport body area');
-assert.match(userPanel, /flex min-h-0 flex-1 flex-col bg-white sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200/, 'inquiry detail must flatten the nested mobile body card while retaining the desktop article shell');
+assert.match(userPanel, /flex min-h-0 flex-1 flex-col gap-4 sm:gap-5/, 'short inquiry detail must flex-fill the available viewport body area');
+assert.match(userPanel, /-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200/, 'inquiry detail must flatten the nested mobile body card while retaining the desktop article shell');
 assert.match(userPanel, /text-2xl font-black tracking-tight/);
 assert.doesNotMatch(userPanel, /<Plus[^>]*\/?\s*>/);
 

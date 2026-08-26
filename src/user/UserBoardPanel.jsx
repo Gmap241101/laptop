@@ -207,7 +207,7 @@ export default function UserBoardPanel({ ctx }) {
   }
 
   return (
-            <Card className="-mx-2 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
+            <Card className="-mx-3 flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 bg-white shadow-sm sm:mx-0">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-8 text-white sm:px-6 sm:py-10">
                 <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                 <div className="absolute -bottom-16 left-10 h-44 w-44 rounded-full bg-orange-400/20 blur-3xl" />
@@ -229,12 +229,12 @@ export default function UserBoardPanel({ ctx }) {
                 </div>
               </div>
 
-              <CardContent className="flex flex-1 flex-col p-4 sm:p-6">
+              <CardContent className="flex flex-1 flex-col px-3 py-4 sm:p-6">
                 {userTab === 'notice' ? (
                   selectedNoticePost ? (
-                    <div className="flex min-h-0 flex-1 flex-col gap-5">
-                      <article className="flex min-h-0 flex-1 flex-col bg-white sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
-                        <div className="border-b border-slate-200 bg-white pb-4 sm:bg-slate-50 sm:px-5 sm:py-4">
+                    <div className="flex min-h-0 flex-1 flex-col gap-4 sm:gap-5">
+                      <article className="-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
+                        <div className="border-b border-slate-200 bg-white px-1 pb-4 sm:bg-slate-50 sm:px-5 sm:py-4">
                           <div className="flex flex-wrap items-center gap-2">
                             {selectedNoticePost.isPinned && (
                               <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
@@ -264,7 +264,7 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="flex-1 py-5 sm:px-5 sm:py-6">
+                        <div className="flex-1 px-1 py-4 sm:px-5 sm:py-6">
                           <RichTextContent
                             html={selectedNoticePost.contentHtml}
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
@@ -274,7 +274,7 @@ export default function UserBoardPanel({ ctx }) {
                         </div>
                       </article>
 
-                      <div className="divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden">
+                      <div className="-mx-1 divide-y divide-slate-100 border-y border-slate-200 bg-white sm:mx-0 sm:hidden">
                         {[
                           ['이전글', selectedNoticePost.navigation?.previous],
                           ['다음글', selectedNoticePost.navigation?.next],
@@ -345,7 +345,7 @@ export default function UserBoardPanel({ ctx }) {
                     </div>
                   ) : (
                     <div className="space-y-5">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:rounded-2xl sm:p-4">
+                      <div className="border-y border-slate-100 bg-white py-3 sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-slate-50 sm:p-4">
                         <label className="block text-[11px] font-semibold text-slate-600">
                           공지사항 검색
                         </label>
@@ -385,8 +385,8 @@ export default function UserBoardPanel({ ctx }) {
                         </div>
                       ) : (
                         <>
-                          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white sm:hidden">
-                            <div className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-[10px] font-semibold text-slate-500">
+                          <div className="-mx-1 border-y border-slate-200 bg-white sm:hidden">
+                            <div className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50 px-1 py-2.5 text-[10px] font-semibold text-slate-500">
                               <span className="text-center">번호</span>
                               <span className="px-2">제목</span>
                             </div>
@@ -400,14 +400,14 @@ export default function UserBoardPanel({ ctx }) {
                             ].map((item) => (
                               <div
                                 key={item.post.id}
-                                className="grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-100 px-2 py-3 last:border-b-0"
+                                className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-100 px-1 py-3 last:border-b-0"
                               >
                                 <div className="flex items-start justify-center pt-0.5 text-xs text-slate-500">
                                   {item.isPinned ? (
                                     <Pin size={14} className="text-orange-600" aria-label="상단 고정 공지" />
                                   ) : item.number}
                                 </div>
-                                <div className="min-w-0 px-2">
+                                <div className="min-w-0 px-1.5">
                                   <button
                                     type="button"
                                     onClick={() => handleOpenNoticePost(item.post)}

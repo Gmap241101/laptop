@@ -75,7 +75,7 @@ assert.match(
 
 
 assert.ok(
-  boardPanel.includes('grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
+  boardPanel.includes('grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
   'notice mobile list must use a compact number/title grid instead of a horizontally scrolling desktop table',
 );
 assert.ok(
@@ -83,19 +83,19 @@ assert.ok(
   'notice desktop table must remain isolated behind the sm breakpoint',
 );
 assert.ok(
-  boardPanel.includes('divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden'),
+  boardPanel.includes('-mx-1 divide-y divide-slate-100 border-y border-slate-200 bg-white sm:mx-0 sm:hidden'),
   'notice previous/next navigation must use a non-scrolling mobile layout',
 );
 assert.ok(
-  boardPanel.includes('p-4 sm:p-6'),
+  boardPanel.includes('px-3 py-4 sm:p-6'),
   'community board content must reduce nested mobile side padding while preserving desktop spacing',
 );
 assert.ok(
-  boardPanel.includes('sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200'),
+  boardPanel.includes('-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200'),
   'notice detail must avoid an extra bordered article shell on mobile and restore it on desktop',
 );
 assert.ok(
-  inquiryPanel.includes('grid grid-cols-[44px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
+  inquiryPanel.includes('grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-200 bg-slate-50'),
   'inquiry mobile list must use a compact number/title layout',
 );
 assert.ok(
@@ -103,7 +103,7 @@ assert.ok(
   'inquiry desktop table must remain isolated behind the sm breakpoint',
 );
 assert.ok(
-  inquiryPanel.includes('divide-y divide-slate-100 border-y border-slate-200 bg-white sm:hidden'),
+  inquiryPanel.includes('-mx-1 divide-y divide-slate-100 border-y border-slate-200 bg-white sm:mx-0 sm:hidden'),
   'inquiry previous/next navigation must avoid horizontal scrolling on mobile',
 );
 assert.ok(
@@ -111,7 +111,25 @@ assert.ok(
   'inquiry detail metadata must flatten the nested mobile card into a compact two-column block',
 );
 assert.ok(
-  inquiryPanel.includes('p-4 sm:p-6'),
+  inquiryPanel.includes('px-3 py-4 sm:p-6'),
   'inquiry shell content must reduce nested mobile side padding while preserving desktop spacing',
+);
+assert.ok(
+  boardPanel.includes('-mx-1 border-y border-slate-200 bg-white sm:hidden'),
+  'notice mobile list must remove the nested rounded card while retaining row separators',
+);
+assert.ok(
+  inquiryPanel.includes('-mx-1 border-y border-slate-200 bg-white sm:hidden'),
+  'inquiry mobile list must remove the nested rounded card while retaining row separators',
+);
+assert.ok(
+  inquiryPanel.includes('flex min-w-0 items-baseline gap-1.5') &&
+    inquiryPanel.includes('shrink-0 text-[10px] font-normal leading-4 text-slate-500') &&
+    inquiryPanel.includes('min-w-0 flex-1 break-words text-left text-sm font-semibold'),
+  'inquiry mobile list must place inquiry type and title on the same first line using compact type metadata styling',
+);
+assert.ok(
+  inquiryPanel.includes('-mx-1 overflow-hidden border-y border-slate-200 bg-white sm:mx-0 sm:rounded-2xl sm:border'),
+  'inquiry answer cards must flatten on mobile while retaining desktop card styling',
 );
 console.log('[phase34-user-mobile-ux-frontend-smoke] PASS');
