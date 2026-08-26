@@ -1035,7 +1035,7 @@ export default function UserInquiryPanel({ ctx }) {
       {listLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">문의 내역을 불러오는 중입니다.</div> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center text-xs text-slate-400">{memberSearchQuery.trim() ? '검색 조건에 맞는 문의가 없습니다.' : '등록된 문의가 없습니다.'}</div> : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
-            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-20 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-32 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-40 border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
+            <thead className="bg-slate-50 text-[11px] font-semibold text-slate-600"><tr><th className="w-16 border-b border-slate-200 px-4 py-3 text-center">번호</th><th className="w-28 border-b border-slate-200 px-4 py-3 text-center">문의 구분</th><th className="border-b border-slate-200 px-4 py-3">제목</th><th className="w-24 border-b border-slate-200 px-4 py-3 text-center">상태</th><th className="w-[200px] whitespace-nowrap border-b border-slate-200 px-4 py-3 text-center">작성일시</th></tr></thead>
             <tbody>{items.map((item) => <tr key={item.publicId} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"><td className="px-4 py-3 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</td><td className="px-4 py-3 text-center text-xs text-slate-600">{item.categoryName || '-'}</td><td className="px-4 py-3"><button
                   type="button"
                   className="max-w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
@@ -1045,7 +1045,7 @@ export default function UserInquiryPanel({ ctx }) {
                   onClick={() => void openDetail(item.publicId)}
                 >
                   {item.title}
-                </button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
+                </button></td><td className="px-4 py-3 text-center"><InquiryStatusBadge status={item.status} /></td><td className="whitespace-nowrap px-4 py-3 text-center text-xs text-slate-500">{formatDateTime(item.createdAt)}</td></tr>)}</tbody>
           </table>
         </div>
       )}
