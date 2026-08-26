@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T07:32:04.977Z",
+  "generatedAt": "2026-08-26T08:15:32.452Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1486152,
+        "sourceBytes": 1486555,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -40,7 +40,7 @@
           },
           {
             "file": "src/user/UserInquiryPanel.jsx",
-            "bytes": 64536
+            "bytes": 64652
           },
           {
             "file": "src/clerk/clerkUserClient.js",
@@ -52,7 +52,7 @@
           },
           {
             "file": "src/user/UserBoardPanel.jsx",
-            "bytes": 41109
+            "bytes": 41396
           },
           {
             "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -1912,11 +1912,11 @@
   },
   "userOnlyComplete": {
     "moduleCount": 56,
-    "sourceBytes": 881210,
+    "sourceBytes": 881613,
     "files": [
       {
         "file": "src/user/UserInquiryPanel.jsx",
-        "bytes": 64536
+        "bytes": 64652
       },
       {
         "file": "src/clerk/clerkUserClient.js",
@@ -1924,7 +1924,7 @@
       },
       {
         "file": "src/user/UserBoardPanel.jsx",
-        "bytes": 41109
+        "bytes": 41396
       },
       {
         "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -2517,7 +2517,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2912990,
+      "sourceBytes": 2913393,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2529,7 +2529,7 @@
         },
         {
           "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 64536
+          "bytes": 64652
         },
         {
           "file": "src/admin/AdminSettingsPanel.jsx",
@@ -2565,7 +2565,7 @@
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
-          "bytes": 41109
+          "bytes": 41396
         },
         {
           "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",
@@ -3395,7 +3395,7 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2925644,
+      "sourceBytes": 2926047,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3407,7 +3407,7 @@
         },
         {
           "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 64536
+          "bytes": 64652
         },
         {
           "file": "src/admin/AdminSettingsPanel.jsx",
@@ -3443,7 +3443,7 @@
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
-          "bytes": 41109
+          "bytes": 41396
         },
         {
           "file": "src/features/auth/useAuthIdentityPolicySubscriptionController.js",

@@ -98,7 +98,7 @@ const writeGuestAccess = (access) => {
 };
 
 const InquiryStatusBadge = ({ status }) => (
-  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${STATUS_CLASSES[status] || STATUS_CLASSES.waiting}`}>
+  <span className={`inline-flex h-5 items-center whitespace-nowrap rounded-full border px-2.5 text-[10px] font-bold leading-none ${STATUS_CLASSES[status] || STATUS_CLASSES.waiting}`}>
     {STATUS_LABELS[status] || STATUS_LABELS.waiting}
   </span>
 );
@@ -896,8 +896,8 @@ export default function UserInquiryPanel({ ctx }) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-4 sm:gap-5">
         <article className="-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
-          <div className="border-b border-slate-200 bg-white px-1 pb-4 sm:bg-slate-50 sm:px-5 sm:py-5">
-            <div className="flex flex-wrap items-center gap-2"><InquiryStatusBadge status={detail.status} /><span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600">{detail.categoryName || '문의 구분'}</span></div>
+          <div className="border-b border-slate-200 bg-white px-1.5 pb-4 sm:bg-slate-50 sm:px-5 sm:py-5">
+            <div className="flex flex-wrap items-baseline gap-2"><InquiryStatusBadge status={detail.status} /><span className="inline-flex h-5 items-center rounded-full border border-slate-200 bg-white px-2.5 text-[10px] font-bold leading-none text-slate-600">{detail.categoryName || '문의 구분'}</span></div>
             <h3 className="mt-3 text-lg font-bold text-slate-950">{detail.title}</h3>
             <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4 text-xs text-slate-600 sm:rounded-xl sm:border sm:border-slate-200 sm:bg-white sm:p-4 lg:grid-cols-3">
               <div><span className="text-slate-400">회원 구분</span><div className="mt-1 font-semibold text-slate-800">{detail.authorType === 'member' ? '회원' : '비회원'}</div></div>
@@ -908,7 +908,7 @@ export default function UserInquiryPanel({ ctx }) {
               <div><span className="text-slate-400">작성일시</span><div className="mt-1 font-semibold text-slate-800">{formatDateTime(detail.createdAt)}</div></div>
             </div>
           </div>
-          <div className="flex-1 space-y-5 px-1 py-4 sm:space-y-6 sm:px-5 sm:py-6">
+          <div className="flex-1 space-y-5 px-1.5 py-4 sm:space-y-6 sm:px-5 sm:py-6">
             <RichTextContent html={detail.bodyHtml} text={detail.bodyText} className="text-sm leading-7 text-slate-700" />
             <SecureAttachmentList
               attachments={detail.attachments}
@@ -943,8 +943,8 @@ export default function UserInquiryPanel({ ctx }) {
             ['이전글', detail.navigation?.previous],
             ['다음글', detail.navigation?.next],
           ].map(([label, item]) => (
-            <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 py-3">
-              <span className="text-[11px] text-slate-500">{label}</span>
+            <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 px-1.5 py-3">
+              <span className="text-center text-[11px] text-slate-500">{label}</span>
               {item ? (
                 <button
                   type="button"
@@ -1068,8 +1068,8 @@ export default function UserInquiryPanel({ ctx }) {
               <div key={item.publicId} className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-100 px-1 py-3 last:border-b-0">
                 <div className="pt-0.5 text-center text-xs text-slate-500">{listNumber.get(item.publicId)}</div>
                 <div className="min-w-0 px-1.5">
-                  <div className="flex min-w-0 items-start gap-1.5">
-                    <span className="shrink-0 pt-px"><InquiryStatusBadge status={item.status} /></span>
+                  <div className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="shrink-0 self-baseline"><InquiryStatusBadge status={item.status} /></span>
                     <button
                       type="button"
                       className="min-w-0 flex-1 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"

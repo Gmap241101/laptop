@@ -234,10 +234,10 @@ export default function UserBoardPanel({ ctx }) {
                   selectedNoticePost ? (
                     <div className="flex min-h-0 flex-1 flex-col gap-4 sm:gap-5">
                       <article className="-mx-1 flex min-h-0 flex-1 flex-col bg-white sm:mx-0 sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200">
-                        <div className="border-b border-slate-200 bg-white px-1 pb-4 sm:bg-slate-50 sm:px-5 sm:py-4">
-                          <div className="flex flex-wrap items-center gap-2">
+                        <div className="border-b border-slate-200 bg-white px-1.5 pb-4 sm:bg-slate-50 sm:px-5 sm:py-4">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                             {selectedNoticePost.isPinned && (
-                              <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700">
+                              <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2.5 text-[10px] font-bold leading-none text-orange-700">
                                 공지
                               </span>
                             )}
@@ -264,7 +264,7 @@ export default function UserBoardPanel({ ctx }) {
                           </div>
                         </div>
 
-                        <div className="flex-1 px-1 py-4 sm:px-5 sm:py-6">
+                        <div className="flex-1 px-1.5 py-4 sm:px-5 sm:py-6">
                           <RichTextContent
                             html={selectedNoticePost.contentHtml}
                             text={selectedNoticePost.contentText || selectedNoticePost.content}
@@ -279,8 +279,8 @@ export default function UserBoardPanel({ ctx }) {
                           ['이전글', selectedNoticePost.navigation?.previous],
                           ['다음글', selectedNoticePost.navigation?.next],
                         ].map(([label, item]) => (
-                          <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 py-3">
-                            <span className="text-[11px] text-slate-500">{label}</span>
+                          <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 px-1.5 py-3">
+                            <span className="text-center text-[11px] text-slate-500">{label}</span>
                             {item ? (
                               <button
                                 type="button"
@@ -402,23 +402,23 @@ export default function UserBoardPanel({ ctx }) {
                                 key={item.post.id}
                                 className="grid grid-cols-[36px_minmax(0,1fr)] border-b border-slate-100 px-1 py-3 last:border-b-0"
                               >
-                                <div className="flex items-start justify-center pt-0.5 text-xs text-slate-500">
+                                <div className="flex h-5 items-center justify-center text-xs leading-5 text-slate-500">
                                   {item.isPinned ? (
-                                    <Pin size={14} className="text-orange-600" aria-label="상단 고정 공지" />
+                                    <Pin size={13} className="shrink-0 text-orange-600" aria-label="상단 고정 공지" />
                                   ) : item.number}
                                 </div>
                                 <div className="min-w-0 px-1.5">
                                   <button
                                     type="button"
                                     onClick={() => handleOpenNoticePost(item.post)}
-                                    className="block w-full break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
+                                    className="flex w-full items-baseline gap-1.5 break-words text-left text-sm font-semibold leading-5 text-slate-800 hover:text-orange-600 hover:underline"
                                   >
                                     {item.post.isPinned && (
-                                      <span className="mr-1.5 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 align-middle text-[9px] font-bold text-orange-700">
+                                      <span className="inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700">
                                         공지
                                       </span>
                                     )}
-                                    {item.post.title}
+                                    <span className="min-w-0 break-words">{item.post.title}</span>
                                   </button>
                                   <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 text-slate-500">
                                     <span className="max-w-[7rem] truncate">{item.post.authorName || '관리자'}</span>
@@ -494,14 +494,14 @@ export default function UserBoardPanel({ ctx }) {
                                             item.post
                                           )
                                         }
-                                        className="break-words text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
+                                        className="inline-flex items-baseline gap-2 break-words text-left text-sm font-semibold text-slate-800 hover:text-orange-600 hover:underline"
                                       >
                                         {item.post.isPinned && (
-                                          <span className="mr-2 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
+                                          <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[10px] font-bold leading-none text-orange-700">
                                             공지
                                           </span>
                                         )}
-                                        {item.post.title}
+                                        <span className="min-w-0 break-words">{item.post.title}</span>
                                       </button>
                                     </td>
 

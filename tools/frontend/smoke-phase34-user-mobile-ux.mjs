@@ -100,7 +100,7 @@ assert.ok(
 );
 assert.match(
   inquiryPanel,
-  /flex min-w-0 items-start gap-1\.5[\s\S]*InquiryStatusBadge status=\{item\.status\}[\s\S]*item\.title[\s\S]*mt-1\.5 flex flex-wrap items-center gap-x-1\.5[\s\S]*item\.categoryName[\s\S]*formatDateTime\(item\.createdAt\)/,
+  /flex min-w-0 items-baseline gap-1\.5[\s\S]*InquiryStatusBadge status=\{item\.status\}[\s\S]*item\.title[\s\S]*mt-1\.5 flex flex-wrap items-center gap-x-1\.5[\s\S]*item\.categoryName[\s\S]*formatDateTime\(item\.createdAt\)/,
   'inquiry mobile rows must place status and title on the first line, then category and created time on the second line',
 );
 assert.ok(
@@ -141,7 +141,7 @@ assert.ok(
   'inquiry mobile list must remove the nested rounded card while retaining row separators',
 );
 assert.ok(
-  inquiryPanel.includes('flex min-w-0 items-start gap-1.5') &&
+  inquiryPanel.includes('flex min-w-0 items-baseline gap-1.5') &&
     inquiryPanel.includes('InquiryStatusBadge status={item.status}') &&
     inquiryPanel.includes('min-w-0 flex-1 break-words text-left text-sm font-semibold') &&
     inquiryPanel.includes('gap-x-1.5 gap-y-1 text-[10px] font-normal leading-4 text-slate-500'),
@@ -151,4 +151,38 @@ assert.ok(
   inquiryPanel.includes('-mx-1 overflow-hidden border-y border-slate-200 bg-white sm:mx-0 sm:rounded-2xl sm:border'),
   'inquiry answer cards must flatten on mobile while retaining desktop card styling',
 );
+
+assert.ok(
+  boardPanel.includes('inline-flex h-[18px] shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 text-[9px] font-bold leading-none text-orange-700'),
+  'notice mobile badge must use compact fixed-height vertical spacing aligned with the title line',
+);
+assert.ok(
+  boardPanel.includes('flex h-5 items-center justify-center text-xs leading-5 text-slate-500'),
+  'notice pin/number cell must share the first title-line height instead of using ad-hoc top padding',
+);
+assert.ok(
+  boardPanel.includes('border-b border-slate-200 bg-white px-1.5 pb-4') &&
+    boardPanel.includes('flex-1 px-1.5 py-4'),
+  'notice mobile detail must use the slightly increased shared horizontal content inset',
+);
+assert.ok(
+  boardPanel.includes('grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 px-1.5 py-3') &&
+    boardPanel.includes('text-center text-[11px] text-slate-500">{label}</span>'),
+  'notice mobile previous/next labels must align inside the same content inset and centered label column',
+);
+assert.ok(
+  inquiryPanel.includes('inline-flex h-5 items-center whitespace-nowrap rounded-full border px-2.5 text-[10px] font-bold leading-none'),
+  'inquiry status badges must use compact fixed-height vertical spacing',
+);
+assert.ok(
+  inquiryPanel.includes('border-b border-slate-200 bg-white px-1.5 pb-4') &&
+    inquiryPanel.includes('flex-1 space-y-5 px-1.5 py-4'),
+  'inquiry mobile detail must use the slightly increased shared horizontal content inset',
+);
+assert.ok(
+  inquiryPanel.includes('grid grid-cols-[52px_minmax(0,1fr)] items-center gap-2 px-1.5 py-3') &&
+    inquiryPanel.includes('text-center text-[11px] text-slate-500">{label}</span>'),
+  'inquiry mobile previous/next labels must align inside the same content inset and centered label column',
+);
+
 console.log('[phase34-user-mobile-ux-frontend-smoke] PASS');
