@@ -46,6 +46,7 @@ export const selectAppReadiness = ({
   adminAccountsLoadErrorMessage,
   adminAccountsReady,
   adminLogoutInProgress,
+  authenticatedAdminId,
   currentAuthAdminAccount,
   currentAuthRoleErrorMessage,
   currentAuthRoleReady,
@@ -102,6 +103,13 @@ export const selectAppReadiness = ({
   const adminLoadError = Boolean(
     adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage
   );
+  const adminAuthoritativeSessionPending = Boolean(
+    view === 'admin' &&
+      authenticatedAdminId &&
+      currentAuthAdminAccount?.id === authenticatedAdminId &&
+      !adminLogoutInProgress &&
+      !isAdminAuthenticated
+  );
 
   return {
     hasAdminAccess:
@@ -125,10 +133,12 @@ export const selectAppReadiness = ({
       (!firebaseAuthReady ||
         !currentAuthRoleReady ||
         (!adminAccountsReady && !currentAuthAdminAccount) ||
-        adminLogoutInProgress),
+        adminLogoutInProgress ||
+        adminAuthoritativeSessionPending),
     shouldShowAdminLoginPage:
       adminBaseReady &&
       !adminLoadError &&
+      !adminAuthoritativeSessionPending &&
       !isAdminAuthenticated,
   };
 };

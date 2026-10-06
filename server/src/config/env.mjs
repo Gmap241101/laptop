@@ -188,22 +188,11 @@ const readClerkPlatformIntegration = () => {
   }
 };
 
-export const readServerConfig = () => {
+export const readDatabaseRuntimeConfig = () => {
   const appEnv = (process.env.APP_ENV || 'local').trim().toLowerCase();
-  const clerkPlatformIntegration = readClerkPlatformIntegration();
-  const corsAllowedOrigins = readOrigins('CORS_ALLOWED_ORIGINS', appEnv, true);
-  const clerkJwtKey = readClerkJwtKey(appEnv);
-  const clerkAuthorizedParties = clerkJwtKey
-    ? readOrigins('CLERK_AUTHORIZED_PARTIES', appEnv, true)
-    : [];
-  // Phase 34 hard retirement: Firebase is no longer a runtime dependency.
-  const firebaseRuntimeDisabled = true;
-
   return Object.freeze({
     appEnv,
     serviceName: (process.env.SERVICE_NAME || 'rental-api').trim(),
-    serviceVersion: (process.env.SERVICE_VERSION || 'phase8').trim(),
-    port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     databaseUrl: readDatabaseUrl(),
     databaseSslMode: readSslMode(),
     dbPoolMax: readInteger('DB_POOL_MAX', DEFAULT_DB_POOL_MAX, { min: 1, max: 10 }),
@@ -216,6 +205,25 @@ export const readServerConfig = () => {
       min: 1000,
       max: 60000,
     }),
+  });
+};
+
+export const readServerConfig = () => {
+  const databaseRuntimeConfig = readDatabaseRuntimeConfig();
+  const { appEnv } = databaseRuntimeConfig;
+  const clerkPlatformIntegration = readClerkPlatformIntegration();
+  const corsAllowedOrigins = readOrigins('CORS_ALLOWED_ORIGINS', appEnv, true);
+  const clerkJwtKey = readClerkJwtKey(appEnv);
+  const clerkAuthorizedParties = clerkJwtKey
+    ? readOrigins('CLERK_AUTHORIZED_PARTIES', appEnv, true)
+    : [];
+  // Phase 34 hard retirement: Firebase is no longer a runtime dependency.
+  const firebaseRuntimeDisabled = true;
+
+  return Object.freeze({
+    ...databaseRuntimeConfig,
+    serviceVersion: (process.env.SERVICE_VERSION || 'phase8').trim(),
+    port: readInteger('PORT', DEFAULT_PORT, { min: 1, max: 65535 }),
     corsAllowedOrigins,
     clerkJwtKey,
     clerkAuthorizedParties,

@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
-import { readAdminAuthSession } from './authSessionService.js';
+import {
+  clearAdminAuthTransition,
+  readAdminAuthSession,
+  readAdminAuthTransition,
+} from './authSessionService.js';
 import { setFirebaseRuntimePrincipal } from '../../platform/appDataRefs.js';
 import {
   DEFAULT_SYSTEM_ADMIN_SETTINGS,
@@ -126,6 +130,7 @@ export const useAdminIdentityPolicyState = () => {
     setAdminAccountsLoadErrorMessage,
     setAdminAccountsReady,
     setAdminAccountsRemoteHasData,
+    setAdminAuthenticatedSession,
     setCurrentAuthAdminAccount,
     setCurrentAuthRoleErrorMessage,
     setCurrentAuthRoleReady,
@@ -154,6 +159,7 @@ export default function useAdminIdentityPolicyController({
   setAdminAccountsLoadErrorMessage,
   setAdminAccountsReady,
   setAdminAccountsRemoteHasData,
+  setAdminAuthenticatedSession,
   setCurrentAuthAdminAccount,
   setCurrentAuthRoleErrorMessage,
   setCurrentAuthRoleReady,
@@ -197,6 +203,22 @@ export default function useAdminIdentityPolicyController({
           );
         if (bootstrapWasSuperseded && currentSession.adminId !== account.id) {
           return;
+        }
+
+        const pendingTransition = readAdminAuthTransition();
+        if (!currentSession.adminId && pendingTransition?.status === 'pending') {
+          const securityPayload = await clerkStagingClient.getAdminSystemConfiguration(
+            'admin-security'
+          );
+          if (!active) return;
+          const restoredSecuritySettings = normalizeSystemAdminSettings(
+            securityPayload?.systemConfiguration?.payload || DEFAULT_SYSTEM_ADMIN_SETTINGS
+          );
+          setSystemAdminSettings(restoredSecuritySettings);
+          setSystemAdminSettingsLoadErrorMessage('');
+          setSystemAdminSettingsReady(true);
+          setAdminAuthenticatedSession(account.id, restoredSecuritySettings);
+          clearAdminAuthTransition();
         }
 
         const principal = createAdminPrincipal({
@@ -260,11 +282,15 @@ export default function useAdminIdentityPolicyController({
     setAdminAccountsLoadErrorMessage,
     setAdminAccountsReady,
     setAdminAccountsRemoteHasData,
+    setAdminAuthenticatedSession,
     setCurrentAuthAdminAccount,
     setCurrentAuthRoleErrorMessage,
     setCurrentAuthRoleReady,
     setFirebaseAuthReady,
     setFirebaseAuthUser,
+    setSystemAdminSettings,
+    setSystemAdminSettingsLoadErrorMessage,
+    setSystemAdminSettingsReady,
   ]);
 
   const hasAdminSession =

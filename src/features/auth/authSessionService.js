@@ -10,6 +10,8 @@ import {
 } from '../../utils/systemSettings.js';
 
 const ADMIN_AUTH_SESSION_KEY = 'mk_laptop_admin_auth_session';
+const ADMIN_AUTH_TRANSITION_KEY = 'mk_laptop_admin_auth_transition';
+const ADMIN_AUTH_TRANSITION_PENDING_MS = 15 * 60 * 1000;
 const USER_AUTH_SESSION_KEY = 'mk_laptop_user_auth_session';
 const USER_AUTH_TRANSITION_KEY = 'mk_laptop_user_auth_transition';
 const USER_AUTH_SESSION_TRACE_KEY = 'mk_laptop_user_auth_session_trace';
@@ -293,6 +295,43 @@ export const saveAdminAuthSession = (
 
 export const clearAdminAuthSession = () => {
   clearStoredAuthSession(ADMIN_AUTH_SESSION_KEY);
+};
+
+const readStoredAdminAuthTransition = () => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem(ADMIN_AUTH_TRANSITION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Number(parsed?.expiresAt || 0) || Number(parsed.expiresAt) <= Date.now()) {
+      window.sessionStorage.removeItem(ADMIN_AUTH_TRANSITION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    window.sessionStorage.removeItem(ADMIN_AUTH_TRANSITION_KEY);
+    return null;
+  }
+};
+
+export const beginAdminAuthTransition = ({ identifier = '' } = {}) => {
+  if (typeof window === 'undefined') return null;
+  const now = Date.now();
+  const transition = {
+    status: 'pending',
+    identifier: String(identifier || '').trim().toLowerCase(),
+    startedAt: now,
+    expiresAt: now + ADMIN_AUTH_TRANSITION_PENDING_MS,
+  };
+  window.sessionStorage.setItem(ADMIN_AUTH_TRANSITION_KEY, JSON.stringify(transition));
+  return transition;
+};
+
+export const readAdminAuthTransition = () => readStoredAdminAuthTransition();
+
+export const clearAdminAuthTransition = () => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(ADMIN_AUTH_TRANSITION_KEY);
 };
 
 export const readUserAuthSession = () =>

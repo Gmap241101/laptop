@@ -1,11 +1,11 @@
 import pg from 'pg';
-import { readServerConfig, shouldUseDatabaseSsl } from '../config/env.mjs';
+import { readDatabaseRuntimeConfig, shouldUseDatabaseSsl } from '../config/env.mjs';
 
 const { Pool } = pg;
 let sharedPool;
 
 const createPool = () => {
-  const config = readServerConfig();
+  const config = readDatabaseRuntimeConfig();
   const useSsl = shouldUseDatabaseSsl(config.databaseUrl, config.databaseSslMode);
 
   const pool = new Pool({

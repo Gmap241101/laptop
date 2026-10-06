@@ -11,6 +11,12 @@ import { createAdminClerkAuthService } from '../../server/src/auth/admin-clerk-a
 import { createMemberAuthorityService } from '../../server/src/members/member-authority-service.mjs';
 import fs from 'node:fs';
 
+const databasePoolSource = fs.readFileSync(new URL('../../server/src/db/pool.mjs', import.meta.url), 'utf8');
+const serverEnvSource = fs.readFileSync(new URL('../../server/src/config/env.mjs', import.meta.url), 'utf8');
+assert.match(databasePoolSource, /readDatabaseRuntimeConfig/, 'database pool must use database-only runtime configuration so release migrations do not depend on Clerk credentials');
+assert.equal(databasePoolSource.includes('readServerConfig'), false, 'release migration database pool must not load the full server/Clerk configuration');
+assert.match(serverEnvSource, /export const readDatabaseRuntimeConfig = \(\) =>/, 'database-only runtime configuration must be available to release migrations');
+
 let adminPasswordUpdate = null;
 const adminPasswordOwner = { legacyAdminKey: 'admin:owner', firebaseUid: 'admin:owner', adminLoginId: 'owner', authEmail: 'owner@example.com', organizationName: '관리팀', userName: '최고관리자', phone: '', adminRole: 'owner', clerkUserId: 'clerk_owner', clerkLinkState: 'linked', status: 'active', lockUntil: null };
 const adminPasswordTarget = { legacyAdminKey: 'admin:target', firebaseUid: 'admin:target', adminLoginId: 'target', authEmail: 'target@example.com', organizationName: '관리팀', userName: '대상관리자', phone: '', adminRole: 'admin', clerkUserId: 'clerk_target', clerkLinkState: 'linked', status: 'active', lockUntil: null };
@@ -345,8 +351,8 @@ assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/rental-dashboa
 const adminAuthServiceSource = fs.readFileSync(new URL('../../server/src/auth/admin-clerk-auth-service.mjs', import.meta.url), 'utf8');
 assert.match(adminAuthServiceSource, /async authorizeCurrent\(\{ clerkUserId \}\)[\s\S]*requireActor\(clerkUserId\)[\s\S]*authority: 'clerk-postgresql-session'/, 'authenticated administrator API reads must authorize from the verified Clerk JWT plus PostgreSQL registry without a remote Clerk Backend API lookup');
 assert.match(appSource, /const adminAuth = await adminClerkAuthService\.authorizeCurrent\(\{ clerkUserId: auth\.userId \}\);/, 'administrator API authority must use the lightweight PostgreSQL registry path');
-const databasePoolSource = fs.readFileSync(new URL('../../server/src/db/pool.mjs', import.meta.url), 'utf8');
-assert.match(databasePoolSource, /max: config\.dbPoolMax,[\s\S]*min: 1,[\s\S]*idleTimeoutMillis: config\.dbIdleTimeoutMs/, 'PostgreSQL pool must retain one warm idle connection so separate administrator first-use reads do not repeatedly pay a database connection handshake');
+const databasePoolWarmSource = fs.readFileSync(new URL('../../server/src/db/pool.mjs', import.meta.url), 'utf8');
+assert.match(databasePoolWarmSource, /max: config\.dbPoolMax,[\s\S]*min: 1,[\s\S]*idleTimeoutMillis: config\.dbIdleTimeoutMs/, 'PostgreSQL pool must retain one warm idle connection so separate administrator first-use reads do not repeatedly pay a database connection handshake');
 
 
 

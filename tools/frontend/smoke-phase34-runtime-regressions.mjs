@@ -101,6 +101,8 @@ const adminBaseBlock = readinessSource.match(/const adminBaseReady =[\s\S]*?cons
 assert.equal(adminBaseBlock.includes('firebaseReady'), false, 'administrator auth readiness must not depend on per-menu data readiness');
 const adminLoadingBlock = readinessSource.match(/shouldShowAdminLoadingPage:[\s\S]*?shouldShowAdminLoginPage:/)?.[0] || '';
 assert.equal(adminLoadingBlock.includes('!firebaseReady'), false, 'per-menu PostgreSQL loading must not reopen the administrator verification gate');
+assert.match(readinessSource, /adminAuthoritativeSessionPending[\s\S]*authenticatedAdminId[\s\S]*currentAuthAdminAccount\?\.id === authenticatedAdminId[\s\S]*!isAdminAuthenticated/, 'administrator UI must hold the loading gate while an authoritative restored session is being reverified');
+assert.match(adminLoadingBlock, /adminAuthoritativeSessionPending/, 'administrator login form must not flash while a restored Clerk session is being verified');
 
 const identitySource = fs.readFileSync(new URL('../../src/features/auth/useAuthIdentityPolicySubscriptionController.js', import.meta.url), 'utf8');
 const adminAccountEffectTail = identitySource.match(/setAdminAccountsReady\(false\);[\s\S]*?\}, \[authenticatedAdminId, currentAuthAdminAccount\?\.id, runtimeSurface\]\);/)?.[0] || '';
@@ -108,15 +110,21 @@ assert.ok(adminAccountEffectTail, 'administrator registry refresh must depend on
 assert.equal(adminAccountEffectTail.includes('adminTab'), false, 'administrator registry must not reload on every menu change');
 
 const adminIdentitySource = fs.readFileSync(new URL('../../src/features/auth/useAdminIdentityPolicyController.js', import.meta.url), 'utf8');
+const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
+const adminAuthSessionSource = fs.readFileSync(new URL('../../src/features/auth/authSessionService.js', import.meta.url), 'utf8');
 assert.match(adminIdentitySource, /getAdminClerkSession\(\)/, 'dedicated administrator root must bootstrap from the administrator Clerk session');
 assert.match(adminIdentitySource, /getAdminSystemConfiguration\(\s*'admin-security'\s*\)/, 'dedicated administrator root must load PostgreSQL administrator security policy');
 assert.match(adminIdentitySource, /getAdminAccountsPostgresql\(\)/, 'dedicated administrator root must load the PostgreSQL administrator registry');
 assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionController'), false, 'administrator identity lifecycle must not reuse the mixed user identity controller');
 assert.match(adminIdentitySource, /const bootstrapSessionAtStart = readAdminAuthSession\(\)/, 'administrator bootstrap must snapshot the local admin session before asynchronous Clerk initialization');
+assert.match(adminAuthSessionSource, /ADMIN_AUTH_TRANSITION_KEY = 'mk_laptop_admin_auth_transition'/, 'administrator authentication must keep a short-lived same-tab transition across unavoidable Clerk navigation');
+assert.match(adminAuthSessionSource, /export const beginAdminAuthTransition/, 'administrator login must be able to mark an in-progress authentication transition before Clerk activation');
+assert.match(adminIdentitySource, /readAdminAuthTransition\(\)[\s\S]*pendingTransition\?\.status === 'pending'[\s\S]*setAdminAuthenticatedSession\(account\.id, restoredSecuritySettings\)[\s\S]*clearAdminAuthTransition\(\)/, 'dedicated administrator bootstrap must finish a valid in-progress login after Clerk navigation instead of reopening the login form');
+assert.match(adminAuthSource, /beginAdminAuthTransition\(\{ identifier: adminIdentifier \}\)[\s\S]*signInWithPassword/, 'administrator login must persist its transition before Clerk password sign-in can navigate');
+assert.match(adminAuthSource, /setAdminAuthenticatedSession\(nextAdminAccount\.id, loginSecuritySettings\);[\s\S]*clearAdminAuthTransition\(\)/, 'successful in-place administrator login must clear the transition only after the local policy session is committed');
 assert.match(adminIdentitySource, /const bootstrapWasSuperseded =[\s\S]*currentSession\.adminId !== bootstrapSessionAtStart\.adminId[\s\S]*currentSession\.lastActivityAt/, 'stale administrator bootstrap responses must detect a newer interactive login');
 assert.match(adminIdentitySource, /if \(bootstrapWasSuperseded\) \{[\s\S]*return;[\s\S]*\}[\s\S]*setFirebaseRuntimePrincipal\(null\)/, 'a stale unauthenticated bootstrap must not clear a newly established administrator session');
 
-const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
 const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUserLoginController.js', import.meta.url), 'utf8');
 const userSignupSource = fs.readFileSync(new URL('../../src/features/auth/useUserSignupController.js', import.meta.url), 'utf8');
 const loginErrorMessagesSource = fs.readFileSync(new URL('../../src/features/auth/loginErrorMessages.js', import.meta.url), 'utf8');

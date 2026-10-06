@@ -33,7 +33,9 @@ import {
 } from './accountAuthCutover.js';
 import { readFirebaseRuntimeRetirementConfig } from './firebaseRuntimeRetirement.js';
 import {
+  beginAdminAuthTransition,
   clearAdminAuthSession,
+  clearAdminAuthTransition,
   configureFirebaseAuthPersistence,
   createDefaultAdminAuthForm,
   readAdminAuthSession,
@@ -777,6 +779,7 @@ export default function useAdminAuthenticationController({
       nextAdminAccount.id,
       loginSecuritySettings
     );
+    clearAdminAuthTransition();
     setAdminAuthForm(createDefaultAdminAuthForm());
     writeAdminRouteIntent();
     setAdminPostLoginRouteGuardActive(true);
@@ -842,6 +845,7 @@ export default function useAdminAuthenticationController({
     let signedInAdminUser = null;
     let clerkSignedIn = false;
 
+    beginAdminAuthTransition({ identifier: adminIdentifier });
     setAdminAuthLoading(true);
     if (adminClerkAuthRequested) setAdminClerkSessionVerified(false);
 
@@ -869,6 +873,7 @@ export default function useAdminAuthenticationController({
         const loginSecuritySettings = await loadAuthoritativeAdminSecuritySettings();
         setAdminClerkSessionVerified(true);
         setAdminAuthenticatedSession(nextAdminAccount.id, loginSecuritySettings);
+        clearAdminAuthTransition();
         setAdminAuthForm(createDefaultAdminAuthForm());
         writeAdminRouteIntent();
         setAdminPostLoginRouteGuardActive(true);
@@ -889,6 +894,7 @@ export default function useAdminAuthenticationController({
         if (!retryable) {
           await signOutClerkForRuntimeSurface(runtimeSurface).catch(() => {});
           setAdminAuthForm(createDefaultAdminAuthForm());
+          clearAdminAuthTransition();
           syncAdminRouteIntentAfterAuthClear(runtimeSurface);
           setAdminPostLoginRouteGuardActive(false);
           clearAdminAuthenticatedSession();
@@ -986,6 +992,7 @@ export default function useAdminAuthenticationController({
             await signOut(firebaseAuth).catch(() => {});
           }
           setAdminAuthForm(createDefaultAdminAuthForm());
+          clearAdminAuthTransition();
           syncAdminRouteIntentAfterAuthClear(runtimeSurface);
           setAdminPostLoginRouteGuardActive(false);
           clearAdminAuthenticatedSession();
@@ -1118,6 +1125,7 @@ export default function useAdminAuthenticationController({
       }
 
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
+      clearAdminAuthTransition();
       syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
       clearAdminAuthenticatedSession();
@@ -1202,6 +1210,7 @@ export default function useAdminAuthenticationController({
       console.error('Admin Clerk logout error:', error);
     } finally {
       setAdminClerkSessionVerified(!adminClerkAuthRequested);
+      clearAdminAuthTransition();
       clearUserLoginReturnTarget();
       syncAdminRouteIntentAfterAuthClear(runtimeSurface);
       setAdminPostLoginRouteGuardActive(false);
