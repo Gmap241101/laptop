@@ -9,8 +9,10 @@ import {
 } from '../../routing/appRoutes.js';
 import { normalizeUserSessionPolicy } from '../../utils/systemSettings.js';
 import {
+  bindUserAuthTransitionIdentity,
   clearUserAuthSession,
   clearUserAuthTransition,
+  completeUserAuthTransition,
   readUserAuthSession,
   readUserAuthTransition,
   saveUserAuthSession,
@@ -215,10 +217,26 @@ export default function useUserAuthenticationSessionController({
 
       const lifecycleConfig = readUserAccountLifecycleCutoverConfig();
       const authTransition = readUserAuthTransition();
+      const normalizedPrincipalEmail = String(firebaseAuthUser.email || '').trim().toLowerCase();
       const transitionMatchesUser = Boolean(
         lifecycleConfig.userAuthRequested &&
-        authTransition?.userId === firebaseAuthUser.uid
+        authTransition &&
+        (
+          authTransition.userId === firebaseAuthUser.uid ||
+          (
+            !authTransition.userId &&
+            Boolean(authTransition.email) &&
+            String(authTransition.email).trim().toLowerCase() === normalizedPrincipalEmail
+          )
+        )
       );
+
+      if (transitionMatchesUser && authTransition.status === 'pending') {
+        bindUserAuthTransitionIdentity(firebaseAuthUser.uid);
+        setUserAuthenticatedSession(firebaseAuthUser.uid, userSessionPolicy);
+        completeUserAuthTransition(firebaseAuthUser.uid);
+        return undefined;
+      }
 
       if (transitionMatchesUser && authTransition.status === 'completed') {
         setUserAuthenticatedSession(firebaseAuthUser.uid, userSessionPolicy);
@@ -227,13 +245,7 @@ export default function useUserAuthenticationSessionController({
 
       const isPendingLoginCompatibilitySession = Boolean(
         lifecycleConfig.userAuthRequested &&
-        (
-          (transitionMatchesUser && authTransition.status === 'pending') ||
-          (
-            typeof window !== 'undefined' &&
-            window.location.pathname.replace(/\/+$/, '') === '/login'
-          )
-        )
+        authTransition?.status === 'pending'
       );
 
       if (isPendingLoginCompatibilitySession) {

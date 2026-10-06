@@ -130,7 +130,6 @@ export const useAdminIdentityPolicyState = () => {
     setAdminAccountsLoadErrorMessage,
     setAdminAccountsReady,
     setAdminAccountsRemoteHasData,
-    setAdminAuthenticatedSession,
     setCurrentAuthAdminAccount,
     setCurrentAuthRoleErrorMessage,
     setCurrentAuthRoleReady,

@@ -113,6 +113,11 @@ const adminIdentitySource = fs.readFileSync(new URL('../../src/features/auth/use
 const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
 const adminAuthSessionSource = fs.readFileSync(new URL('../../src/features/auth/authSessionService.js', import.meta.url), 'utf8');
 assert.match(adminIdentitySource, /getAdminClerkSession\(\)/, 'dedicated administrator root must bootstrap from the administrator Clerk session');
+assert.equal(
+  /return \{[\s\S]*?setAdminAuthenticatedSession,[\s\S]*?\};[\s\S]*?export default function useAdminIdentityPolicyController/.test(adminIdentitySource),
+  false,
+  'administrator identity state hook must not reference an undeclared setAdminAuthenticatedSession binding'
+);
 assert.match(adminIdentitySource, /getAdminSystemConfiguration\(\s*'admin-security'\s*\)/, 'dedicated administrator root must load PostgreSQL administrator security policy');
 assert.match(adminIdentitySource, /getAdminAccountsPostgresql\(\)/, 'dedicated administrator root must load the PostgreSQL administrator registry');
 assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionController'), false, 'administrator identity lifecycle must not reuse the mixed user identity controller');
@@ -126,6 +131,9 @@ assert.match(adminIdentitySource, /const bootstrapWasSuperseded =[\s\S]*currentS
 assert.match(adminIdentitySource, /if \(bootstrapWasSuperseded\) \{[\s\S]*return;[\s\S]*\}[\s\S]*setFirebaseRuntimePrincipal\(null\)/, 'a stale unauthenticated bootstrap must not clear a newly established administrator session');
 
 const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUserLoginController.js', import.meta.url), 'utf8');
+const userSessionControllerSource = fs.readFileSync(new URL('../../src/features/auth/useUserAuthenticationSessionController.js', import.meta.url), 'utf8');
+assert.match(userSessionControllerSource, /!authTransition\?\.userId[\s\S]*authTransition\?\.email|!authTransition\.userId[\s\S]*authTransition\.email/, 'interrupted Clerk login recovery must match a pending transition by email before the legacy member key is bound');
+assert.match(userSessionControllerSource, /transitionMatchesUser && authTransition\.status === 'pending'[\s\S]*bindUserAuthTransitionIdentity\(firebaseAuthUser\.uid\)[\s\S]*setUserAuthenticatedSession\(firebaseAuthUser\.uid, userSessionPolicy\)[\s\S]*completeUserAuthTransition\(firebaseAuthUser\.uid\)/, 'a valid pending user login transition must reconstruct the local policy session from the authoritative Clerk/PostgreSQL principal');
 const userSignupSource = fs.readFileSync(new URL('../../src/features/auth/useUserSignupController.js', import.meta.url), 'utf8');
 const loginErrorMessagesSource = fs.readFileSync(new URL('../../src/features/auth/loginErrorMessages.js', import.meta.url), 'utf8');
 const userAuthPanelSource = fs.readFileSync(new URL('../../src/user/UserAuthPanel.jsx', import.meta.url), 'utf8');

@@ -185,7 +185,7 @@ const endActiveClerkSessionWithoutNavigation = async (clerk) => {
     );
     if (clerk.session && typeof clerk.setActive === 'function') {
       await withRuntimeTimeout(
-        () => clerk.setActive({ session: null }),
+        () => clerk.setActive({ session: null, navigate: async () => {} }),
         CLERK_OPERATION_TIMEOUT_MS,
         'clerk_session_deactivate_timeout',
         'Clerk session switching timed out.'
@@ -1868,19 +1868,13 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         `Clerk administrator sign-in is incomplete (${signIn?.status || 'unknown'}).`
       );
     }
-    const currentPath = String(windowRef.location?.pathname || '').replace(/\/+$/, '') || '/';
-    const preserveDedicatedAdminDocument =
-      currentPath === '/admin' || currentPath === '/admin/index.html';
-    const activationOptions = { session: signIn.createdSessionId };
-
-    if (preserveDedicatedAdminDocument) {
-      // The administrator application is a dedicated document. Clerk session
-      // activation must not hand navigation to a default post-sign-in route
-      // before PostgreSQL authorization and the local admin session are saved.
-      // A supplied navigate callback takes precedence over Clerk redirect
-      // navigation; keeping it in-place lets the controller finish atomically.
-      activationOptions.navigate = async () => {};
-    }
+    // Keep Clerk session activation inside the current document on both the
+    // user and administrator surfaces. The application must finish PostgreSQL
+    // authorization and persist its local policy session before any route change.
+    const activationOptions = {
+      session: signIn.createdSessionId,
+      navigate: async () => {},
+    };
 
     await withRuntimeTimeout(
       () => clerk.setActive(activationOptions),
@@ -2215,7 +2209,7 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         error.missingFields = Array.isArray(result?.missingFields) ? result.missingFields : [];
         throw error;
       }
-      await clerk.setActive({ session: result.createdSessionId });
+      await clerk.setActive({ session: result.createdSessionId, navigate: async () => {} });
       pendingUserSignupEmailVerification = null;
       return Object.freeze({
         status: 'complete',

@@ -582,6 +582,83 @@ assert.equal(adminSurfaceInPlaceNavigationCount, 1, 'administrator session activ
 assert.equal(adminSurfaceLocation.pathname, '/admin', 'administrator credential switching must preserve the dedicated /admin document');
 assert.equal(adminSurfaceClerk.session?.id, 'sess_admin_surface', 'the new administrator Clerk session must become active in-place');
 
+
+let userSurfaceSessionEndCount = 0;
+let userSurfaceNullActivationCount = 0;
+let userSurfaceInPlaceNavigationCount = 0;
+const userSurfaceLocation = { pathname: '/login', search: '' };
+const userSurfaceClerk = {
+  loaded: true,
+  session: {
+    id: 'sess_existing_admin',
+    async end() {
+      userSurfaceSessionEndCount += 1;
+    },
+  },
+  user: {
+    id: 'user_general_surface',
+    primaryEmailAddress: { emailAddress: 'user@example.com' },
+  },
+  client: {
+    signIn: {
+      async create({ strategy, identifier, password }) {
+        assert.equal(strategy, 'password');
+        assert.equal(identifier, 'user@example.com');
+        assert.equal(password, 'password123');
+        return { status: 'complete', createdSessionId: 'sess_user_surface' };
+      },
+    },
+    resetSignIn() {},
+  },
+  async load() {},
+  async signOut() {
+    throw new Error('credential switching must not invoke redirect-capable clerk.signOut()');
+  },
+  async setActive({ session, navigate }) {
+    if (session === null) {
+      userSurfaceNullActivationCount += 1;
+      assert.equal(typeof navigate, 'function', 'session detach must suppress Clerk navigation');
+      this.session = null;
+      return;
+    }
+    if (typeof navigate !== 'function') {
+      userSurfaceLocation.pathname = '/';
+      return;
+    }
+    userSurfaceInPlaceNavigationCount += 1;
+    await navigate({
+      session: { id: session, currentTask: null },
+      decorateUrl: (url) => url,
+    });
+    this.session = {
+      id: session,
+      async getToken() { return 'user-surface-token'; },
+    };
+  },
+};
+const userSurfaceClient = createClerkUserClient({
+  env: {
+    MODE: 'production',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: productionKey,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: {
+    atob: decode,
+    location: userSurfaceLocation,
+    Clerk: userSurfaceClerk,
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw new Error('user surface sign-in smoke must not call backend fetch'); },
+});
+const userSurfaceSignIn = await userSurfaceClient.signInUserWithPassword('user@example.com', 'password123');
+assert.equal(userSurfaceSignIn.status, 'complete');
+assert.equal(userSurfaceSessionEndCount, 1, 'an existing Clerk session must be ended before general-user credential sign-in');
+assert.equal(userSurfaceNullActivationCount, 1, 'the prior session must be detached without navigation');
+assert.equal(userSurfaceInPlaceNavigationCount, 1, 'general-user session activation must remain in the current document until app session persistence completes');
+assert.equal(userSurfaceLocation.pathname, '/login', 'general-user Clerk activation must not navigate away from the login document before local session finalization');
+assert.equal(userSurfaceClerk.session?.id, 'sess_user_surface');
+
 const deviceTrustSignIn = {
   status: 'needs_client_trust',
   createdSessionId: '',
