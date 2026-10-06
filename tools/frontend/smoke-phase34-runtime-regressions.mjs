@@ -112,6 +112,9 @@ assert.match(adminIdentitySource, /getAdminClerkSession\(\)/, 'dedicated adminis
 assert.match(adminIdentitySource, /getAdminSystemConfiguration\(\s*'admin-security'\s*\)/, 'dedicated administrator root must load PostgreSQL administrator security policy');
 assert.match(adminIdentitySource, /getAdminAccountsPostgresql\(\)/, 'dedicated administrator root must load the PostgreSQL administrator registry');
 assert.equal(adminIdentitySource.includes('useAuthIdentityPolicySubscriptionController'), false, 'administrator identity lifecycle must not reuse the mixed user identity controller');
+assert.match(adminIdentitySource, /const bootstrapSessionAtStart = readAdminAuthSession\(\)/, 'administrator bootstrap must snapshot the local admin session before asynchronous Clerk initialization');
+assert.match(adminIdentitySource, /const bootstrapWasSuperseded =[\s\S]*currentSession\.adminId !== bootstrapSessionAtStart\.adminId[\s\S]*currentSession\.lastActivityAt/, 'stale administrator bootstrap responses must detect a newer interactive login');
+assert.match(adminIdentitySource, /if \(bootstrapWasSuperseded\) \{[\s\S]*return;[\s\S]*\}[\s\S]*setFirebaseRuntimePrincipal\(null\)/, 'a stale unauthenticated bootstrap must not clear a newly established administrator session');
 
 const adminAuthSource = fs.readFileSync(new URL('../../src/features/auth/useAdminAuthenticationController.js', import.meta.url), 'utf8');
 const userLoginSource = fs.readFileSync(new URL('../../src/features/auth/useUserLoginController.js', import.meta.url), 'utf8');
@@ -216,6 +219,9 @@ assert.equal(
   false,
   'an already verified interactive administrator login must not be forced back through the login page while the Clerk session is rechecked'
 );
+assert.match(adminClerkVerificationEffect, /const verificationSessionAtStart = readAdminAuthSession\(\)/, 'administrator session verification must snapshot the local session before asynchronous verification');
+assert.match(adminClerkVerificationEffect, /const verificationWasSuperseded =[\s\S]*currentSession\.adminId === authenticatedAdminId[\s\S]*currentSession\.lastActivityAt/, 'stale administrator verification failures must detect a newer login for the same administrator');
+assert.match(adminClerkVerificationEffect, /if \(verificationWasSuperseded\) \{[\s\S]*return;[\s\S]*\}[\s\S]*clearAdminAuthenticatedSession\(\)/, 'a stale administrator verification failure must not invalidate a newer authenticated session');
 
 let patchRequest = null;
 const patchPayload = await requestAdminRentalConfigSettingsPatch({

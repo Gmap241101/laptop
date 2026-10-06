@@ -348,6 +348,7 @@ export default function useAdminAuthenticationController({
     }
 
     let cancelled = false;
+    const verificationSessionAtStart = readAdminAuthSession();
     // Keep an already verified interactive login authenticated while the authoritative
     // Clerk session is rechecked. Initial/restored sessions still start as unverified
     // and remain behind the loading gate until this verification succeeds.
@@ -375,6 +376,14 @@ export default function useAdminAuthenticationController({
         }
       } catch (error) {
         if (cancelled) return;
+        const currentSession = readAdminAuthSession();
+        const verificationWasSuperseded =
+          currentSession.adminId === authenticatedAdminId &&
+          Number(currentSession.lastActivityAt || 0) >
+            Number(verificationSessionAtStart.lastActivityAt || 0);
+        if (verificationWasSuperseded) {
+          return;
+        }
         setAdminClerkSessionVerified(false);
         syncAdminRouteIntentAfterAuthClear(runtimeSurface);
         setAdminPostLoginRouteGuardActive(false);

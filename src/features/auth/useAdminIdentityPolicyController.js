@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
+import { readAdminAuthSession } from './authSessionService.js';
 import { setFirebaseRuntimePrincipal } from '../../platform/appDataRefs.js';
 import {
   DEFAULT_SYSTEM_ADMIN_SETTINGS,
@@ -167,6 +168,7 @@ export default function useAdminIdentityPolicyController({
 }) {
   useEffect(() => {
     let active = true;
+    const bootstrapSessionAtStart = readAdminAuthSession();
     setFirebaseAuthReady(false);
 
     void (async () => {
@@ -183,6 +185,18 @@ export default function useAdminIdentityPolicyController({
           );
           error.code = 'admin_registry_id_missing';
           throw error;
+        }
+
+        const currentSession = readAdminAuthSession();
+        const bootstrapWasSuperseded =
+          Boolean(currentSession.adminId) &&
+          (
+            currentSession.adminId !== bootstrapSessionAtStart.adminId ||
+            Number(currentSession.lastActivityAt || 0) >
+              Number(bootstrapSessionAtStart.lastActivityAt || 0)
+          );
+        if (bootstrapWasSuperseded && currentSession.adminId !== account.id) {
+          return;
         }
 
         const principal = createAdminPrincipal({
@@ -204,6 +218,19 @@ export default function useAdminIdentityPolicyController({
         if (!active) return;
 
         const unauthorized = [401, 403].includes(Number(error?.status || 0));
+        const currentSession = readAdminAuthSession();
+        const bootstrapWasSuperseded =
+          Boolean(currentSession.adminId) &&
+          (
+            currentSession.adminId !== bootstrapSessionAtStart.adminId ||
+            Number(currentSession.lastActivityAt || 0) >
+              Number(bootstrapSessionAtStart.lastActivityAt || 0)
+          );
+
+        if (bootstrapWasSuperseded) {
+          return;
+        }
+
         setFirebaseRuntimePrincipal(null);
         setFirebaseAuthUser(null);
         setCurrentAuthAdminAccount(null);
