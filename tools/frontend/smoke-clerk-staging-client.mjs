@@ -498,6 +498,7 @@ let deviceTrustVerifyCount = 0;
 let adminSurfaceSessionEndCount = 0;
 let adminSurfaceSignOutCount = 0;
 let adminSurfaceNullActivationCount = 0;
+let adminSurfaceInPlaceNavigationCount = 0;
 const existingUserSession = {
   id: 'sess_existing_user',
   async end() {
@@ -528,12 +529,28 @@ const adminSurfaceClerk = {
     adminSurfaceSignOutCount += 1;
     throw new Error('credential switching must not invoke redirect-capable clerk.signOut()');
   },
-  async setActive({ session }) {
+  async setActive({ session, navigate }) {
     if (session === null) {
       adminSurfaceNullActivationCount += 1;
       this.session = null;
       return;
     }
+
+    // Simulate the Production Clerk behavior that previously moved a custom
+    // administrator sign-in to the application root when no explicit in-place
+    // navigation contract was supplied. The admin client must override that
+    // navigation so PostgreSQL authorization and local session persistence can
+    // complete before any document transition.
+    if (typeof navigate !== 'function') {
+      adminSurfaceLocation.pathname = '/';
+      return;
+    }
+
+    adminSurfaceInPlaceNavigationCount += 1;
+    await navigate({
+      session: { id: session, currentTask: null },
+      decorateUrl: (url) => url,
+    });
     this.session = {
       id: session,
       async getToken() { return 'admin-surface-token'; },
@@ -561,6 +578,7 @@ assert.equal(adminSurfaceSignIn.status, 'complete');
 assert.equal(adminSurfaceSessionEndCount, 1, 'an existing user Clerk session must be ended before administrator credential sign-in');
 assert.equal(adminSurfaceNullActivationCount, 1, 'the ended session must be detached without browser navigation');
 assert.equal(adminSurfaceSignOutCount, 0, 'administrator credential switching must never call redirect-capable clerk.signOut()');
+assert.equal(adminSurfaceInPlaceNavigationCount, 1, 'administrator session activation must supply an in-place Clerk navigation contract');
 assert.equal(adminSurfaceLocation.pathname, '/admin', 'administrator credential switching must preserve the dedicated /admin document');
 assert.equal(adminSurfaceClerk.session?.id, 'sess_admin_surface', 'the new administrator Clerk session must become active in-place');
 

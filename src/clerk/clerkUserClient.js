@@ -1058,8 +1058,22 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
     if (signIn?.status !== 'complete' || !signIn?.createdSessionId) {
       throw createAdminClientTrustError('admin_clerk_signin_incomplete', `Clerk administrator sign-in is incomplete (${signIn?.status || 'unknown'}).`);
     }
+    const currentPath = String(windowRef.location?.pathname || '').replace(/\/+$/, '') || '/';
+    const preserveDedicatedAdminDocument =
+      currentPath === '/admin' || currentPath === '/admin/index.html';
+    const activationOptions = { session: signIn.createdSessionId };
+
+    if (preserveDedicatedAdminDocument) {
+      // The administrator application is a dedicated document. Clerk session
+      // activation must not hand navigation to a default post-sign-in route
+      // before PostgreSQL authorization and the local admin session are saved.
+      // A supplied navigate callback takes precedence over Clerk redirect
+      // navigation; keeping it in-place lets the controller finish atomically.
+      activationOptions.navigate = async () => {};
+    }
+
     await withRuntimeTimeout(
-      () => clerk.setActive({ session: signIn.createdSessionId }),
+      () => clerk.setActive(activationOptions),
       CLERK_OPERATION_TIMEOUT_MS,
       'clerk_session_activate_timeout',
       'Clerk administrator session activation timed out.'
