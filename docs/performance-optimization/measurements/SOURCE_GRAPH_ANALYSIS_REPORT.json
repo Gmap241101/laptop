@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-26T08:44:06.672Z",
+  "generatedAt": "2026-10-06T03:26:46.566Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1486589,
+        "sourceBytes": 1486595,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -44,7 +44,7 @@
           },
           {
             "file": "src/clerk/clerkUserClient.js",
-            "bytes": 62887
+            "bytes": 62893
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -554,11 +554,11 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 94,
-        "sourceBytes": 1060218,
+        "sourceBytes": 1060224,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 119551
+            "bytes": 119557
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -936,11 +936,11 @@
       },
       "complete": {
         "moduleCount": 163,
-        "sourceBytes": 2044434,
+        "sourceBytes": 2044440,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 119551
+            "bytes": 119557
           },
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -1912,7 +1912,7 @@
   },
   "userOnlyComplete": {
     "moduleCount": 56,
-    "sourceBytes": 881647,
+    "sourceBytes": 881653,
     "files": [
       {
         "file": "src/user/UserInquiryPanel.jsx",
@@ -1920,7 +1920,7 @@
       },
       {
         "file": "src/clerk/clerkUserClient.js",
-        "bytes": 62887
+        "bytes": 62893
       },
       {
         "file": "src/user/UserBoardPanel.jsx",
@@ -2142,11 +2142,11 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 92,
-    "sourceBytes": 1439492,
+    "sourceBytes": 1439498,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 119551
+        "bytes": 119557
       },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
@@ -2517,11 +2517,11 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 218,
-      "sourceBytes": 2913427,
+      "sourceBytes": 2913439,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 119551
+          "bytes": 119557
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -2537,7 +2537,7 @@
         },
         {
           "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62887
+          "bytes": 62893
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",
@@ -3395,11 +3395,11 @@
     },
     "reachable": {
       "moduleCount": 219,
-      "sourceBytes": 2926081,
+      "sourceBytes": 2926093,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 119551
+          "bytes": 119557
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -3415,7 +3415,7 @@
         },
         {
           "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62887
+          "bytes": 62893
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",

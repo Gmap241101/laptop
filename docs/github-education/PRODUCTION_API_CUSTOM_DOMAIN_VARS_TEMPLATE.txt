@@ -14,12 +14,16 @@ CLERK_AUTHORIZED_PARTIES=https://notebook.recruit.kro.kr
 # api.notebook.recruit.kro.kr CNAME -> <Heroku-assigned-xxxx.herokudns.com>
 # Never point the custom domain directly at *.herokuapp.com when using Heroku ACM.
 
-# Production publish guard (set only after explicit production approval)
+# Production frontend build (GitHub Actions secret / workflow environment)
+VITE_CLERK_STAGING_ENABLED=true
+VITE_CLERK_PUBLISHABLE_KEY=pk_live_REPLACE_ME
+
+# Production publish guard (local validation only; remote Pages deploy is GitHub Actions)
 CONFIRM_PRODUCTION_DEPLOY=notebook.recruit.kro.kr
 
 # IMPORTANT
 # - Keep public/CNAME as notebook.recruit.kro.kr. It is the frontend GitHub Pages domain.
 # - Do not commit .env/.env.production files. This project excludes them from deployment packages.
-# - Production Clerk key/cutover is a separate required production step. The current Phase 34
-#   frontend still contains legacy VITE_CLERK_STAGING_ENABLED / pk_test_ assumptions and must
-#   not be treated as Production Clerk-ready solely because the API custom domain is ready.
+# - GitHub Pages must use build_type=workflow and deploy the Vite dist artifact.
+# - The Production workflow requires a Clerk Production publishable key (pk_live_...).
+# - The Production backend must use the matching Production Clerk secret/JWT configuration.

@@ -58,18 +58,31 @@ const staging = readClerkStagingConfig(
 assert.equal(staging.enabled, true);
 assert.equal(staging.apiBaseUrl, 'https://api.example.com');
 
+const productionKey = `pk_live_${encode('production-example.clerk.accounts.dev')}`;
+const productionCompatible = readClerkStagingConfig(
+  {
+    MODE: 'production',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: productionKey,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  decode,
+);
+assert.equal(productionCompatible.enabled, true);
+assert.equal(productionCompatible.frontendApiDomain, 'production-example.clerk.accounts.dev');
+
 assert.throws(
   () =>
     readClerkStagingConfig(
       {
         MODE: 'staging',
         VITE_CLERK_STAGING_ENABLED: 'true',
-        VITE_CLERK_PUBLISHABLE_KEY: 'pk_live_invalid',
+        VITE_CLERK_PUBLISHABLE_KEY: 'pk_invalid_value',
         VITE_API_URL: 'https://api.example.com',
       },
       decode,
     ),
-  /Development publishable key/,
+  /pk_test_|pk_live_/,
 );
 
 assert.throws(

@@ -38,8 +38,8 @@ const normalizeApiBaseUrl = (value) => {
 
 export const decodeClerkFrontendApiDomain = (publishableKey, decodeBase64) => {
   const key = trim(publishableKey);
-  if (!key.startsWith('pk_test_')) {
-    throw new Error('Staging Clerk integration requires a Development publishable key (pk_test_...).');
+  if (!/^pk_(?:test|live)_/.test(key)) {
+    throw new Error('Clerk integration requires a publishable key beginning with pk_test_ or pk_live_.');
   }
 
   const encoded = key.split('_')[2];

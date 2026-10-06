@@ -143,24 +143,30 @@ and rejects:
 
 ## 8. Production publish guard
 
-The existing Production publish remains opt-in. Only after Staging validation, Production backend/domain validation, and a separate Production Clerk cutover approval:
+Local Production artifact validation remains opt-in:
 
 ```powershell
 $env:VITE_API_URL="https://api.notebook.recruit.kro.kr"
+$env:VITE_CLERK_STAGING_ENABLED="true"
+$env:VITE_CLERK_PUBLISHABLE_KEY="pk_live_..."
 $env:CONFIRM_PRODUCTION_DEPLOY="notebook.recruit.kro.kr"
 npm run deploy:production
 ```
 
-The deployment flow now performs:
+`npm run deploy:production` now validates the Production Pages artifact locally and deliberately does **not** force-push `dist/` to `gh-pages`. The `gh-pages` branch remains the Production **source** branch.
+
+The actual remote publication is:
 
 ```text
-1. existing Phase 34 prebuild audits
-2. Production API origin preflight
-3. Vite Production build
-4. dist/CNAME verification
-5. compiled bundle contains api.notebook.recruit.kro.kr
-6. compiled bundle does not contain a direct *.herokuapp.com origin
-7. publish to gh-pages only after all checks pass
+1. deploy the verified full package to gh-pages-3
+2. run tools/deployment/promote-github-pages-actions-production.ps1
+3. preserve/create gh-pages2 rollback ref
+4. set GitHub Pages build_type=workflow
+5. promote gh-pages-3 source SHA to gh-pages
+6. push-triggered GitHub Actions runs npm ci + Vite Production build
+7. validate dist/CNAME, production API origin, pk_live Clerk key, 404 fallback
+8. upload dist as the GitHub Pages artifact
+9. deploy through actions/deploy-pages
 ```
 
 ## 9. Runtime result
@@ -182,19 +188,15 @@ Do not set `api.notebook.recruit.kro.kr` on the existing Vercel Staging project 
 
 This prevents Staging traffic from accidentally mutating Production PostgreSQL data.
 
-## 11. Production Clerk blocker that is intentionally not changed here
+## 11. Production Clerk + GitHub Pages workflow readiness
 
-Phase 34 still contains legacy frontend naming/guards from the staged Clerk migration, including `VITE_CLERK_STAGING_ENABLED` and a `pk_test_` publishable-key assumption in the current Clerk frontend configuration path.
+The frontend Clerk client now accepts both Development (`pk_test_...`) and Production (`pk_live_...`) publishable keys. The GitHub Pages Production workflow requires a Production key and fails its preflight if `VITE_CLERK_PUBLISHABLE_KEY` is not `pk_live_...`.
 
-Therefore:
+The legacy build-time switch name `VITE_CLERK_STAGING_ENABLED` remains for compatibility with the validated Phase 34 cutover code; set it to `true` in the Production workflow. It no longer implies that the publishable key itself must be a Development key.
 
-```text
-API custom-domain readiness != full Production Clerk readiness
-```
+GitHub Pages must publish the compiled `dist/` artifact through `.github/workflows/pages-production.yml`; do not configure Pages to publish the raw `gh-pages` source branch directly.
 
-Before publishing `gh-pages` as the new Clerk/PostgreSQL Production application, perform a separate Production Clerk cutover that supports the Production Clerk publishable key and removes/renames the legacy staging-only gate without reintroducing Firebase runtime compatibility.
-
-This package deliberately does not broaden that scope.
+The Production backend must independently use the Production Clerk instance (`sk_live_...` / Production JWT key) and authorize only `https://notebook.recruit.kro.kr`.
 
 ## 12. Rollback
 
