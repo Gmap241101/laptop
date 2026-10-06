@@ -9,6 +9,57 @@ const normalizeBoolean = (value) => trim(value).toLowerCase() === 'true';
 const USER_SESSION_VERIFICATION_CACHE_TTL_MS = 3000;
 
 const clerkSessionTokenPending = new WeakMap();
+const CLERK_SCRIPT_LOAD_TIMEOUT_MS = 15000;
+const CLERK_OPERATION_TIMEOUT_MS = 20000;
+const BACKEND_REQUEST_TIMEOUT_MS = 20000;
+
+const createRuntimeTimeoutError = (code, message) => {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+};
+
+const withRuntimeTimeout = async (operation, timeoutMs, code, message) => {
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(createRuntimeTimeoutError(code, message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => (typeof operation === 'function' ? operation() : operation)),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
+};
+
+const fetchWithRuntimeTimeout = async (fetchImpl, url, options = {}) => {
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller?.abort();
+      reject(createRuntimeTimeoutError(
+        'backend_request_timeout',
+        'The server request timed out.'
+      ));
+    }, BACKEND_REQUEST_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => fetchImpl(url, {
+        ...options,
+        ...(controller ? { signal: controller.signal } : {}),
+      })),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
+};
 
 const normalizeApiBaseUrl = (value) => {
   const raw = trim(value);
@@ -99,12 +150,15 @@ const getSessionToken = async (clerk) => {
   const existing = clerkSessionTokenPending.get(session);
   if (existing) return existing;
 
-  const pending = Promise.resolve()
-    .then(() => session.getToken())
-    .then((token) => {
-      if (!token) throw new Error('Clerk did not return a session token.');
-      return token;
-    });
+  const pending = withRuntimeTimeout(
+    () => session.getToken(),
+    CLERK_OPERATION_TIMEOUT_MS,
+    'clerk_session_token_timeout',
+    'Clerk session verification timed out.'
+  ).then((token) => {
+    if (!token) throw new Error('Clerk did not return a session token.');
+    return token;
+  });
   clerkSessionTokenPending.set(session, pending);
 
   try {
@@ -121,15 +175,30 @@ const endActiveClerkSessionWithoutNavigation = async (clerk) => {
   if (!activeSession) return;
 
   if (typeof activeSession.end === 'function') {
-    await activeSession.end();
+    await withRuntimeTimeout(
+      () => activeSession.end(),
+      CLERK_OPERATION_TIMEOUT_MS,
+      'clerk_session_end_timeout',
+      'Clerk session switching timed out.'
+    );
     if (clerk.session && typeof clerk.setActive === 'function') {
-      await clerk.setActive({ session: null });
+      await withRuntimeTimeout(
+        () => clerk.setActive({ session: null }),
+        CLERK_OPERATION_TIMEOUT_MS,
+        'clerk_session_deactivate_timeout',
+        'Clerk session switching timed out.'
+      );
     }
     return;
   }
 
   if (typeof clerk?.client?.removeSessions === 'function') {
-    await clerk.client.removeSessions();
+    await withRuntimeTimeout(
+      () => clerk.client.removeSessions(),
+      CLERK_OPERATION_TIMEOUT_MS,
+      'clerk_session_remove_timeout',
+      'Clerk session switching timed out.'
+    );
     return;
   }
 
@@ -143,7 +212,7 @@ const endActiveClerkSessionWithoutNavigation = async (clerk) => {
 const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
   const token = await getSessionToken(clerk);
   const authorityHeaders = { ...headers };
-  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+  const response = await fetchWithRuntimeTimeout(fetchImpl, `${apiBaseUrl}${path}`, {
     method,
     headers: {
       Accept: 'application/json',
@@ -157,7 +226,7 @@ const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method =
 };
 
 const requestPublicJson = async ({ apiBaseUrl, fetchImpl, path, body }) => {
-  const response = await fetchImpl(`${apiBaseUrl}${path}`, {
+  const response = await fetchWithRuntimeTimeout(fetchImpl, `${apiBaseUrl}${path}`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     cache: 'no-store',
@@ -823,41 +892,92 @@ export const requestRentalRequestReadCandidate = async ({ clerk, apiBaseUrl, fet
   return payload;
 };
 
+const removeScriptElement = (script) => {
+  if (!script) return;
+  if (typeof script.remove === 'function') {
+    script.remove();
+    return;
+  }
+  if (script.parentNode && typeof script.parentNode.removeChild === 'function') {
+    script.parentNode.removeChild(script);
+  }
+};
+
 const createScriptLoader = (documentRef) => (id, src, attributes = {}) =>
   new Promise((resolve, reject) => {
-    const existing = documentRef.getElementById(id);
-    if (existing?.dataset?.loaded === 'true') {
-      resolve(existing);
+    let script = documentRef.getElementById(id);
+    const existingState = script?.dataset?.clerkLoadState || '';
+    if (script?.dataset?.loaded === 'true' || existingState === 'loaded') {
+      resolve(script);
       return;
     }
 
-    const script = existing || documentRef.createElement('script');
-    if (!existing) {
+    // A script left by a previous failed/legacy load will never emit load/error again.
+    // Replace it instead of attaching listeners to a permanently settled element.
+    if (script && existingState !== 'loading') {
+      removeScriptElement(script);
+      script = null;
+    }
+
+    const shouldAppend = !script;
+    if (!script) {
+      script = documentRef.createElement('script');
       script.id = id;
       script.src = src;
       script.defer = true;
       script.async = false;
       script.crossOrigin = 'anonymous';
+      script.dataset.clerkLoadState = 'loading';
       Object.entries(attributes).forEach(([name, value]) => script.setAttribute(name, value));
-      documentRef.head.appendChild(script);
     }
 
+    let timeoutId = null;
+    let settled = false;
+
+    const cleanup = () => {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
+    };
+    const rejectLoad = (code, message, state) => {
+      if (settled) return;
+      settled = true;
+      script.dataset.clerkLoadState = state;
+      cleanup();
+      removeScriptElement(script);
+      reject(createRuntimeTimeoutError(code, message));
+    };
     const handleLoad = () => {
+      if (settled) return;
+      settled = true;
       script.dataset.loaded = 'true';
+      script.dataset.clerkLoadState = 'loaded';
       cleanup();
       resolve(script);
     };
     const handleError = () => {
-      cleanup();
-      reject(new Error(`Failed to load Clerk script: ${src}`));
-    };
-    const cleanup = () => {
-      script.removeEventListener('load', handleLoad);
-      script.removeEventListener('error', handleError);
+      rejectLoad(
+        'clerk_script_load_failed',
+        `Failed to load Clerk script: ${src}`,
+        'failed'
+      );
     };
 
+    // Register listeners before appendChild. Cached production scripts may finish
+    // synchronously enough for a post-append listener to miss the load event.
     script.addEventListener('load', handleLoad, { once: true });
     script.addEventListener('error', handleError, { once: true });
+    timeoutId = setTimeout(() => {
+      rejectLoad(
+        'clerk_script_load_timeout',
+        `Timed out while loading Clerk script: ${src}`,
+        'timed-out'
+      );
+    }, CLERK_SCRIPT_LOAD_TIMEOUT_MS);
+
+    if (shouldAppend) {
+      documentRef.head.appendChild(script);
+    }
   });
 
 export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }) => {
@@ -898,7 +1018,12 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
 
     if (factor.strategy === 'email_code') {
       if (typeof signIn.mfa?.sendEmailCode === 'function') {
-        await signIn.mfa.sendEmailCode();
+        await withRuntimeTimeout(
+          () => signIn.mfa.sendEmailCode(),
+          CLERK_OPERATION_TIMEOUT_MS,
+          'admin_clerk_client_trust_send_timeout',
+          'Clerk verification code delivery timed out.'
+        );
       } else if (typeof signIn.prepareSecondFactor === 'function') {
         await signIn.prepareSecondFactor({ strategy: 'email_code', emailAddressId: factor.emailAddressId });
       } else {
@@ -909,7 +1034,12 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
 
     if (factor.strategy === 'phone_code') {
       if (typeof signIn.mfa?.sendPhoneCode === 'function') {
-        await signIn.mfa.sendPhoneCode();
+        await withRuntimeTimeout(
+          () => signIn.mfa.sendPhoneCode(),
+          CLERK_OPERATION_TIMEOUT_MS,
+          'admin_clerk_client_trust_send_timeout',
+          'Clerk verification code delivery timed out.'
+        );
       } else if (typeof signIn.prepareSecondFactor === 'function') {
         await signIn.prepareSecondFactor({ strategy: 'phone_code', phoneNumberId: factor.phoneNumberId });
       } else {
@@ -928,7 +1058,12 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
     if (signIn?.status !== 'complete' || !signIn?.createdSessionId) {
       throw createAdminClientTrustError('admin_clerk_signin_incomplete', `Clerk administrator sign-in is incomplete (${signIn?.status || 'unknown'}).`);
     }
-    await clerk.setActive({ session: signIn.createdSessionId });
+    await withRuntimeTimeout(
+      () => clerk.setActive({ session: signIn.createdSessionId }),
+      CLERK_OPERATION_TIMEOUT_MS,
+      'clerk_session_activate_timeout',
+      'Clerk administrator session activation timed out.'
+    );
     pendingAdminClientTrust = null;
     return Object.freeze({
       status: 'complete',
@@ -956,7 +1091,12 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
 
       if (!windowRef.Clerk?.load) throw new Error('ClerkJS did not initialize after its script loaded.');
       if (!windowRef.Clerk.loaded) {
-        await windowRef.Clerk.load({ ui: { ClerkUI: windowRef.__internal_ClerkUICtor } });
+        await withRuntimeTimeout(
+          () => windowRef.Clerk.load({ ui: { ClerkUI: windowRef.__internal_ClerkUICtor } }),
+          CLERK_OPERATION_TIMEOUT_MS,
+          'clerk_initialize_timeout',
+          'Clerk initialization timed out.'
+        );
       }
       return windowRef.Clerk;
     })();
@@ -1017,11 +1157,16 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
       await endActiveClerkSessionWithoutNavigation(clerk);
       pendingAdminClientTrust = null;
       try {
-        const signIn = await clerk.client.signIn.create({
-          strategy: 'password',
-          identifier: email,
-          password,
-        });
+        const signIn = await withRuntimeTimeout(
+          () => clerk.client.signIn.create({
+            strategy: 'password',
+            identifier: email,
+            password,
+          }),
+          CLERK_OPERATION_TIMEOUT_MS,
+          'admin_clerk_signin_timeout',
+          'Clerk administrator sign-in timed out.'
+        );
         if (signIn?.status === 'needs_client_trust') {
           const factor = selectAdminClientTrustFactor(signIn);
           if (!factor) {
@@ -1087,9 +1232,19 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
       let result = signIn;
       if (pending.strategy === 'email_code') {
         if (typeof signIn.mfa?.verifyEmailCode === 'function') {
-          await signIn.mfa.verifyEmailCode({ code: verificationCode });
+          await withRuntimeTimeout(
+            () => signIn.mfa.verifyEmailCode({ code: verificationCode }),
+            CLERK_OPERATION_TIMEOUT_MS,
+            'admin_clerk_client_trust_verify_timeout',
+            'Clerk verification timed out.'
+          );
         } else if (typeof signIn.attemptSecondFactor === 'function') {
-          result = await signIn.attemptSecondFactor({ strategy: 'email_code', code: verificationCode });
+          result = await withRuntimeTimeout(
+            () => signIn.attemptSecondFactor({ strategy: 'email_code', code: verificationCode }),
+            CLERK_OPERATION_TIMEOUT_MS,
+            'admin_clerk_client_trust_verify_timeout',
+            'Clerk verification timed out.'
+          );
         } else {
           throw createAdminClientTrustError(
             'admin_clerk_client_trust_unavailable',
@@ -1098,9 +1253,19 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
         }
       } else if (pending.strategy === 'phone_code') {
         if (typeof signIn.mfa?.verifyPhoneCode === 'function') {
-          await signIn.mfa.verifyPhoneCode({ code: verificationCode });
+          await withRuntimeTimeout(
+            () => signIn.mfa.verifyPhoneCode({ code: verificationCode }),
+            CLERK_OPERATION_TIMEOUT_MS,
+            'admin_clerk_client_trust_verify_timeout',
+            'Clerk verification timed out.'
+          );
         } else if (typeof signIn.attemptSecondFactor === 'function') {
-          result = await signIn.attemptSecondFactor({ strategy: 'phone_code', code: verificationCode });
+          result = await withRuntimeTimeout(
+            () => signIn.attemptSecondFactor({ strategy: 'phone_code', code: verificationCode }),
+            CLERK_OPERATION_TIMEOUT_MS,
+            'admin_clerk_client_trust_verify_timeout',
+            'Clerk verification timed out.'
+          );
         } else {
           throw createAdminClientTrustError(
             'admin_clerk_client_trust_unavailable',

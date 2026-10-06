@@ -296,11 +296,11 @@ const documentRef = {
   head: {
     appendChild(script) {
       scripts.set(script.id, script);
-      queueMicrotask(() => {
-        if (script.id === 'clerk-staging-ui') windowRef.__internal_ClerkUICtor = function ClerkUI() {};
-        if (script.id === 'clerk-staging-js') windowRef.Clerk = fakeClerk;
-        script.emit('load');
-      });
+      if (script.id === 'clerk-staging-ui') windowRef.__internal_ClerkUICtor = function ClerkUI() {};
+      if (script.id === 'clerk-staging-js') windowRef.Clerk = fakeClerk;
+      // Emit synchronously to catch the production cache race where load can settle
+      // immediately after appendChild(). The loader must already have listeners attached.
+      script.emit('load');
     },
   },
   createElement(tag) {
@@ -367,6 +367,111 @@ assert.equal((await client.getFirebaseLegacyLink()).firebaseLink.appUserId, '11'
 assert.equal((await client.getMemberProfileReadCandidate()).readCandidate.profile.uid, 'firebase_uid_browser');
 assert.ok(browserCalls.every((call) => call.options.headers.Authorization === 'Bearer browser-session-token'));
 assert.equal(browserCalls.some((call) => call.options.headers['X-Firebase-Authorization']), false);
+
+// A failed synchronous script load must reject immediately, remove the stale script,
+// reset initializePromise, and allow a clean retry instead of leaving authentication pending forever.
+const retryScripts = new Map();
+let retryUiAttempts = 0;
+const retryClerk = {
+  loaded: false,
+  session: null,
+  user: null,
+  async load() { this.loaded = true; },
+};
+const retryWindowRef = {
+  atob: decode,
+  location: { search: '' },
+  __internal_ClerkUICtor: null,
+  Clerk: undefined,
+};
+const retryDocumentRef = {
+  head: {
+    appendChild(script) {
+      retryScripts.set(script.id, script);
+      script.remove = () => retryScripts.delete(script.id);
+      if (script.id === 'clerk-staging-ui') {
+        retryUiAttempts += 1;
+        if (retryUiAttempts === 1) {
+          script.emit('error');
+          return;
+        }
+        retryWindowRef.__internal_ClerkUICtor = function ClerkUI() {};
+      }
+      if (script.id === 'clerk-staging-js') retryWindowRef.Clerk = retryClerk;
+      script.emit('load');
+    },
+  },
+  createElement(tag) {
+    assert.equal(tag, 'script');
+    return createFakeScript();
+  },
+  getElementById(id) {
+    return retryScripts.get(id) || null;
+  },
+};
+const retryClient = createClerkStagingClient({
+  env: {
+    MODE: 'production',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: productionKey,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: retryWindowRef,
+  documentRef: retryDocumentRef,
+  fetchImpl: async () => { throw new Error('script retry smoke must not call backend fetch'); },
+});
+await assert.rejects(
+  () => retryClient.initialize(),
+  (error) => error?.code === 'clerk_script_load_failed',
+  'a failed Clerk script must reject instead of leaving initialize() pending',
+);
+assert.equal(retryScripts.has('clerk-staging-ui'), false, 'a failed Clerk script must be removed before retry');
+assert.equal(await retryClient.initialize(), retryClerk, 'Clerk initialization must recover after a failed script load');
+assert.equal(retryUiAttempts, 2, 'the failed Clerk UI script must be recreated exactly once on retry');
+
+const userLoaderScripts = new Map();
+const userLoaderClerk = {
+  loaded: false,
+  session: null,
+  user: null,
+  async load() { this.loaded = true; },
+};
+const userLoaderWindowRef = {
+  atob: decode,
+  location: { search: '' },
+  __internal_ClerkUICtor: null,
+  Clerk: undefined,
+};
+const userLoaderDocumentRef = {
+  head: {
+    appendChild(script) {
+      userLoaderScripts.set(script.id, script);
+      if (script.id === 'clerk-staging-ui') userLoaderWindowRef.__internal_ClerkUICtor = function ClerkUI() {};
+      if (script.id === 'clerk-staging-js') userLoaderWindowRef.Clerk = userLoaderClerk;
+      script.emit('load');
+    },
+  },
+  createElement(tag) {
+    assert.equal(tag, 'script');
+    return createFakeScript();
+  },
+  getElementById(id) {
+    return userLoaderScripts.get(id) || null;
+  },
+};
+const userLoaderClient = createClerkUserClient({
+  env: {
+    MODE: 'production',
+    VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: productionKey,
+    VITE_API_URL: 'https://api.example.com',
+  },
+  windowRef: userLoaderWindowRef,
+  documentRef: userLoaderDocumentRef,
+  fetchImpl: async () => { throw new Error('user loader smoke must not call backend fetch'); },
+});
+assert.equal(await userLoaderClient.initialize(), userLoaderClerk, 'dedicated user Clerk loader must survive synchronous cached script completion');
+assert.equal(userLoaderClerk.loaded, true);
 
 const dedicatedUserClient = createClerkUserClient({
   env: {
