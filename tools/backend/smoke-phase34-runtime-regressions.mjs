@@ -333,6 +333,8 @@ const assetRepositorySource = fs.readFileSync(new URL('../../server/src/assets/a
 assert.match(assetRepositorySource, /const refreshCatalogMetadata = async/, 'PostgreSQL asset mutations must keep asset catalog metadata current');
 assert.ok((assetRepositorySource.match(/await refreshCatalogMetadata\(client\);/g) || []).length >= 5, 'create/edit/delete/bulk/category mutations must refresh catalog metadata transactionally');
 const systemDataRepositorySource = fs.readFileSync(new URL('../../server/src/settings/system-data-repository.mjs', import.meta.url), 'utf8');
+assert.match(systemDataRepositorySource, /SELECT \* FROM app_user_term_consent_states ORDER BY firebase_uid, term_id/, 'member-inclusive PostgreSQL backup must sort term consent states using canonical columns');
+assert.equal(systemDataRepositorySource.includes('SELECT * FROM app_user_term_consent_states ORDER BY app_user_id'), false, 'member-inclusive PostgreSQL backup must not reference nonexistent app_user_id on term consent states');
 assert.match(systemDataRepositorySource, /async reconcileAssetCatalogMetadata/, 'data management must provide a dedicated safe catalog metadata reconciliation action');
 assert.match(appSource, /\/api\/admin\/system-data\/reconcile-asset-catalog-metadata/, 'catalog metadata reconciliation endpoint must be exposed to administrator data management');
 

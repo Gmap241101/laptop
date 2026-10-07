@@ -407,7 +407,7 @@ export const createSystemDataRepository = (pool) => {
           pool.query(`SELECT * FROM app_member_accounts ORDER BY firebase_uid`),
           pool.query(`SELECT * FROM app_member_directory_entries ORDER BY sort_order, identity_key`),
           pool.query(`SELECT * FROM app_rental_restrictions ORDER BY firebase_uid`),
-          pool.query(`SELECT * FROM app_user_term_consent_states ORDER BY app_user_id`),
+          pool.query(`SELECT * FROM app_user_term_consent_states ORDER BY firebase_uid, term_id`),
         ]);
         snapshot.members = {
           accounts: memberResult.rows.map(redact),

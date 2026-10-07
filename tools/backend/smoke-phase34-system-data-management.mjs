@@ -39,6 +39,16 @@ for (const required of [
 ]) assert.ok(migration.includes(required), `migration missing ${required}`);
 
 const repositorySource = await readFile(new URL('../../server/src/settings/system-data-repository.mjs', import.meta.url), 'utf8');
+assert.ok(
+  repositorySource.includes('SELECT * FROM app_user_term_consent_states ORDER BY firebase_uid, term_id'),
+  'member backup must order term-consent states by columns that exist in the canonical schema',
+);
+assert.equal(
+  repositorySource.includes('SELECT * FROM app_user_term_consent_states ORDER BY app_user_id'),
+  false,
+  'member backup must not reference the removed/nonexistent app_user_id column in app_user_term_consent_states',
+);
+
 for (const required of [
   'missingRequestCount',
   'recoverableRequestCount',
