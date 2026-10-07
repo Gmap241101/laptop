@@ -6,8 +6,6 @@ const DEFAULT_IDLE_TIMEOUT_MS = 10000;
 const DEFAULT_CLERK_CLOCK_SKEW_SECONDS = 5;
 const DEFAULT_CLERK_API_URL = 'https://api.clerk.com/v1';
 const DEFAULT_CLERK_API_TIMEOUT_MS = 8000;
-const DEFAULT_CLERK_PLATFORM_API_URL = 'https://api.clerk.com';
-const DEFAULT_CLERK_PLATFORM_API_TIMEOUT_MS = 8000;
 const DEFAULT_FIREBASE_CERT_TIMEOUT_MS = 8000;
 const DEFAULT_FIRESTORE_REST_TIMEOUT_MS = 8000;
 const SSL_MODES = new Set(['auto', 'require', 'disable']);
@@ -142,52 +140,6 @@ const readClerkApiUrl = () => {
   return raw.replace(/\/+$/, '');
 };
 
-const readOptionalPrefixedValue = (name, prefix) => {
-  const raw = process.env[name]?.trim();
-  if (!raw) return null;
-  if (!raw.startsWith(prefix)) {
-    throw new Error(`${name} must start with ${prefix}.`);
-  }
-  return raw;
-};
-
-const readClerkPlatformApiUrl = () => {
-  const raw = (process.env.CLERK_PLATFORM_API_URL || DEFAULT_CLERK_PLATFORM_API_URL).trim();
-  const parsed = new URL(raw);
-  if (parsed.protocol !== 'https:') {
-    throw new Error('CLERK_PLATFORM_API_URL must use https://.');
-  }
-  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-    throw new Error('CLERK_PLATFORM_API_URL must not contain credentials, query, or hash.');
-  }
-  return raw.replace(/\/+$/, '');
-};
-
-// Device Trust is an optional administrator integration. Invalid optional
-// Platform API settings must disable only that integration; they must never
-// prevent the core Clerk/PostgreSQL API server from booting.
-const readClerkPlatformIntegration = () => {
-  try {
-    return Object.freeze({
-      platformApiKey: readOptionalPrefixedValue('CLERK_PLATFORM_API_KEY', 'ak_'),
-      applicationId: readOptionalPrefixedValue('CLERK_APPLICATION_ID', 'app_'),
-      instanceId: readOptionalPrefixedValue('CLERK_INSTANCE_ID', 'ins_'),
-      apiUrl: readClerkPlatformApiUrl(),
-    });
-  } catch (error) {
-    console.warn('[config] optional Clerk Platform API integration disabled', {
-      name: error?.name,
-      message: error?.message,
-    });
-    return Object.freeze({
-      platformApiKey: null,
-      applicationId: null,
-      instanceId: null,
-      apiUrl: DEFAULT_CLERK_PLATFORM_API_URL,
-    });
-  }
-};
-
 export const readDatabaseRuntimeConfig = () => {
   const appEnv = (process.env.APP_ENV || 'local').trim().toLowerCase();
   return Object.freeze({
@@ -211,7 +163,6 @@ export const readDatabaseRuntimeConfig = () => {
 export const readServerConfig = () => {
   const databaseRuntimeConfig = readDatabaseRuntimeConfig();
   const { appEnv } = databaseRuntimeConfig;
-  const clerkPlatformIntegration = readClerkPlatformIntegration();
   const corsAllowedOrigins = readOrigins('CORS_ALLOWED_ORIGINS', appEnv, true);
   const clerkJwtKey = readClerkJwtKey(appEnv);
   const clerkAuthorizedParties = clerkJwtKey
@@ -239,15 +190,6 @@ export const readServerConfig = () => {
       min: 1000,
       max: 30000,
     }),
-    clerkPlatformApiKey: clerkPlatformIntegration.platformApiKey,
-    clerkApplicationId: clerkPlatformIntegration.applicationId,
-    clerkInstanceId: clerkPlatformIntegration.instanceId,
-    clerkPlatformApiUrl: clerkPlatformIntegration.apiUrl,
-    clerkPlatformApiTimeoutMs: readInteger(
-      'CLERK_PLATFORM_API_TIMEOUT_MS',
-      DEFAULT_CLERK_PLATFORM_API_TIMEOUT_MS,
-      { min: 1000, max: 30000 },
-    ),
     firebaseRuntimeDisabled,
     assetBoardWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_ASSET_BOARD_WRITE_MIRROR_DISABLED', false),
     rentalRequestWriteMirrorDisabled: firebaseRuntimeDisabled || readBoolean('FIRESTORE_RENTAL_REQUEST_WRITE_MIRROR_DISABLED', false),

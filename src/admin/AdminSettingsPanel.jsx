@@ -48,6 +48,30 @@ const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·초기화'],
 ];
 
+
+const RESET_DETAIL_LABELS = Object.freeze({
+  assets: '자산',
+  assetCategories: '자산 카테고리',
+  memberAccounts: '회원 계정',
+  termStates: '약관 동의 상태',
+  termLogs: '약관 동의 이력',
+  rentalRequests: '대여 신청',
+  reservationGuards: '예약 상태',
+  restrictions: '대여 제한',
+  directoryEntries: '부서·사용자 명부',
+  boardPosts: '공지·FAQ 게시물',
+  faqCategories: 'FAQ 카테고리',
+  siteContentDocuments: '사이트 콘텐츠',
+  memberInquiries: '회원 문의',
+  guestInquiries: '비회원 문의',
+  answers: '관리자 답변',
+  guestConsents: '비회원 약관 동의',
+  guestSessions: '비회원 조회 세션',
+  attachments: '문의 첨부파일',
+  siteSettingDocuments: '사이트 설정',
+  systemConfigurations: '운영 설정',
+});
+
 const SYSTEM_INFORMATION_TABS = [
   [SYSTEM_MANAGEMENT_TAB.INFO, Info, '시스템 정보'],
   [SYSTEM_MANAGEMENT_TAB.AUDIT, FileClock, '변경 이력'],
@@ -848,9 +872,9 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     <div className="space-y-5">
       <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 초기화 전에는 별도의 전체 백업을 반드시 생성해야 합니다.">
         <div className="space-y-3">
-          <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="대여 운영 데이터 포함" description="대여신청, 신청 자산, 예약 guard, 처리 이벤트를 포함합니다." />
+          <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="대여·문의 운영 데이터 포함" description="대여신청·예약·처리 이벤트와 회원·비회원 문의, 답변, 문의 동의/조회 세션을 포함합니다." />
           <ToggleSwitch checked={backupIncludeMembers} onChange={setBackupIncludeMembers} label="회원 데이터 포함" description="회원 계정, 부서·사용자 명부, 대여 제한, 약관 동의 상태를 포함합니다." />
-          <ToggleSwitch checked={backupIncludePersonalData} onChange={setBackupIncludePersonalData} label="개인정보 원문 포함" description="끄면 대여·회원 백업의 이메일·성명·연락처·과거 식별키 계열 필드를 마스킹합니다." />
+          <ToggleSwitch checked={backupIncludePersonalData} onChange={setBackupIncludePersonalData} label="개인정보 원문 포함" description="끄면 대여·회원·문의 백업의 이메일·성명·연락처·식별정보를 마스킹합니다." />
         </div>
         {!isOwner ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">PostgreSQL 전체 백업 내보내기는 최고 관리자만 실행할 수 있습니다.</div>
@@ -865,7 +889,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           <ShieldAlert className="mt-0.5 shrink-0 text-rose-600" size={20} />
           <div>
             <div className="text-base font-black text-rose-900">PostgreSQL 데이터 초기화</div>
-            <p className="mt-1 text-xs leading-5 text-rose-800">선택한 운영 데이터를 PostgreSQL에서 실제 삭제합니다. schema migration, 관리자 계정/권한 registry, Clerk 인증 계정은 삭제하지 않습니다. 일반회원 범위를 선택하면 PostgreSQL 회원 프로필·동의 상태는 초기화되지만 Clerk 로그인 identity 자체는 유지됩니다.</p>
+            <p className="mt-1 text-xs leading-5 text-rose-800">선택한 운영 데이터를 PostgreSQL에서 초기화합니다. schema migration, 관리자 계정/권한 registry, Clerk 인증 계정은 삭제하지 않습니다. 일반회원 범위를 선택하면 PostgreSQL 회원 프로필·동의 상태는 초기화되지만 Clerk 로그인 identity 자체는 유지됩니다. 사이트 콘텐츠 범위의 푸터 공통 정보는 항목을 유지한 채 빈 내용으로 초기화합니다.</p>
           </div>
         </div>
       </div>
@@ -874,7 +898,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">최고 관리자만 데이터 초기화를 실행할 수 있습니다.</div>
       ) : null}
 
-      <SectionCard title="초기화 범위" description="테스트 데이터 프리셋은 자산·회원·신청/대여 데이터만 선택합니다. 전체 초기화 프리셋은 명부·콘텐츠·사이트 설정까지 포함합니다.">
+      <SectionCard title="초기화 범위" description="테스트 데이터 프리셋은 자산·회원·신청/대여 데이터만 선택합니다. 문의하기는 회원·비회원 문의를 별도로 선택할 수 있고, 전체 초기화 프리셋에는 문의하기·명부·콘텐츠·사이트 설정까지 포함합니다.">
         <div className="mb-4 flex flex-wrap gap-2">
           <Button type="button" variant="outline" disabled={resetRunning} onClick={() => setSelectedResetScopes(TEST_DATA_PRESET)}>테스트 데이터 선택</Button>
           <Button type="button" variant="dangerOutline" disabled={resetRunning} onClick={() => setSelectedResetScopes(FULL_RESET_PRESET)}>전체 초기화 범위 선택</Button>
@@ -911,7 +935,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
               <div key={scope} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3"><span className="text-sm font-black text-slate-900">{RESET_SCOPE_META[scope]?.label || scope}</span><span className="text-lg font-black text-rose-600">{resetCounts.counts?.[scope] || 0}건</span></div>
                 <div className="mt-3 space-y-1 text-[11px] text-slate-500">
-                  {Object.entries(resetCounts.details?.[scope] || {}).map(([name, count]) => <div key={name} className="flex items-center justify-between gap-2"><span>{name}</span><span className="font-bold text-slate-700">{count}건</span></div>)}
+                  {Object.entries(resetCounts.details?.[scope] || {}).map(([name, count]) => <div key={name} className="flex items-center justify-between gap-2"><span>{RESET_DETAIL_LABELS[name] || name}</span><span className="font-bold text-slate-700">{count}건</span></div>)}
                 </div>
               </div>
             ))}
@@ -934,7 +958,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           {latestResetJob?.status === 'failed' ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">최근 초기화 실패: {latestResetJob.errorMessage || '원인 확인 필요'}</div>
           ) : null}
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">초기화 후 사이트 기본 설정은 안전한 PostgreSQL 기본 row로 재생성되고, 대여 정책은 Phase 34 canonical self-heal로 재생성됩니다. 전체 백업 JSON의 브라우저 직접 복원은 FK/migration 검증이 필요하므로 계속 서버 운영 절차로 분리합니다.</div>
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">초기화 후 사이트 기본 설정과 푸터 공통 정보는 안전한 PostgreSQL 기본 row로 유지·재생성되고, 대여 정책은 Phase 34 canonical self-heal로 재생성됩니다. 전체 백업 JSON의 브라우저 직접 복원은 FK/migration 검증이 필요하므로 계속 서버 운영 절차로 분리합니다.</div>
           <div className="flex justify-end">
             <Button
               type="button"

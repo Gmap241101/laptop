@@ -111,6 +111,23 @@ export const createUserClerkAuthRepository = (pool) => {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('A PostgreSQL pool is required.');
 
   return Object.freeze({
+    async listActiveClerkUsers() {
+      const result = await pool.query(
+        `SELECT DISTINCT u.clerk_user_id, u.primary_email
+           FROM app_user_identities u
+           JOIN app_user_firebase_links l ON l.app_user_id = u.id
+           JOIN app_member_accounts m ON m.firebase_uid = l.firebase_uid
+          WHERE COALESCE(u.clerk_user_id,'') <> ''
+            AND m.status <> 'retired'
+            AND COALESCE(m.clerk_account_state,'active') <> 'deleted'
+          ORDER BY u.clerk_user_id`,
+      );
+      return result.rows.map((row) => Object.freeze({
+        clerkUserId: trim(row.clerk_user_id),
+        primaryEmail: trim(row.primary_email).toLowerCase(),
+      }));
+    },
+
     async findByClerkUserId(clerkUserId) {
       const result = await pool.query(`${SELECT_CONTEXT} WHERE u.clerk_user_id = $1 LIMIT 1`, [trim(clerkUserId)]);
       return mapRow(result.rows[0]);

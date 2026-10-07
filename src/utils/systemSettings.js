@@ -89,6 +89,7 @@ export const SYSTEM_RESET_SCOPE = {
   RENTALS: 'rentals',
   ORGANIZATION: 'organization',
   CONTENT: 'content',
+  INQUIRIES: 'inquiries',
   SETTINGS: 'settings',
 };
 

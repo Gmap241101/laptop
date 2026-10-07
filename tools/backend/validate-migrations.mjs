@@ -36,6 +36,7 @@ const phase34PrivateInquiryBoard = readFileSync('server/migrations/034_phase34_p
 const phase34SecureExternalAttachments = readFileSync('server/migrations/035_phase34_secure_external_attachments.sql', 'utf8');
 const phase34SecureAttachmentMetadataMetrics = readFileSync('server/migrations/036_phase34_secure_attachment_metadata_metrics.sql', 'utf8');
 const phase34NoticeUniqueViewers = readFileSync('server/migrations/037_phase34_notice_unique_viewers.sql', 'utf8');
+const phase34FooterResetRecoveryInquiryReset = readFileSync('server/migrations/038_phase34_footer_reset_recovery_inquiry_reset.sql', 'utf8');
 
 if (!/value\s+JSONB\s+NOT\s+NULL/i.test(phase2)) {
   throw new Error('app_runtime_metadata.value must remain JSONB NOT NULL.');
@@ -637,4 +638,18 @@ if (/^\s*(BEGIN|COMMIT)\s*;/im.test(phase34NoticeUniqueViewers)) {
   throw new Error('Migration 037 must rely on the migration runner transaction and must not issue BEGIN/COMMIT itself.');
 }
 
-console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, 035 secure external attachments, 036 attachment metadata metrics, and 037 unique notice views, are type-safe)');
+
+for (const marker of [
+  "'footer'",
+  "'siteFooter/config'",
+  "'postgresql-reset-recovery'",
+  'ON CONFLICT (domain, document_key) DO NOTHING',
+  "'phase34_footer_reset_recovery_inquiry_reset'",
+  "'member-and-guest-transactions'",
+]) {
+  if (!phase34FooterResetRecoveryInquiryReset.includes(marker)) {
+    throw new Error(`Phase 34 footer/inquiry reset recovery migration marker is missing: ${marker}`);
+  }
+}
+
+console.log('[migration-static-check] PASS (Phase 6/7/9/12/14/16 through Phase 34 migrations, including 030-033 stabilizations, 034 PostgreSQL private inquiry board, 035 secure external attachments, 036 attachment metadata metrics, 037 unique notice views, and 038 footer reset recovery/inquiry reset support, are type-safe)');

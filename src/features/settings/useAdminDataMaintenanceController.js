@@ -10,7 +10,8 @@ export const RESET_SCOPE_META = {
   [SYSTEM_RESET_SCOPE.MEMBERS]: { label: '일반회원 정보', description: 'PostgreSQL 회원 데이터를 관리합니다.', collections: [] },
   [SYSTEM_RESET_SCOPE.RENTALS]: { label: '신청·대여내역', description: 'PostgreSQL 대여 데이터를 관리합니다.', collections: [] },
   [SYSTEM_RESET_SCOPE.ORGANIZATION]: { label: '부서·사용자 명부', description: 'PostgreSQL 명부 데이터를 관리합니다.', collections: [] },
-  [SYSTEM_RESET_SCOPE.CONTENT]: { label: '게시물·사이트 콘텐츠', description: 'PostgreSQL 콘텐츠 데이터를 관리합니다.', collections: [] },
+  [SYSTEM_RESET_SCOPE.CONTENT]: { label: '게시물·사이트 콘텐츠', description: 'PostgreSQL 게시물·팝업·푸터 메뉴 등 사이트 콘텐츠를 초기화합니다. 푸터 공통 정보는 항목을 유지하고 내용만 비웁니다.', collections: [] },
+  [SYSTEM_RESET_SCOPE.INQUIRIES]: { label: '문의하기', description: '회원·비회원 문의, 관리자 답변, 비회원 동의/조회 세션과 문의 첨부파일을 초기화합니다. 문의 설정·구분·전용 약관은 유지합니다.', collections: [] },
   [SYSTEM_RESET_SCOPE.SETTINGS]: { label: '사이트·운영 설정', description: 'PostgreSQL 설정 데이터를 관리합니다.', collections: [] },
 };
 
@@ -186,7 +187,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const downloadBackup = useCallback(() => downloadSnapshot({
     includeOperations: backupIncludeOperations,
     includeMembers: backupIncludeMembers,
-    includePersonalData: backupIncludeMembers && backupIncludePersonalData,
+    includePersonalData: backupIncludePersonalData && (backupIncludeMembers || backupIncludeOperations),
   }), [backupIncludeMembers, backupIncludeOperations, backupIncludePersonalData, downloadSnapshot]);
 
   const downloadResetBackup = useCallback(() => downloadSnapshot({

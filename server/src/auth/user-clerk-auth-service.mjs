@@ -1,3 +1,4 @@
+import { readDeviceTrustBypass } from '../clerk/clerk-device-trust-service.mjs';
 import { randomBytes, randomUUID } from 'node:crypto';
 
 const trim = (value) => String(value ?? '').trim();
@@ -38,6 +39,7 @@ export const createUserClerkAuthService = ({
   accountLifecycleService = null,
   accountLifecycleCompatibilityDisabled = false,
   userFirebaseAuthCompatibilityDisabled = false,
+  systemConfigService = null,
 }) => {
   if (!repository || typeof repository.findByClerkUserId !== 'function' || typeof repository.findByFirebaseUid !== 'function') throw new TypeError('User Clerk auth repository is required.');
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.verifyPassword !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API lifecycle methods are required.');
@@ -114,6 +116,7 @@ export const createUserClerkAuthService = ({
     if (!email) throw serviceError('user_email_missing', 'User email is required for Clerk migration.', 409);
     if (lower(source.fields.email) && lower(source.fields.email) !== email) throw serviceError('user_email_mismatch', 'Firebase and member profile email addresses do not match.', 409);
 
+    const bypassClientTrust = await readDeviceTrustBypass(systemConfigService);
     let clerkUser = await clerkClient.findUserByEmail(email);
     if (!clerkUser) {
       clerkUser = await clerkClient.createUser({
@@ -124,6 +127,7 @@ export const createUserClerkAuthService = ({
         privateMetadata: privateMetadata(source.uid),
         externalId: `rental-user:${source.uid}`,
         skipPasswordChecks: Boolean(migration),
+        bypassClientTrust,
       });
     } else {
       const linkedFirebaseUid = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid || clerkUser.privateMetadata?.rentalSystemLegacyMemberKey);
@@ -131,6 +135,7 @@ export const createUserClerkAuthService = ({
       clerkUser = await clerkClient.updateUser(clerkUser.clerkUserId, {
         password,
         ...(migration ? { skip_password_checks: true } : {}),
+        bypass_client_trust: bypassClientTrust,
       });
       clerkUser = await clerkClient.updateUserMetadata(clerkUser.clerkUserId, {
         publicMetadata: publicMetadata(),
@@ -244,6 +249,7 @@ export const createUserClerkAuthService = ({
           },
           externalId: `rental-user:${legacyMemberKey}`,
           skipPasswordChecks: false,
+          bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
         });
         const linked = await linkClerkAuthority({
           clerkUser,
@@ -302,6 +308,7 @@ export const createUserClerkAuthService = ({
           privateMetadata: privateMetadata(legacyMemberKey),
           externalId: `rental-user:${legacyMemberKey}`,
           skipPasswordChecks: false,
+          bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
         });
         const linked = await linkClerkAuthority({
           clerkUser,
@@ -363,6 +370,7 @@ export const createUserClerkAuthService = ({
         clerkUser = await clerkClient.updateUser(id, {
           ...(trim(input.name) ? { first_name: trim(input.name) } : {}),
           external_id: `rental-user:${legacyMemberKey}`,
+          bypass_client_trust: await readDeviceTrustBypass(systemConfigService),
         });
         clerkUser = await clerkClient.updateUserMetadata(id, {
           publicMetadata: publicMetadata(),
@@ -421,11 +429,15 @@ export const createUserClerkAuthService = ({
             privateMetadata: privateMetadata(uid),
             externalId: `rental-user:${uid}`,
             skipPasswordChecks: false,
+            bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
           });
           created = true;
         } else {
           const linkedKey = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid || clerkUser.privateMetadata?.rentalSystemLegacyMemberKey);
           if (linkedKey && linkedKey !== uid) throw serviceError('user_clerk_link_conflict', 'Clerk user is linked to a different member identity.', 409);
+          clerkUser = await clerkClient.updateUser(clerkUser.clerkUserId, {
+            bypass_client_trust: await readDeviceTrustBypass(systemConfigService),
+          });
           clerkUser = await clerkClient.updateUserMetadata(clerkUser.clerkUserId, {
             publicMetadata: publicMetadata(),
             privateMetadata: privateMetadata(uid),

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const ALLOWED_KEYS = new Set(['admin-security', 'user-session-policy']);
+const ALLOWED_KEYS = new Set(['admin-security', 'user-session-policy', 'device-trust-policy']);
 const AUDIT_KEY = 'system-settings-audit';
 const serviceError = (code, message, status = 400) => Object.assign(new Error(message), { code, status });
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();

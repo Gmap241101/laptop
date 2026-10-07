@@ -74,14 +74,14 @@ const deviceTrustFetch = async (url, options = {}) => {
   if (options.method === 'GET') {
     return new Response(JSON.stringify({
       authenticated: true, authorized: true,
-      clerkDeviceTrust: { source: 'clerk-platform-api', authority: 'clerk-device-trust', configured: true, enabled: true },
+      clerkDeviceTrust: { source: 'postgresql-clerk-backend-api', authority: 'clerk-user-device-trust-policy', configured: true, enabled: true },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   if (options.method === 'PATCH') {
     assert.deepEqual(JSON.parse(options.body), { enabled: false });
     return new Response(JSON.stringify({
       authenticated: true, authorized: true,
-      clerkDeviceTrust: { source: 'clerk-platform-api', authority: 'clerk-device-trust', configured: true, enabled: false },
+      clerkDeviceTrust: { source: 'postgresql-clerk-backend-api', authority: 'clerk-user-device-trust-policy', configured: true, enabled: false },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
   throw new Error(`Unexpected Device Trust frontend request: ${options.method}`);
@@ -396,10 +396,12 @@ const adminContextAssemblerSource = fs.readFileSync(new URL('../../src/admin/use
 const adminAccountSecuritySource = fs.readFileSync(new URL('../../src/admin/AdminAccountSecurityPanel.jsx', import.meta.url), 'utf8');
 assert.match(adminAccountSecuritySource, /title="새 기기 로그인 인증"/, 'account-security settings must expose the shared new-device login verification control');
 assert.match(adminAccountSecuritySource, /새로운 기기에서 이메일 인증 사용/, 'Device Trust control must describe the requested yes/no behavior');
-assert.match(adminAccountSecuritySource, /getAdminClerkDeviceTrust\(\)/, 'Device Trust control must read the live Clerk setting instead of trusting PostgreSQL state');
-assert.match(adminAccountSecuritySource, /saveAdminClerkDeviceTrust\(/, 'Device Trust control must write the live Clerk setting');
+assert.match(adminAccountSecuritySource, /getAdminClerkDeviceTrust\(\)/, 'new-device verification control must read the persisted backend policy');
+assert.match(adminAccountSecuritySource, /saveAdminClerkDeviceTrust\(/, 'new-device verification control must write the backend policy and synchronize Clerk users');
 assert.match(adminAccountSecuritySource, /device-trust-settings-update/, 'Device Trust changes must be recorded in system settings audit history');
 assert.match(adminAccountSecuritySource, /deviceTrustDraft[\s\S]*'예'[\s\S]*'아니오'/, 'Device Trust setting must visibly expose yes/no state');
+assert.equal(adminAccountSecuritySource.includes('CLERK_PLATFORM_API_KEY'), false, 'administrator UI must not expose obsolete Clerk Platform API configuration instructions');
+assert.equal(adminAccountSecuritySource.includes('연동 필요'), false, 'new-device verification must not be disabled behind an unavailable Platform API integration badge');
 const contextSliceSource = fs.readFileSync(new URL('../../src/context/appContextSlices.js', import.meta.url), 'utf8');
 const adminShellSource = fs.readFileSync(new URL('../../src/admin/AdminShell.jsx', import.meta.url), 'utf8');
 const adminNavigationSource = fs.readFileSync(new URL('../../src/admin/useAdminNavigationController.js', import.meta.url), 'utf8');

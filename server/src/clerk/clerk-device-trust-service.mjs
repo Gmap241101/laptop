@@ -1,173 +1,196 @@
-const DEFAULT_PLATFORM_API_URL = 'https://api.clerk.com';
-const DEFAULT_TIMEOUT_MS = 8000;
+const POLICY_KEY = 'device-trust-policy';
+const DEFAULT_ENABLED = true;
 
-const createServiceError = (code, message, status = 503) =>
+const serviceError = (code, message, status = 503) =>
   Object.assign(new Error(message), { code, status });
 
 const trim = (value) => String(value ?? '').trim();
 
-const readResponsePayload = async (response) => {
-  const text = await response.text();
-  if (!text) return {};
+const mapConcurrent = async (items, limit, worker) => {
+  const input = Array.isArray(items) ? items : [];
+  const results = new Array(input.length);
+  let cursor = 0;
+  const run = async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= input.length) return;
+      results[index] = await worker(input[index], index);
+    }
+  };
+  const workerCount = Math.max(1, Math.min(Math.trunc(Number(limit) || 1), input.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, () => run()));
+  return results;
+};
+
+export const readDeviceTrustPolicy = async (systemConfigService) => {
+  if (!systemConfigService || typeof systemConfigService.get !== 'function') {
+    return Object.freeze({ enabled: DEFAULT_ENABLED, source: 'secure-default' });
+  }
   try {
-    return JSON.parse(text);
+    const result = await systemConfigService.get(POLICY_KEY);
+    const value = result?.payload?.deviceTrustEmailVerificationEnabled;
+    return Object.freeze({
+      enabled: typeof value === 'boolean' ? value : DEFAULT_ENABLED,
+      source: typeof value === 'boolean' ? 'postgresql' : 'secure-default',
+    });
   } catch {
-    return {};
+    return Object.freeze({ enabled: DEFAULT_ENABLED, source: 'secure-default' });
   }
 };
 
-const readDeviceTrustEnabled = (payload) => {
-  const enabled = payload?.auth_password?.device_trust?.enabled;
-  if (typeof enabled !== 'boolean') {
-    throw createServiceError(
-      'clerk_device_trust_config_missing',
-      'Clerk Platform API response did not include auth_password.device_trust.enabled.',
-      502,
-    );
-  }
-  return enabled;
-};
+export const readDeviceTrustBypass = async (systemConfigService) =>
+  !(await readDeviceTrustPolicy(systemConfigService)).enabled;
 
 export const createClerkDeviceTrustService = ({
-  platformApiKey = '',
-  applicationId = '',
-  instanceId = '',
-  platformApiUrl = DEFAULT_PLATFORM_API_URL,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-  fetchImpl = fetch,
+  clerkClient,
+  systemConfigService,
+  adminIdentityRepository,
+  userAuthRepository,
 } = {}) => {
-  const normalizedPlatformApiKey = trim(platformApiKey);
-  const normalizedApplicationId = trim(applicationId);
-  const normalizedInstanceId = trim(instanceId);
-  const normalizedPlatformApiUrl = trim(platformApiUrl || DEFAULT_PLATFORM_API_URL).replace(/\/+$/, '');
   const configured = Boolean(
-    normalizedPlatformApiKey && normalizedApplicationId && normalizedInstanceId
+    clerkClient &&
+    typeof clerkClient.getUser === 'function' &&
+    typeof clerkClient.updateUser === 'function' &&
+    systemConfigService &&
+    typeof systemConfigService.get === 'function' &&
+    typeof systemConfigService.put === 'function' &&
+    adminIdentityRepository &&
+    typeof adminIdentityRepository.listActive === 'function' &&
+    userAuthRepository &&
+    typeof userAuthRepository.listActiveClerkUsers === 'function'
   );
 
   const configurationStatus = Object.freeze({
     configured,
-    source: 'clerk-platform-api',
-    authority: 'clerk-device-trust',
-    requiredEnvironment: Object.freeze([
-      'CLERK_PLATFORM_API_KEY',
-      'CLERK_APPLICATION_ID',
-      'CLERK_INSTANCE_ID',
-    ]),
+    source: 'postgresql-clerk-backend-api',
+    authority: 'clerk-user-device-trust-policy',
+    requiredEnvironment: Object.freeze(['CLERK_SECRET_KEY']),
   });
 
-  const request = async (method, { body = null, keys = [] } = {}) => {
+  const ensureConfigured = () => {
     if (!configured) {
-      throw createServiceError(
-        'clerk_platform_config_not_configured',
-        'Clerk Platform API configuration is not available.',
+      throw serviceError(
+        'clerk_backend_device_trust_not_configured',
+        'Clerk Backend API device-trust policy integration is not available.',
         503,
       );
     }
+  };
 
-    const url = new URL(
-      `/v1/platform/applications/${encodeURIComponent(normalizedApplicationId)}/instances/${encodeURIComponent(normalizedInstanceId)}/config`,
-      normalizedPlatformApiUrl,
-    );
-    for (const key of keys) {
-      const normalizedKey = trim(key);
-      if (normalizedKey) url.searchParams.append('keys', normalizedKey);
+  const collectTargets = async () => {
+    const [admins, users] = await Promise.all([
+      adminIdentityRepository.listActive(),
+      userAuthRepository.listActiveClerkUsers(),
+    ]);
+    const ids = new Set();
+    for (const admin of admins || []) {
+      const id = trim(admin?.clerkUserId);
+      if (id) ids.add(id);
     }
+    for (const user of users || []) {
+      const id = trim(user?.clerkUserId);
+      if (id) ids.add(id);
+    }
+    return [...ids];
+  };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetchImpl(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${normalizedPlatformApiKey}`,
-          Accept: 'application/json',
-          ...(body ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-        signal: controller.signal,
-      });
-      const payload = await readResponsePayload(response);
-      if (!response.ok) {
-        const clerkError = Array.isArray(payload?.errors) ? payload.errors[0] : null;
-        const fallbackCode = response.status === 401 || response.status === 403
-          ? 'clerk_platform_api_unauthorized'
-          : response.status === 404
-            ? 'clerk_platform_target_not_found'
-            : response.status === 429
-              ? 'clerk_platform_api_rate_limited'
-              : `clerk_platform_http_${response.status}`;
-        throw createServiceError(
-          trim(clerkError?.code || payload?.error || fallbackCode) || fallbackCode,
-          trim(clerkError?.long_message || clerkError?.message || payload?.message) ||
-            `Clerk Platform API request failed with HTTP ${response.status}.`,
-          response.status,
-        );
-      }
-      return payload;
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        throw createServiceError(
-          'clerk_platform_api_timeout',
-          'Clerk Platform API request timed out.',
-          504,
-        );
-      }
-      if (error?.code) throw error;
-      throw createServiceError(
-        'clerk_platform_api_request_failed',
-        error?.message || 'Clerk Platform API request failed.',
+  const setUserBypass = async (clerkUserId, bypassClientTrust) => {
+    const updated = await clerkClient.updateUser(clerkUserId, {
+      bypass_client_trust: Boolean(bypassClientTrust),
+    });
+    if (Boolean(updated?.bypassClientTrust) !== Boolean(bypassClientTrust)) {
+      throw serviceError(
+        'clerk_device_trust_user_sync_not_confirmed',
+        'Clerk did not confirm the requested user device-trust bypass state.',
         502,
       );
-    } finally {
-      clearTimeout(timeout);
     }
+    return updated;
   };
 
   return Object.freeze({
     getConfigurationStatus() {
       return configurationStatus;
     },
+
     async get() {
-      if (!configured) {
-        return Object.freeze({
-          ...configurationStatus,
-          enabled: null,
-        });
-      }
-      const payload = await request('GET', { keys: ['auth_password'] });
+      ensureConfigured();
+      const policy = await readDeviceTrustPolicy(systemConfigService);
       return Object.freeze({
         ...configurationStatus,
-        enabled: readDeviceTrustEnabled(payload),
+        enabled: policy.enabled,
+        bypassClientTrust: !policy.enabled,
+        policySource: policy.source,
       });
     },
-    async setEnabled(enabledValue) {
+
+    async setEnabled(enabledValue, { actorClerkUserId = '' } = {}) {
+      ensureConfigured();
       if (typeof enabledValue !== 'boolean') {
-        throw createServiceError(
+        throw serviceError(
           'clerk_device_trust_enabled_invalid',
           'Device Trust enabled must be a boolean.',
           400,
         );
       }
-      const payload = await request('PATCH', {
-        body: {
-          auth_password: {
-            device_trust: {
-              enabled: enabledValue,
-            },
-          },
-        },
+
+      const targetIds = await collectTargets();
+      const desiredBypass = !enabledValue;
+      const snapshots = [];
+      const updatedIds = [];
+      const skippedIds = [];
+
+      const inspected = await mapConcurrent(targetIds, 8, async (clerkUserId) => {
+        try {
+          const user = await clerkClient.getUser(clerkUserId);
+          return { clerkUserId, bypassClientTrust: Boolean(user?.bypassClientTrust), missing: false };
+        } catch (error) {
+          if (Number(error?.status || 0) === 404 || error?.code === 'clerk_user_not_found') {
+            return { clerkUserId, missing: true };
+          }
+          throw error;
+        }
       });
-      const enabled = readDeviceTrustEnabled(payload);
-      if (enabled !== enabledValue) {
-        throw createServiceError(
-          'clerk_device_trust_write_not_confirmed',
-          'Clerk Platform API did not confirm the requested Device Trust setting.',
-          502,
-        );
+      for (const item of inspected) {
+        if (item?.missing) skippedIds.push(item.clerkUserId);
+        else if (item?.clerkUserId) snapshots.push(item);
       }
+
+      try {
+        await mapConcurrent(snapshots, 8, async (snapshot) => {
+          if (snapshot.bypassClientTrust === desiredBypass) return;
+          await setUserBypass(snapshot.clerkUserId, desiredBypass);
+          updatedIds.push(snapshot.clerkUserId);
+        });
+
+        await systemConfigService.put({
+          key: POLICY_KEY,
+          actorClerkUserId: trim(actorClerkUserId),
+          payload: {
+            deviceTrustEmailVerificationEnabled: enabledValue,
+            clerkBypassClientTrust: desiredBypass,
+            syncedAt: new Date().toISOString(),
+            syncedAccountCount: snapshots.length,
+            skippedAccountCount: skippedIds.length,
+          },
+        });
+      } catch (error) {
+        await mapConcurrent([...updatedIds].reverse(), 8, async (clerkUserId) => {
+          const snapshot = snapshots.find((item) => item.clerkUserId === clerkUserId);
+          if (!snapshot) return;
+          await setUserBypass(clerkUserId, snapshot.bypassClientTrust).catch(() => {});
+        });
+        throw error;
+      }
+
       return Object.freeze({
         ...configurationStatus,
-        enabled,
+        enabled: enabledValue,
+        bypassClientTrust: desiredBypass,
+        policySource: 'postgresql',
+        syncedAccountCount: snapshots.length,
+        skippedAccountCount: skippedIds.length,
       });
     },
   });

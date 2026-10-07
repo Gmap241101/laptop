@@ -338,7 +338,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
     }
     if (!deviceTrustState.configured) {
       triggerToast(
-        'Clerk Platform API 연동이 필요합니다. 오류 코드: clerk_platform_config_not_configured',
+        '새 기기 로그인 인증 설정을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
         'error',
       );
       return;
@@ -391,10 +391,10 @@ export default function AdminAccountSecurityPanel({ ctx }) {
         );
       }
     } catch (error) {
-      console.error('Clerk Device Trust settings save error:', error);
+      console.error('New-device login verification settings save error:', error);
       setDeviceTrustDraft(previousEnabled);
       triggerToast(
-        `새 기기 로그인 이메일 인증 설정을 Clerk에 반영하지 못했습니다. 기존 설정은 유지됩니다. 오류 코드: ${error?.code || error?.name || 'clerk_device_trust_write_failed'}`,
+        `새 기기 로그인 이메일 인증 설정을 저장하지 못했습니다. 기존 설정은 유지됩니다. 오류 코드: ${error?.code || error?.name || 'device_trust_policy_write_failed'}`, 
         'error',
       );
     } finally {
@@ -575,7 +575,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
 
           <SectionCard
             title="새 기기 로그인 인증"
-            description="사용자와 관리자 모두 새로운 기기에서 로그인할 때 이메일 인증코드를 추가 확인할지 설정합니다. 저장하면 Clerk Device Trust에 즉시 반영됩니다."
+            description="사용자와 관리자 모두 새로운 기기에서 로그인할 때 이메일 인증코드를 추가 확인할지 설정합니다. 저장하면 기존 계정과 이후 생성되는 계정에 적용됩니다."
           >
             <SettingRow
               title="새로운 기기에서 이메일 인증 사용"
@@ -597,7 +597,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
                         ? deviceTrustDraft
                           ? '예'
                           : '아니오'
-                        : '연동 필요'}
+                        : '확인 실패'}
                   </span>
                   <ToggleSwitch
                     label="새 기기 로그인 이메일 인증 사용"
@@ -616,7 +616,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             {!deviceTrustState.configured && deviceTrustState.ready ? (
               <div className="py-4">
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-                  Clerk Platform API 연동이 필요합니다. Heroku 서버에 CLERK_PLATFORM_API_KEY, CLERK_APPLICATION_ID, CLERK_INSTANCE_ID를 설정하면 이 화면에서 실제 Clerk Device Trust를 변경할 수 있습니다.
+                  새 기기 로그인 인증 설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
                   {deviceTrustState.errorCode ? ` 오류 코드: ${deviceTrustState.errorCode}` : ''}
                 </div>
               </div>
@@ -636,7 +636,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
                 onClick={saveDeviceTrustSetting}
               >
                 <Save size={14} />
-                {savingDeviceTrust ? 'Clerk 반영 중' : '새 기기 로그인 인증 설정 저장'}
+                {savingDeviceTrust ? '저장 중' : '새 기기 로그인 인증 설정 저장'}
               </Button>
             </div>
           </SectionCard>
@@ -646,17 +646,17 @@ export default function AdminAccountSecurityPanel({ ctx }) {
               <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={18} />
               <div>
                 <div className="text-sm font-bold text-emerald-900">
-                  Clerk 인증 보호 사용
+                  로그인 보호 사용
                 </div>
                 <p className="mt-1 text-xs leading-5 text-emerald-800">
-                  클라이언트가 자체적으로 실패 횟수를 기록하는 계정 잠금은 사용하지 않습니다. 로그인 오류 통합 표시와 비밀번호 재설정 계정 존재 은폐는 앱에 적용되어 있습니다.
+                  로그인 오류 통합 표시와 비밀번호 재설정 시 계정 존재 여부 보호가 적용되어 있습니다.
                 </p>
               </div>
             </div>
             <div className="mt-3 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <Info className="mt-0.5 shrink-0 text-sky-600" size={18} />
               <p className="text-xs leading-5 text-sky-800">
-                새 기기 로그인 인증은 Clerk Device Trust에 직접 반영되고, 애플리케이션 세션 시간과 잠금 정책은 PostgreSQL 시스템 설정에서 관리합니다.
+                새 기기 로그인 인증 설정은 기존 사용자와 관리자 계정, 이후 생성되는 계정에 동일하게 적용됩니다.
               </p>
             </div>
           </section>

@@ -1331,8 +1331,8 @@ export const requestAdminClerkDeviceTrust = async ({ clerk, apiBaseUrl, fetchImp
   if (
     !payload?.authenticated ||
     !payload?.authorized ||
-    state?.source !== 'clerk-platform-api' ||
-    state?.authority !== 'clerk-device-trust' ||
+    state?.source !== 'postgresql-clerk-backend-api' ||
+    state?.authority !== 'clerk-user-device-trust-policy' ||
     typeof state?.configured !== 'boolean' ||
     (state.configured && typeof state.enabled !== 'boolean')
   ) {
@@ -1370,8 +1370,8 @@ export const requestAdminClerkDeviceTrustWrite = async ({ clerk, apiBaseUrl, fet
   if (
     !payload?.authenticated ||
     !payload?.authorized ||
-    state?.source !== 'clerk-platform-api' ||
-    state?.authority !== 'clerk-device-trust' ||
+    state?.source !== 'postgresql-clerk-backend-api' ||
+    state?.authority !== 'clerk-user-device-trust-policy' ||
     state?.configured !== true ||
     typeof state.enabled !== 'boolean' ||
     state.enabled !== enabled

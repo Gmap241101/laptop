@@ -59,6 +59,7 @@ export const normalizeClerkBackendUser = (user) => {
     privateMetadata: user?.private_metadata || user?.privateMetadata || {},
     clerkCreatedAt: readTimestamp(user?.created_at ?? user?.createdAt),
     clerkUpdatedAt: readTimestamp(user?.updated_at ?? user?.updatedAt),
+    bypassClientTrust: Boolean(user?.bypass_client_trust ?? user?.bypassClientTrust),
   });
 };
 
@@ -147,6 +148,7 @@ export const createClerkBackendClient = ({ secretKey, apiUrl = DEFAULT_CLERK_API
       privateMetadata = {},
       externalId = '',
       skipPasswordChecks = false,
+      bypassClientTrust = null,
     }) {
       const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
       if (!normalizedEmail || typeof password !== 'string' || !password) {
@@ -160,6 +162,7 @@ export const createClerkBackendClient = ({ secretKey, apiUrl = DEFAULT_CLERK_API
         public_metadata: publicMetadata,
         private_metadata: privateMetadata,
         ...(skipPasswordChecks ? { skip_password_checks: true } : {}),
+        ...(typeof bypassClientTrust === 'boolean' ? { bypass_client_trust: bypassClientTrust } : {}),
       };
       return normalizeClerkBackendUser(await requestJson({ path: '/users', method: 'POST', body }));
     },

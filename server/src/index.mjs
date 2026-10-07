@@ -64,13 +64,6 @@ const clerkClient = config.clerkSecretKey
       async verifyPassword() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
-const clerkDeviceTrustService = createClerkDeviceTrustService({
-  platformApiKey: config.clerkPlatformApiKey,
-  applicationId: config.clerkApplicationId,
-  instanceId: config.clerkInstanceId,
-  platformApiUrl: config.clerkPlatformApiUrl,
-  timeoutMs: config.clerkPlatformApiTimeoutMs,
-});
 const pool = getPool();
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
@@ -86,6 +79,12 @@ const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const systemConfigRepository = createSystemConfigRepository(pool);
 const systemConfigService = createSystemConfigService({ repository: systemConfigRepository });
+const clerkDeviceTrustService = createClerkDeviceTrustService({
+  clerkClient: config.clerkSecretKey ? clerkClient : null,
+  systemConfigService,
+  adminIdentityRepository,
+  userAuthRepository: userClerkAuthRepository,
+});
 const systemDataRepository = createSystemDataRepository(pool);
 const systemDataService = createSystemDataService({ repository: systemDataRepository });
 const siteContentService = createSiteContentService({ repository: siteContentRepository });
@@ -115,10 +114,12 @@ const userClerkAuthService = createUserClerkAuthService({
       accountLifecycleService,
       accountLifecycleCompatibilityDisabled: config.accountLifecycleCompatibilityDisabled,
       userFirebaseAuthCompatibilityDisabled: config.userFirebaseAuthCompatibilityDisabled,
+      systemConfigService,
     });
 const adminClerkAuthService = createAdminClerkAuthService({
       repository: adminIdentityRepository,
       clerkClient,
+      systemConfigService,
     });
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
@@ -211,7 +212,7 @@ server.listen(config.port, '0.0.0.0', () => {
     databaseConfigured: true,
     clerkJwtVerification: 'RS256-public-key',
     clerkBackendApi: config.clerkSecretKey ? 'configured' : 'disabled',
-    clerkPlatformDeviceTrust: clerkDeviceTrustService.getConfigurationStatus().configured ? 'configured' : 'disabled',
+    clerkUserDeviceTrustPolicy: clerkDeviceTrustService.getConfigurationStatus().configured ? 'configured' : 'disabled',
     firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired' : 'compatibility',
     userIdentityStore: 'postgresql',
     firebaseIdentityBridge: 'retired',

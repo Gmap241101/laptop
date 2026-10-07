@@ -2,7 +2,7 @@ const trim = (value) => String(value ?? '').trim();
 
 const count = (row, key) => Number(row?.[key] || 0);
 
-const RESET_SCOPES = new Set(['assets', 'members', 'rentals', 'organization', 'content', 'settings']);
+const RESET_SCOPES = new Set(['assets', 'members', 'rentals', 'organization', 'content', 'inquiries', 'settings']);
 const normalizeScopes = (scopes) => [...new Set((Array.isArray(scopes) ? scopes : []).map((value) => trim(value).toLowerCase()).filter((value) => RESET_SCOPES.has(value)))];
 
 const mapIssue = (row, code, level, message) => ({
@@ -291,6 +291,12 @@ export const createSystemDataRepository = (pool) => {
           (SELECT COUNT(*) FROM app_board_posts)::int AS board_posts,
           (SELECT COUNT(*) FROM app_faq_categories)::int AS faq_categories,
           (SELECT COUNT(*) FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms'))::int AS content_documents,
+          (SELECT COUNT(*) FROM app_inquiries WHERE author_type='member')::int AS member_inquiries,
+          (SELECT COUNT(*) FROM app_inquiries WHERE author_type='guest')::int AS guest_inquiries,
+          (SELECT COUNT(*) FROM app_inquiry_answers)::int AS inquiry_answers,
+          (SELECT COUNT(*) FROM app_inquiry_guest_consents)::int AS inquiry_guest_consents,
+          (SELECT COUNT(*) FROM app_inquiry_guest_sessions)::int AS inquiry_guest_sessions,
+          (SELECT COUNT(*) FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer'))::int AS inquiry_attachments,
           (SELECT COUNT(*) FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config'))::int AS setting_documents,
           (SELECT COUNT(*) FROM app_system_configuration)::int AS system_configurations
       `);
@@ -301,6 +307,14 @@ export const createSystemDataRepository = (pool) => {
         rentals: { rentalRequests: count(row, 'rental_requests'), reservationGuards: count(row, 'reservation_guards'), restrictions: count(row, 'restrictions') },
         organization: { directoryEntries: count(row, 'directory_entries') },
         content: { boardPosts: count(row, 'board_posts'), faqCategories: count(row, 'faq_categories'), siteContentDocuments: count(row, 'content_documents') },
+        inquiries: {
+          memberInquiries: count(row, 'member_inquiries'),
+          guestInquiries: count(row, 'guest_inquiries'),
+          answers: count(row, 'inquiry_answers'),
+          guestConsents: count(row, 'inquiry_guest_consents'),
+          guestSessions: count(row, 'inquiry_guest_sessions'),
+          attachments: count(row, 'inquiry_attachments'),
+        },
         settings: { siteSettingDocuments: count(row, 'setting_documents'), systemConfigurations: count(row, 'system_configurations') },
       };
       const totals = Object.fromEntries(Object.entries(details).map(([scope, values]) => [scope, Object.values(values).reduce((sum, value) => sum + Number(value || 0), 0)]));
@@ -333,10 +347,33 @@ export const createSystemDataRepository = (pool) => {
           await client.query('DELETE FROM app_member_directory_entries');
         }
         if (selected.includes('content')) {
+          await client.query("DELETE FROM app_secure_attachments WHERE owner_type IN ('notice','faq')");
           await client.query('DELETE FROM app_board_posts');
           await client.query('DELETE FROM app_faq_categories');
-          await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms')");
+          await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('home','popup','terms')");
+          await client.query("DELETE FROM app_site_content_documents WHERE domain='footer' AND document_key LIKE 'footerPages/%'");
+          await client.query(`
+            INSERT INTO app_site_content_documents
+              (domain, document_key, payload, enabled, sort_order, source_mode, source_updated_at, synced_at, updated_at)
+            VALUES
+              ('footer','siteFooter/config','{"enabled":true,"content":"","contentText":"","contentHtml":"","contentFormat":"rich-html-v1","updatedAt":null}'::jsonb,true,NULL,'postgresql-reset',NULL,NOW(),NOW())
+            ON CONFLICT (domain, document_key) DO UPDATE SET
+              payload=EXCLUDED.payload,
+              enabled=EXCLUDED.enabled,
+              sort_order=EXCLUDED.sort_order,
+              source_mode=EXCLUDED.source_mode,
+              source_updated_at=NULL,
+              synced_at=NOW(),
+              updated_at=NOW()
+          `);
           await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('terms','signupTermsPolicy/current','{"enabled":false,"requireReconsentOnChange":true,"applyToExistingMembers":false,"revision":0,"requiredRevision":0,"initialRevision":0,"activeTerms":[]}'::jsonb,false,NULL,'postgresql-reset',NOW(),NOW())`);
+        }
+        if (selected.includes('inquiries')) {
+          await client.query("DELETE FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer')");
+          await client.query('DELETE FROM app_inquiry_guest_sessions');
+          await client.query('DELETE FROM app_inquiry_guest_consents');
+          await client.query('DELETE FROM app_inquiry_answers');
+          await client.query('DELETE FROM app_inquiries');
         }
         if (selected.includes('settings')) {
           await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config')");
@@ -373,7 +410,9 @@ export const createSystemDataRepository = (pool) => {
         for (const key of [
           'email', 'firebase_email', 'name', 'member_name', 'phone', 'phone_number',
           'requester_email', 'requester_name', 'requester_team', 'firebase_uid',
-          'identity_key', 'recovery_key', 'previous_account_uids'
+          'identity_key', 'recovery_key', 'previous_account_uids',
+          'author_name', 'author_email', 'author_team', 'author_phone', 'member_uid',
+          'guest_password_hash', 'token_hash'
         ]) {
           if (key in next) next[key] = '[redacted]';
         }
@@ -395,11 +434,40 @@ export const createSystemDataRepository = (pool) => {
           pool.query(`SELECT * FROM app_rental_asset_reservation_guards ORDER BY request_id`),
           pool.query(`SELECT * FROM app_rental_request_events ORDER BY id`),
         ]);
+        const [
+          inquirySettingsResult,
+          inquiryCategoryResult,
+          inquiryTermResult,
+          inquiryResult,
+          inquiryAnswerResult,
+          inquiryConsentResult,
+          inquiryGuestSessionResult,
+          inquiryAttachmentResult,
+        ] = await Promise.all([
+          pool.query(`SELECT * FROM app_inquiry_settings ORDER BY setting_key`),
+          pool.query(`SELECT * FROM app_inquiry_categories ORDER BY sort_order, category_id`),
+          pool.query(`SELECT * FROM app_inquiry_terms ORDER BY created_at, term_id`),
+          pool.query(`SELECT * FROM app_inquiries ORDER BY created_at, inquiry_id`),
+          pool.query(`SELECT * FROM app_inquiry_answers ORDER BY inquiry_id, created_at, answer_id`),
+          pool.query(`SELECT * FROM app_inquiry_guest_consents ORDER BY inquiry_id, consented_at, consent_id`),
+          pool.query(`SELECT * FROM app_inquiry_guest_sessions ORDER BY created_at, token_hash`),
+          pool.query(`SELECT * FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer') ORDER BY owner_type, owner_id, sort_order, attachment_id`),
+        ]);
         snapshot.operations = {
           rentalRequests: requestResult.rows.map(redact),
           rentalRequestItems: itemResult.rows,
           reservationGuards: guardResult.rows,
           rentalRequestEvents: eventResult.rows,
+          inquiries: {
+            settings: inquirySettingsResult.rows,
+            categories: inquiryCategoryResult.rows,
+            terms: inquiryTermResult.rows,
+            items: inquiryResult.rows.map(redact),
+            answers: inquiryAnswerResult.rows,
+            guestConsents: inquiryConsentResult.rows,
+            guestSessions: inquiryGuestSessionResult.rows.map(redact),
+            attachments: inquiryAttachmentResult.rows,
+          },
         };
       }
       if (includeMembers) {

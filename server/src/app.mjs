@@ -236,26 +236,22 @@ export const createRequestHandler = ({
     getConfigurationStatus() {
       return Object.freeze({
         configured: false,
-        source: 'clerk-platform-api',
-        authority: 'clerk-device-trust',
-        requiredEnvironment: Object.freeze([
-          'CLERK_PLATFORM_API_KEY',
-          'CLERK_APPLICATION_ID',
-          'CLERK_INSTANCE_ID',
-        ]),
+        source: 'postgresql-clerk-backend-api',
+        authority: 'clerk-user-device-trust-policy',
+        requiredEnvironment: Object.freeze(['CLERK_SECRET_KEY']),
       });
     },
     async get() {
       return Object.freeze({
         configured: false,
-        source: 'clerk-platform-api',
-        authority: 'clerk-device-trust',
+        source: 'postgresql-clerk-backend-api',
+        authority: 'clerk-user-device-trust-policy',
         enabled: null,
       });
     },
     async setEnabled() {
-      const error = new Error('Clerk Platform API configuration is not available.');
-      error.code = 'clerk_platform_config_not_configured';
+      const error = new Error('Clerk Backend API device-trust policy integration is not available.');
+      error.code = 'clerk_backend_device_trust_not_configured';
       error.status = 503;
       throw error;
     },
@@ -2421,7 +2417,7 @@ export const createRequestHandler = ({
         return;
       }
       try {
-        const result = await clerkDeviceTrustService.setEnabled(body.enabled);
+        const result = await clerkDeviceTrustService.setEnabled(body.enabled, { actorClerkUserId: authority.auth.userId });
         writeJson(response, 200, {
           ...basePayload,
           authenticated: true,

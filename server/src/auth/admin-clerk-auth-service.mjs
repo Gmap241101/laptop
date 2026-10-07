@@ -1,3 +1,4 @@
+import { readDeviceTrustBypass } from '../clerk/clerk-device-trust-service.mjs';
 import { randomUUID } from 'node:crypto';
 
 const trim = (value) => String(value ?? '').trim();
@@ -8,7 +9,7 @@ const privateMetadata = (admin) => ({ rentalSystemAdminKey: admin.legacyAdminKey
 const isLocked = (admin) => admin?.lockUntil && Date.parse(admin.lockUntil) > Date.now();
 const assertOwner = (admin) => { if ((admin?.adminRole || 'admin') !== 'owner') throw serviceError('admin_owner_required', 'Only an owner administrator can perform this operation.', 403); };
 
-export const createAdminClerkAuthService = ({ repository, clerkClient }) => {
+export const createAdminClerkAuthService = ({ repository, clerkClient, systemConfigService = null }) => {
   if (!repository || typeof repository.findByClerkUserId !== 'function' || typeof repository.listActive !== 'function') throw new TypeError('Admin identity repository is required.');
   if (!clerkClient || typeof clerkClient.getUser !== 'function' || typeof clerkClient.findUserByEmail !== 'function' || typeof clerkClient.createUser !== 'function' || typeof clerkClient.updateUser !== 'function' || typeof clerkClient.updateUserMetadata !== 'function' || typeof clerkClient.deleteUser !== 'function') throw new TypeError('Clerk Backend API administrator lifecycle methods are required.');
 
@@ -84,7 +85,7 @@ export const createAdminClerkAuthService = ({ repository, clerkClient }) => {
       const legacyAdminKey = `admin:${randomUUID()}`;
       let clerkUser = null;
       try {
-        clerkUser = await clerkClient.createUser({ email: authEmail, password, firstName: userName, publicMetadata: { rentalSystemRole: 'admin', adminRole }, privateMetadata: { rentalSystemAdminKey: legacyAdminKey, rentalSystemAdminLoginId: adminLoginId, rentalSystemAdminRegistry: 'postgresql' }, externalId: `rental-admin:${legacyAdminKey}` });
+        clerkUser = await clerkClient.createUser({ email: authEmail, password, firstName: userName, publicMetadata: { rentalSystemRole: 'admin', adminRole }, privateMetadata: { rentalSystemAdminKey: legacyAdminKey, rentalSystemAdminLoginId: adminLoginId, rentalSystemAdminRegistry: 'postgresql' }, externalId: `rental-admin:${legacyAdminKey}`, bypassClientTrust: await readDeviceTrustBypass(systemConfigService) });
         const admin = await repository.create({ legacyAdminKey, adminLoginId, authEmail, organizationName, userName, phone, adminRole, clerkUserId: clerkUser.clerkUserId });
         return Object.freeze({ source: 'clerk-postgresql', account: serialize(admin) });
       } catch (error) {

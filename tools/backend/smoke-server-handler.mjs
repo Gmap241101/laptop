@@ -159,9 +159,9 @@ const systemConfigService = {
 };
 let clerkDeviceTrustEnabled = true;
 const clerkDeviceTrustService = {
-  getConfigurationStatus() { return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust' }; },
-  async get() { return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust', enabled: clerkDeviceTrustEnabled }; },
-  async setEnabled(enabled) { clerkDeviceTrustEnabled = Boolean(enabled); return { configured: true, source: 'clerk-platform-api', authority: 'clerk-device-trust', enabled: clerkDeviceTrustEnabled }; },
+  getConfigurationStatus() { return { configured: true, source: 'postgresql-clerk-backend-api', authority: 'clerk-user-device-trust-policy' }; },
+  async get() { return { configured: true, source: 'postgresql-clerk-backend-api', authority: 'clerk-user-device-trust-policy', enabled: clerkDeviceTrustEnabled }; },
+  async setEnabled(enabled) { clerkDeviceTrustEnabled = Boolean(enabled); return { configured: true, source: 'postgresql-clerk-backend-api', authority: 'clerk-user-device-trust-policy', enabled: clerkDeviceTrustEnabled }; },
 };
 const userClerkAuthService = {
   async createAdminManagedMember() { return { authority: 'clerk-postgresql', source: 'postgresql', status: 'active', account: memberShadowProfile }; },

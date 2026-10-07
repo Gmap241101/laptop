@@ -1,5 +1,5 @@
 const trim = (value) => String(value ?? '').trim();
-const RESET_SCOPES = new Set(['assets', 'members', 'rentals', 'organization', 'content', 'settings']);
+const RESET_SCOPES = new Set(['assets', 'members', 'rentals', 'organization', 'content', 'inquiries', 'settings']);
 const RESET_CONFIRM_TEXT = '테스트 데이터 전체 초기화';
 
 const serviceError = (code, message, status = 400) => {

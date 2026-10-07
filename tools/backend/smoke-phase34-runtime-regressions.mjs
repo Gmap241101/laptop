@@ -4,7 +4,7 @@ import { createSiteContentService } from '../../server/src/content/site-content-
 import { createSiteContentRepository } from '../../server/src/content/site-content-repository.mjs';
 import { createBoardRepository } from '../../server/src/boards/board-repository.mjs';
 import { createClerkDeviceTrustService } from '../../server/src/clerk/clerk-device-trust-service.mjs';
-import { readServerConfig } from '../../server/src/config/env.mjs';
+import { createClerkBackendClient } from '../../server/src/clerk/clerk-api.mjs';
 import { createAdminRentalRequestService } from '../../server/src/rentals/admin-rental-request-service.mjs';
 import { createAccountLifecycleService } from '../../server/src/accounts/account-lifecycle-service.mjs';
 import { createAdminClerkAuthService } from '../../server/src/auth/admin-clerk-auth-service.mjs';
@@ -583,81 +583,108 @@ assert.match(systemConfigRepositorySource, /pg_advisory_xact_lock\(hashtext\(\$1
 assert.match(systemConfigServiceSource, /const AUDIT_KEY = 'system-settings-audit'/, 'system settings audit history must use a dedicated PostgreSQL configuration record');
 assert.match(systemConfigServiceSource, /randomUUID\(\)/, 'system settings audit entries must receive stable unique identifiers');
 
-const optionalPlatformEnvNames = [
-  'APP_ENV',
-  'DATABASE_URL',
-  'CORS_ALLOWED_ORIGINS',
-  'CLERK_JWT_KEY',
-  'CLERK_AUTHORIZED_PARTIES',
-  'CLERK_SECRET_KEY',
-  'CLERK_PLATFORM_API_KEY',
-  'CLERK_APPLICATION_ID',
-  'CLERK_INSTANCE_ID',
-  'CLERK_PLATFORM_API_URL',
-];
-const optionalPlatformEnvSnapshot = Object.fromEntries(
-  optionalPlatformEnvNames.map((name) => [name, process.env[name]]),
-);
-try {
-  process.env.APP_ENV = 'local';
-  process.env.DATABASE_URL = 'postgres://localhost/phase34_optional_platform_smoke';
-  delete process.env.CORS_ALLOWED_ORIGINS;
-  delete process.env.CLERK_JWT_KEY;
-  delete process.env.CLERK_AUTHORIZED_PARTIES;
-  delete process.env.CLERK_SECRET_KEY;
-  process.env.CLERK_PLATFORM_API_KEY = 'sk_test_not_a_platform_key';
-  process.env.CLERK_APPLICATION_ID = 'app_phase34_smoke';
-  process.env.CLERK_INSTANCE_ID = 'ins_phase34_smoke';
-  const optionalPlatformConfig = readServerConfig();
-  assert.equal(optionalPlatformConfig.clerkPlatformApiKey, null, 'invalid optional Clerk Platform API credentials must not crash core server config');
-  assert.equal(optionalPlatformConfig.clerkApplicationId, null, 'invalid optional Clerk Platform API config must be disabled as one unit');
-  assert.equal(optionalPlatformConfig.clerkInstanceId, null, 'invalid optional Clerk Platform API config must be disabled as one unit');
-  assert.equal(optionalPlatformConfig.clerkPlatformApiUrl, 'https://api.clerk.com', 'disabled optional Platform API config must fall back to a safe inert URL');
-} finally {
-  for (const name of optionalPlatformEnvNames) {
-    const previous = optionalPlatformEnvSnapshot[name];
-    if (previous === undefined) delete process.env[name];
-    else process.env[name] = previous;
-  }
-}
-
-const clerkDeviceTrustRequests = [];
-const clerkDeviceTrustService = createClerkDeviceTrustService({
-  platformApiKey: 'ak_test_phase34_device_trust',
-  applicationId: 'app_phase34_smoke',
-  instanceId: 'ins_phase34_smoke',
-  fetchImpl: async (url, options = {}) => {
-    const href = String(url);
-    clerkDeviceTrustRequests.push({ href, options });
-    assert.equal(options.headers?.Authorization, 'Bearer ak_test_phase34_device_trust');
-    if (options.method === 'GET') {
-      assert.match(href, /\/v1\/platform\/applications\/app_phase34_smoke\/instances\/ins_phase34_smoke\/config/);
-      assert.match(href, /keys=auth_password/);
-      return new Response(JSON.stringify({ auth_password: { device_trust: { enabled: true } } }), { status: 200 });
-    }
-    if (options.method === 'PATCH') {
-      assert.deepEqual(JSON.parse(options.body), { auth_password: { device_trust: { enabled: false } } });
-      return new Response(JSON.stringify({ auth_password: { device_trust: { enabled: false } } }), { status: 200 });
-    }
-    throw new Error(`Unexpected Clerk Platform API smoke method: ${options.method}`);
+const clerkBypassBodies = [];
+const clerkBypassClient = createClerkBackendClient({
+  secretKey: 'sk_test_device_trust_policy',
+  fetchImpl: async (_url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : {};
+    clerkBypassBodies.push(body);
+    return new Response(JSON.stringify({
+      id: 'user_bypass_smoke',
+      email_addresses: [{ id: 'email_smoke', email_address: 'smoke@example.com', verification: { status: 'verified' } }],
+      primary_email_address_id: 'email_smoke',
+      bypass_client_trust: Boolean(body.bypass_client_trust),
+      public_metadata: {},
+      private_metadata: {},
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   },
 });
-assert.equal((await clerkDeviceTrustService.get()).enabled, true, 'live Clerk Device Trust read must expose auth_password.device_trust.enabled');
-assert.equal((await clerkDeviceTrustService.setEnabled(false)).enabled, false, 'live Clerk Device Trust write must PATCH the requested enabled state');
-assert.equal(clerkDeviceTrustRequests.length, 2);
+const createdBypassUser = await clerkBypassClient.createUser({
+  email: 'smoke@example.com', password: 'Password1234', bypassClientTrust: true,
+});
+assert.equal(clerkBypassBodies[0]?.bypass_client_trust, true, 'new Clerk users must receive the persisted client-trust bypass policy');
+assert.equal(createdBypassUser.bypassClientTrust, true);
+const updatedBypassUser = await clerkBypassClient.updateUser('user_bypass_smoke', { bypass_client_trust: false });
+assert.equal(clerkBypassBodies[1]?.bypass_client_trust, false, 'existing Clerk users must be able to remove the client-trust bypass');
+assert.equal(updatedBypassUser.bypassClientTrust, false);
+
+const deviceTrustPolicyStore = new Map([
+  ['device-trust-policy', { deviceTrustEmailVerificationEnabled: true }],
+]);
+const deviceTrustPolicyWrites = [];
+const deviceTrustSystemConfigService = {
+  async get(key) { return { source: 'postgresql', key, payload: deviceTrustPolicyStore.get(key) || {} }; },
+  async put({ key, payload, actorClerkUserId }) {
+    deviceTrustPolicyStore.set(key, payload);
+    deviceTrustPolicyWrites.push({ key, payload, actorClerkUserId });
+    return { source: 'postgresql', key, payload };
+  },
+};
+const deviceTrustUsers = new Map([
+  ['clerk_owner', { clerkUserId: 'clerk_owner', bypassClientTrust: false }],
+  ['clerk_admin', { clerkUserId: 'clerk_admin', bypassClientTrust: false }],
+  ['clerk_member', { clerkUserId: 'clerk_member', bypassClientTrust: false }],
+]);
+const deviceTrustClerkClient = {
+  async getUser(clerkUserId) {
+    const user = deviceTrustUsers.get(clerkUserId);
+    if (!user) { const error = new Error('not found'); error.code = 'clerk_user_not_found'; error.status = 404; throw error; }
+    return { ...user };
+  },
+  async updateUser(clerkUserId, updates = {}) {
+    const current = deviceTrustUsers.get(clerkUserId);
+    if (!current) { const error = new Error('not found'); error.code = 'clerk_user_not_found'; error.status = 404; throw error; }
+    const next = { ...current, bypassClientTrust: Boolean(updates.bypass_client_trust) };
+    deviceTrustUsers.set(clerkUserId, next);
+    return { ...next };
+  },
+};
+const clerkDeviceTrustService = createClerkDeviceTrustService({
+  clerkClient: deviceTrustClerkClient,
+  systemConfigService: deviceTrustSystemConfigService,
+  adminIdentityRepository: {
+    async listActive() { return [{ clerkUserId: 'clerk_owner' }, { clerkUserId: 'clerk_admin' }]; },
+  },
+  userAuthRepository: {
+    async listActiveClerkUsers() { return [{ clerkUserId: 'clerk_member' }, { clerkUserId: 'clerk_owner' }]; },
+  },
+});
+assert.equal((await clerkDeviceTrustService.get()).enabled, true, 'PostgreSQL device-trust policy must default/read as enabled');
+const disabledDeviceTrust = await clerkDeviceTrustService.setEnabled(false, { actorClerkUserId: 'clerk_owner' });
+assert.equal(disabledDeviceTrust.enabled, false, 'setting new-device verification off must persist the requested policy');
+assert.equal(disabledDeviceTrust.bypassClientTrust, true, 'disabling verification must turn on Clerk per-user client-trust bypass');
+assert.equal(disabledDeviceTrust.syncedAccountCount, 3, 'existing unique administrator/member Clerk accounts must be synchronized');
+assert.equal(deviceTrustUsers.get('clerk_owner').bypassClientTrust, true);
+assert.equal(deviceTrustUsers.get('clerk_admin').bypassClientTrust, true);
+assert.equal(deviceTrustUsers.get('clerk_member').bypassClientTrust, true);
+assert.equal(deviceTrustPolicyWrites.at(-1)?.payload?.deviceTrustEmailVerificationEnabled, false);
+assert.equal(deviceTrustPolicyWrites.at(-1)?.actorClerkUserId, 'clerk_owner');
+const enabledDeviceTrust = await clerkDeviceTrustService.setEnabled(true, { actorClerkUserId: 'clerk_owner' });
+assert.equal(enabledDeviceTrust.enabled, true);
+assert.equal(enabledDeviceTrust.bypassClientTrust, false);
+assert.equal(deviceTrustUsers.get('clerk_member').bypassClientTrust, false, 're-enabling verification must remove the bypass from existing users');
 const unconfiguredDeviceTrustService = createClerkDeviceTrustService();
-assert.equal((await unconfiguredDeviceTrustService.get()).configured, false, 'server must remain bootable when Clerk Platform API credentials are not configured');
 await assert.rejects(
-  () => unconfiguredDeviceTrustService.setEnabled(true),
-  (error) => error?.code === 'clerk_platform_config_not_configured' && error?.status === 503,
-  'Device Trust writes must fail explicitly rather than pretending to update Clerk when Platform API credentials are absent',
+  () => unconfiguredDeviceTrustService.get(),
+  (error) => error?.code === 'clerk_backend_device_trust_not_configured' && error?.status === 503,
+  'missing Backend API dependencies must fail explicitly instead of pretending the setting is active',
 );
 
 const deviceTrustServiceSource = fs.readFileSync(new URL('../../server/src/clerk/clerk-device-trust-service.mjs', import.meta.url), 'utf8');
-assert.match(deviceTrustServiceSource, /auth_password:[\s\S]*device_trust:[\s\S]*enabled: enabledValue/, 'Clerk Device Trust writes must patch the documented auth_password.device_trust.enabled config');
-assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/clerk-device-trust'/, 'server must expose authenticated live Clerk Device Trust reads');
-assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/clerk-device-trust'[\s\S]*admin_owner_required/, 'only owner administrators may change the live Clerk Device Trust setting');
+assert.match(deviceTrustServiceSource, /bypass_client_trust: Boolean\(bypassClientTrust\)/, 'device-trust policy writes must use Clerk per-user bypass_client_trust through the Backend API');
+assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/clerk-device-trust'/, 'server must expose authenticated new-device verification policy reads');
+assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/clerk-device-trust'[\s\S]*admin_owner_required/, 'only owner administrators may change the new-device verification policy');
 
+
+const clerkApiSource = fs.readFileSync(new URL('../../server/src/clerk/clerk-api.mjs', import.meta.url), 'utf8');
+const adminClerkAuthSource = fs.readFileSync(new URL('../../server/src/auth/admin-clerk-auth-service.mjs', import.meta.url), 'utf8');
+const userClerkAuthSource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-service.mjs', import.meta.url), 'utf8');
+const userClerkAuthRepositorySource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-repository.mjs', import.meta.url), 'utf8');
+assert.match(clerkApiSource, /bypass_client_trust/, 'Clerk Backend API client must support the per-user client-trust bypass field');
+assert.match(adminClerkAuthSource, /bypassClientTrust:\s*await readDeviceTrustBypass\(systemConfigService\)/, 'new administrator Clerk accounts must inherit the saved new-device verification policy');
+assert.ok((userClerkAuthSource.match(/readDeviceTrustBypass\(systemConfigService\)/g) || []).length >= 5, 'user provisioning, signup, verified signup and recovery paths must inherit the saved new-device verification policy');
+assert.match(userClerkAuthRepositorySource, /async listActiveClerkUsers\(\)/, 'device-trust policy synchronization must enumerate active PostgreSQL-linked Clerk users');
+assert.equal(deviceTrustServiceSource.includes('platform/applications'), false, 'new-device verification settings must no longer depend on the Clerk Platform API');
 
 const collectRuntimeSourceFiles = (directory) => fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
   const path = `${directory}/${entry.name}`;
@@ -708,3 +735,5 @@ assert.match(globalBannerAuditMigrationSource, /- 'systemBannerUrl'/, 'migration
 assert.match(globalBannerAuditMigrationSource, /historyPolicy', 'metadata-only'/, 'migration 030 must document metadata-only global banner history policy');
 
 console.log('[phase34-runtime-regressions-backend-smoke] PASS');
+
+assert.equal(serverEnvSource.includes('CLERK_PLATFORM_API_KEY'), false, 'runtime config must not require the Clerk Platform API for new-device verification settings');

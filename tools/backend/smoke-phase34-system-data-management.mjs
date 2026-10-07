@@ -23,11 +23,11 @@ assert.equal((await service.reconcileAssetCatalogMetadata(owner)).metadata.asset
 await assert.rejects(() => service.reconcileAssetCatalogMetadata(admin), (error) => error?.code === 'admin_owner_required');
 assert.equal((await service.exportSnapshot(owner)).format, 'mk-rental-postgresql-backup-v1');
 await assert.rejects(() => service.exportSnapshot(admin), (error) => error?.code === 'admin_owner_required');
-assert.equal((await service.getResetCounts(owner, ['assets', 'rentals'])).authority, 'postgresql');
+assert.equal((await service.getResetCounts(owner, ['assets', 'rentals', 'inquiries'])).authority, 'postgresql');
 await assert.rejects(() => service.getResetCounts(admin, ['assets']), (error) => error?.code === 'admin_owner_required');
 await assert.rejects(() => service.resetScopes(owner, { scopes: ['assets'], confirmText: 'wrong', backupConfirmed: true }), (error) => error?.code === 'system_data_reset_confirmation_invalid');
 await assert.rejects(() => service.resetScopes(owner, { scopes: ['assets'], confirmText: '테스트 데이터 전체 초기화', backupConfirmed: false }), (error) => error?.code === 'system_data_reset_backup_required');
-assert.equal((await service.resetScopes(owner, { scopes: ['assets'], confirmText: '테스트 데이터 전체 초기화', backupConfirmed: true })).authority, 'postgresql');
+assert.equal((await service.resetScopes(owner, { scopes: ['assets', 'inquiries'], confirmText: '테스트 데이터 전체 초기화', backupConfirmed: true })).authority, 'postgresql');
 
 const migration = await readFile(new URL('../../server/migrations/027_phase34_asset_reference_reconciliation.sql', import.meta.url), 'utf8');
 for (const required of [
@@ -47,6 +47,35 @@ assert.equal(
   repositorySource.includes('SELECT * FROM app_user_term_consent_states ORDER BY app_user_id'),
   false,
   'member backup must not reference the removed/nonexistent app_user_id column in app_user_term_consent_states',
+);
+
+
+assert.ok(
+  repositorySource.includes("DELETE FROM app_site_content_documents WHERE domain='footer' AND document_key LIKE 'footerPages/%'"),
+  'content reset must remove footer menu pages separately instead of deleting the whole footer domain',
+);
+assert.ok(
+  repositorySource.includes("('footer','siteFooter/config'") && repositorySource.includes('ON CONFLICT (domain, document_key) DO UPDATE SET'),
+  'content reset must preserve the footer common-information row and replace only its payload with an empty canonical value',
+);
+assert.equal(
+  repositorySource.includes("DELETE FROM app_site_content_documents WHERE domain IN ('home','popup','footer','terms')"),
+  false,
+  'content reset must never delete the siteFooter/config row by deleting the entire footer domain',
+);
+for (const requiredInquiryResetMarker of [
+  "selected.includes('inquiries')",
+  "DELETE FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer')",
+  'DELETE FROM app_inquiry_guest_sessions',
+  'DELETE FROM app_inquiry_guest_consents',
+  'DELETE FROM app_inquiry_answers',
+  'DELETE FROM app_inquiries',
+  'memberInquiries',
+  'guestInquiries',
+]) assert.ok(repositorySource.includes(requiredInquiryResetMarker), `inquiry reset missing ${requiredInquiryResetMarker}`);
+assert.ok(
+  repositorySource.includes('snapshot.operations') && repositorySource.includes('inquiries: {'),
+  'pre-reset operational backup must include inquiry-management data before inquiry reset',
 );
 
 for (const required of [
