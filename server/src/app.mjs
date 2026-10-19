@@ -877,6 +877,8 @@ export const createRequestHandler = ({
           adminSystemDataCatalogMetadataReconcile: '/api/admin/system-data/reconcile-asset-catalog-metadata',
           adminSystemDataAssetRepair: '/api/admin/system-data/repair-asset-references',
           adminSystemDataExport: '/api/admin/system-data/export',
+          adminSystemDataRestorePreview: '/api/admin/system-data/restore/preview',
+          adminSystemDataRestoreExecute: '/api/admin/system-data/restore/execute',
           adminSystemDataResetScan: '/api/admin/system-data/reset/scan',
           adminSystemDataReset: '/api/admin/system-data/reset',
         },
@@ -2383,6 +2385,23 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/admin/clerk-device-trust/reconcile') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      if ((authority.adminAuth?.admin?.adminRole || 'admin') !== 'owner') {
+        writeJson(response, 403, { ...basePayload, authenticated: true, authorized: false, error: 'admin_owner_required' }, headers);
+        return;
+      }
+      try {
+        const result = await clerkDeviceTrustService.reconcile({ actorClerkUserId: authority.auth.userId });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, clerkDeviceTrust: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true,
+          error: error?.code || 'clerk_device_trust_reconciliation_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'PATCH' && url.pathname === '/api/admin/clerk-device-trust') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!authority) return;
@@ -2502,6 +2521,27 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataReset: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: false, error: error?.code || 'system_data_reset_failed' }, headers);
+      }
+      return;
+    }
+
+    if (request.method === 'POST' && (url.pathname === '/api/admin/system-data/restore/preview' ||
+        url.pathname === '/api/admin/system-data/restore/execute')) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      let body = {};
+      try { body = await readJsonBody(request, { maxBytes: 8 * 1024 * 1024 }); }
+      catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      const previewOnly = url.pathname.endsWith('/preview');
+      try {
+        const result = previewOnly
+          ? await systemDataService.previewRestore(authority.adminAuth?.admin, body)
+          : await systemDataService.executeRestore(authority.adminAuth?.admin, body);
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
+          [previewOnly ? 'systemDataRestorePreview' : 'systemDataRestoreResult']: result }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true,
+          authorized: false, error: error?.code || 'system_data_restore_failed' }, headers);
       }
       return;
     }

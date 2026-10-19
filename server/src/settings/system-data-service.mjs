@@ -28,6 +28,14 @@ const requireOwner = (admin) => {
 export const createSystemDataService = ({ repository }) => {
   if (!repository) throw new TypeError('System data repository is required.');
   return Object.freeze({
+    async previewRestore(admin, payload = {}) {
+      requireOwner(admin);
+      return repository.previewRestore(payload);
+    },
+    async executeRestore(admin, payload = {}) {
+      const owner = requireOwner(admin);
+      return repository.executeRestore({ ...payload, actorClerkUserId: owner.clerkUserId || owner.id });
+    },
     async getOverview(admin) {
       requireAdmin(admin);
       return repository.getOverview();
@@ -55,7 +63,9 @@ export const createSystemDataService = ({ repository }) => {
       const selected = [...new Set((Array.isArray(scopes) ? scopes : []).map((value) => trim(value).toLowerCase()).filter((value) => RESET_SCOPES.has(value)))];
       if (selected.length === 0) throw serviceError('system_data_reset_scope_required', 'At least one reset scope is required.', 400);
       if (trim(confirmText) !== RESET_CONFIRM_TEXT) throw serviceError('system_data_reset_confirmation_invalid', 'Reset confirmation text is invalid.', 400);
-      if (backupConfirmed !== true) throw serviceError('system_data_reset_backup_required', 'A PostgreSQL backup must be created before reset.', 409);
+      if (backupConfirmed !== true) throw serviceError('system_data_reset_backup_required', 'Reset confirmation is required.', 409);
+      // A browser Boolean does NOT attest to a restorable backup: repository
+      // verifies and atomically consumes the operator-side restore proof.
       return repository.resetScopes({ scopes: selected, actorClerkUserId: owner.clerkUserId || '' });
     },
     async exportSnapshot(admin, options = {}) {

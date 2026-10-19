@@ -35,6 +35,7 @@ import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import { formatKoreanDateTime } from '../utils/appUtils.js';
 import useAdminDataMaintenanceController, {
   FULL_RESET_PRESET,
+  SAFE_RESTORE_SCOPE_META,
   RESET_CONFIRM_TEXT,
   RESET_SCOPE_META,
   TEST_DATA_PRESET,
@@ -45,7 +46,7 @@ import useAdminDataMaintenanceController, {
 const DATA_MANAGEMENT_TABS = [
   [SYSTEM_MANAGEMENT_TAB.DATA, Database, '상태·무결성'],
   [SYSTEM_MANAGEMENT_TAB.FOLLOWUP, ShieldAlert, '후속 조치'],
-  [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·초기화'],
+  [SYSTEM_MANAGEMENT_TAB.RESET, Download, '백업·복원·초기화'],
 ];
 
 
@@ -870,17 +871,71 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 초기화 전에는 별도의 전체 백업을 반드시 생성해야 합니다.">
+      <SectionCard title="PostgreSQL 운영 데이터 백업" description="서버가 현재 PostgreSQL authority 데이터를 JSON 스냅샷으로 생성합니다. 조회용 JSON 파일로는 데이터베이스 전체 복구가 보장되지 않습니다.">
         <div className="space-y-3">
           <ToggleSwitch checked={backupIncludeOperations} onChange={setBackupIncludeOperations} label="대여·문의 운영 데이터 포함" description="대여신청·예약·처리 이벤트와 회원·비회원 문의, 답변, 문의 동의/조회 세션을 포함합니다." />
           <ToggleSwitch checked={backupIncludeMembers} onChange={setBackupIncludeMembers} label="회원 데이터 포함" description="회원 계정, 부서·사용자 명부, 대여 제한, 약관 동의 상태를 포함합니다." />
           <ToggleSwitch checked={backupIncludePersonalData} onChange={setBackupIncludePersonalData} label="개인정보 원문 포함" description="끄면 대여·회원·문의 백업의 이메일·성명·연락처·식별정보를 마스킹합니다." />
         </div>
         {!isOwner ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">PostgreSQL 전체 백업 내보내기는 최고 관리자만 실행할 수 있습니다.</div>
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800">PostgreSQL JSON 데이터 내보내기는 최고 관리자만 실행할 수 있습니다.</div>
         ) : null}
         <div className="mt-4 flex justify-end">
           <Button type="button" disabled={!isOwner || backupLoading} onClick={downloadBackup}><Download size={14} />{backupLoading ? '백업 생성 중' : 'PostgreSQL 백업 JSON 다운로드'}</Button>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="백업 JSON 선택 복원" description="지원 범위의 데이터만 기존 기본키 기준으로 추가하거나 덮어씁니다. 회원 계정·대여 기록·문의 내역·Clerk 계정은 이 복원 기능의 대상이 아닙니다. 전체 DB 복원은 서버 관리자가 별도 수행해야 합니다.">
+        <div className="space-y-4">
+          {!isOwner ? <p className="text-xs text-amber-700">최고 관리자만 복원 기능을 사용할 수 있습니다.</p> : null}
+          <label className="block text-sm font-bold text-slate-900" htmlFor="postgres-restore-json-file">백업 JSON 파일</label>
+          <input id="postgres-restore-json-file" type="file" accept=".json,application/json"
+            disabled={!isOwner || restoreRunning || restoreAnalyzeLoading}
+            onChange={(event) => { void handleRestoreFile(event.target.files?.[0]); event.target.value = ''; }}
+            className="block w-full rounded-xl border border-slate-300 p-3 text-sm" />
+          {restoreFileName ? <p className="text-xs text-slate-600">선택한 파일: {restoreFileName}</p> : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {Object.entries(SAFE_RESTORE_SCOPE_META).map(([scope, meta]) => (
+              <label key={scope} className="flex gap-3 rounded-xl border border-slate-200 p-3">
+                <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--mk-orange)]"
+                  checked={selectedRestoreScopes.includes(scope)}
+                  disabled={!isOwner || restoreRunning || !restorePayload || (scope === 'organization' && restorePayload?.members?.personalDataIncluded !== true)}
+                  onChange={(event) => setSelectedRestoreScopes((prev) => event.target.checked ? [...prev, scope] : prev.filter((item) => item !== scope))} />
+                <span className="text-sm"><span className="font-bold">{meta.label}</span><span className="mt-1 block text-xs text-slate-500">{meta.description}</span></span>
+              </label>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <span className="block text-sm font-bold text-slate-900">복원 방식</span>
+            <label className="mr-5 inline-flex items-center gap-2 text-sm"><input type="radio" name="postgres-restore-mode" checked={restoreMode === RESTORE_MODE.ADD_MISSING} disabled={restoreRunning} onChange={() => setRestoreMode(RESTORE_MODE.ADD_MISSING)} /> 없는 데이터만 추가</label>
+            <label className="inline-flex items-center gap-2 text-sm"><input type="radio" name="postgres-restore-mode" checked={restoreMode === RESTORE_MODE.OVERWRITE} disabled={restoreRunning} onChange={() => setRestoreMode(RESTORE_MODE.OVERWRITE)} /> 동일 ID 덮어쓰기 (행 삭제 없음)</label>
+          </div>
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" disabled={!isOwner || !restorePayload || selectedRestoreScopes.length === 0 || restoreAnalyzeLoading || restoreRunning}
+              onClick={() => void analyzeRestore()}><FileSearch size={14} />{restoreAnalyzeLoading ? '확인 중' : '복원 미리보기'}</Button>
+          </div>
+          {restoreAnalysis ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <div className="text-sm font-bold text-slate-900">복원 예정: 추가 {restoreAnalysis.willInsert}건 · 덮어쓰기 {restoreAnalysis.willUpdate}건 · 유지 {restoreAnalysis.willSkip}건</div>
+              <div className="max-h-44 overflow-auto text-xs text-slate-600 space-y-1">
+                {(restoreAnalysis.totals || []).map((detail) => <div key={detail.table} className="flex justify-between gap-3"><span>{detail.table}</span><span>백업 {detail.rows} / 기존 {detail.existing} / 신규 {detail.newRows}</span></div>)}
+              </div>
+              <p className="text-xs text-amber-800">복원은 행을 삭제하지 않습니다. 서버의 전체 DB 백업·격리 복원 검증(60분 이내)이 있어야 실행됩니다. 데이터가 변경되었으면 다시 미리보기를 실행해야 합니다.</p>
+              <p className={`text-xs font-semibold ${restoreAnalysis.restoreProof?.valid ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {restoreAnalysis.restoreProof?.valid ? '서버 전체 백업·복원 검증 확인됨' : '서버 전체 백업·복원 검증이 필요합니다.'}
+              </p>
+              <Input label={`실행 확인 문구: ${RESTORE_CONFIRM_TEXT}`} value={restoreConfirmText}
+                onChange={setRestoreConfirmText} disabled={!isOwner || restoreRunning} />
+              <div className="flex justify-end">
+                <Button type="button" variant="danger" disabled={!isOwner || restoreRunning || !restoreAnalysis.restoreProof?.valid || restoreConfirmText !== RESTORE_CONFIRM_TEXT}
+                  onClick={() => triggerConfirm('PostgreSQL 선택 데이터 복원', '선택 범위의 PostgreSQL 데이터를 추가하거나 덮어씁니다. 완료 후 이전 상태로 직접 되돌릴 수 없습니다. 계속하시겠습니까?', () => executeRestore())}>
+                  <Upload size={14} />{restoreRunning ? '복원 중' : '선택 데이터 복원 실행'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {latestRestoreJob?.status === 'failed' ? <p className="text-xs text-rose-700">복원 실패: {latestRestoreJob.errorMessage}</p> : null}
+          {restoreResult?.success ? <p className="text-xs text-emerald-700">복원 완료: 변경 {restoreResult.changedRows}건</p> : null}
         </div>
       </SectionCard>
 
@@ -929,7 +984,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
       </SectionCard>
 
       {resetCounts ? (
-        <SectionCard title="초기화 대상 SQL 레코드" description="PostgreSQL 서버가 선택 범위를 직접 집계한 값입니다. 실제 초기화 직전 전체 백업을 별도로 생성해야 합니다.">
+        <SectionCard title="초기화 대상 SQL 레코드" description="PostgreSQL의 선택 범위를 직접 집계합니다. 초기화는 서버 전체 백업을 격리된 DB에 복원·검증한 기록이 있어야 허용됩니다.">
           <div className="grid gap-3 md:grid-cols-2 min-[1200px]:grid-cols-3">
             {resetCounts.scopes?.map((scope) => (
               <div key={scope} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -943,12 +998,12 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         </SectionCard>
       ) : null}
 
-      <SectionCard title="초기화 실행 확인" description="초기화 대상 확인 → 개인정보 포함 전체 백업 → 확인 문구 입력을 모두 완료해야 실행할 수 있습니다.">
+      <SectionCard title="초기화 실행 확인" description="서버 백업·격리 복원 검증 → 초기화 대상 확인 → 확인 문구 입력이 필요합니다.">
         <div className="space-y-4">
           <div className={`rounded-2xl border p-4 ${resetBackupReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs leading-5 text-slate-700">{resetBackupReady ? '초기화 전 개인정보 포함 전체 PostgreSQL 백업을 생성했습니다.' : '초기화 전 대여·회원·개인정보를 포함한 전체 PostgreSQL 백업을 먼저 생성해야 합니다.'}</div>
-              <Button type="button" variant="outline" disabled={backupLoading || resetRunning || !isOwner} onClick={downloadResetBackup}><Download size={14} />{backupLoading ? '백업 생성 중' : '초기화 전 전체 백업'}</Button>
+              <div className="text-xs leading-5 text-slate-700">{resetBackupReady ? '서버 전체 백업의 격리 복원 검증이 확인되었습니다.' : '전체 DB 백업을 별도 DB에 복원·검증한 다음 초기화 대상 확인을 다시 실행해 주세요.'}</div>
+              <Button type="button" variant="outline" disabled={backupLoading || resetRunning || !isOwner} onClick={downloadResetBackup}><Download size={14} />{backupLoading ? '추출 중' : '조회용 JSON 추출'}</Button>
             </div>
           </div>
           <Input label={`확인 문구: ${RESET_CONFIRM_TEXT}`} value={resetConfirmText} onChange={setResetConfirmText} disabled={resetRunning || !isOwner} />
@@ -958,7 +1013,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
           {latestResetJob?.status === 'failed' ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">최근 초기화 실패: {latestResetJob.errorMessage || '원인 확인 필요'}</div>
           ) : null}
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">초기화 후 사이트 기본 설정과 푸터 공통 정보는 안전한 PostgreSQL 기본 row로 유지·재생성되고, 대여 정책은 Phase 34 canonical self-heal로 재생성됩니다. 전체 백업 JSON의 브라우저 직접 복원은 FK/migration 검증이 필요하므로 계속 서버 운영 절차로 분리합니다.</div>
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-xs leading-5 text-sky-800">초기화 후 사이트 기본 설정과 푸터 공통 정보는 안전한 PostgreSQL 기본 row로 유지·재생성되고, 대여 정책은 Phase 34 canonical self-heal로 재생성됩니다. 조회용 JSON 파일은 전체 DB 복구 수단이 아닙니다. 전체 백업과 별도 DB 복원 검증은 서버 운영 절차로 수행합니다.</div>
           <div className="flex justify-end">
             <Button
               type="button"

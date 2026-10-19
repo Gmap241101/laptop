@@ -1,3 +1,5 @@
+import { createScopedJsonRestore } from './system-data-restore.mjs';
+import { RESET_BACKUP_PROOF_KEY, describeResetBackupProof } from './system-reset-backup-proof.mjs';
 const trim = (value) => String(value ?? '').trim();
 
 const count = (row, key) => Number(row?.[key] || 0);
@@ -21,6 +23,8 @@ export const createSystemDataRepository = (pool) => {
   }
 
 
+
+  const scopedRestore = createScopedJsonRestore(pool);
 
   const readIntegrity = async (queryable = pool) => {
     const [countsResult, missingAssetResult, reservationResult, mismatchResult] = await Promise.all([
@@ -150,6 +154,8 @@ export const createSystemDataRepository = (pool) => {
 
 
   return Object.freeze({
+    async previewRestore(payload) { return scopedRestore.preview(payload); },
+    async executeRestore(payload) { return scopedRestore.execute(payload); },
     async getOverview() {
       const [integrity, databaseResult, migrationResult] = await Promise.all([
         readIntegrity(pool),
@@ -301,6 +307,14 @@ export const createSystemDataRepository = (pool) => {
           (SELECT COUNT(*) FROM app_system_configuration)::int AS system_configurations
       `);
       const row = result.rows[0] || {};
+      const restoreProofResult = await pool.query(
+        `SELECT m.value, current_database() AS database_name FROM app_runtime_metadata m WHERE m.key=$1`,
+        [RESET_BACKUP_PROOF_KEY],
+      );
+      const restoreProof = describeResetBackupProof(
+        restoreProofResult.rows[0]?.value,
+        restoreProofResult.rows[0]?.database_name || '',
+      );
       const details = {
         assets: { assets: count(row, 'assets'), assetCategories: count(row, 'asset_categories') },
         members: { memberAccounts: count(row, 'member_accounts'), termStates: count(row, 'term_states'), termLogs: count(row, 'term_logs') },
@@ -318,7 +332,7 @@ export const createSystemDataRepository = (pool) => {
         settings: { siteSettingDocuments: count(row, 'setting_documents'), systemConfigurations: count(row, 'system_configurations') },
       };
       const totals = Object.fromEntries(Object.entries(details).map(([scope, values]) => [scope, Object.values(values).reduce((sum, value) => sum + Number(value || 0), 0)]));
-      return Object.freeze({ authority: 'postgresql', scopes: selected, counts: Object.freeze(totals), details: Object.freeze(details), scannedAt: new Date().toISOString() });
+      return Object.freeze({ authority: 'postgresql', scopes: selected, counts: Object.freeze(totals), details: Object.freeze(details), restoreProof, scannedAt: new Date().toISOString() });
     },
 
     async resetScopes({ scopes = [], actorClerkUserId = '' } = {}) {
@@ -328,6 +342,20 @@ export const createSystemDataRepository = (pool) => {
       try {
         await client.query('BEGIN');
         await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-system-data-reset'))");
+        const verified = await client.query(
+          'SELECT value, current_database() AS database_name FROM app_runtime_metadata WHERE key=$1 FOR UPDATE',
+          [RESET_BACKUP_PROOF_KEY],
+        );
+        const restoreProof = describeResetBackupProof(
+          verified.rows[0]?.value, verified.rows[0]?.database_name || '',
+        );
+        if (!restoreProof.valid) {
+          throw Object.assign(new Error('Verified full database restore proof is required before resetting data.'), {
+            code: 'system_data_verified_restore_required', status: 409,
+          });
+        }
+        // Single-use proof, consumed atomically with the destructive reset.
+        await client.query('DELETE FROM app_runtime_metadata WHERE key=$1', [RESET_BACKUP_PROOF_KEY]);
         if (selected.includes('rentals')) {
           await client.query('DELETE FROM app_rental_asset_reservation_guards');
           await client.query('DELETE FROM app_rental_requests');
@@ -378,7 +406,9 @@ export const createSystemDataRepository = (pool) => {
         if (selected.includes('settings')) {
           await client.query("DELETE FROM app_site_content_documents WHERE domain IN ('site-settings','rental-config')");
           await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('site-settings','siteSettings/config','{}'::jsonb,true,NULL,'postgresql-reset',NOW(),NOW())`);
-          await client.query('DELETE FROM app_system_configuration');
+          // Device Trust is a security policy mirrored into Clerk user records.
+          // Never reset it or its reconciliation record as ordinary site settings.
+          await client.query("DELETE FROM app_system_configuration WHERE config_key NOT IN ('device-trust-policy','device-trust-sync-state')");
         }
         await client.query(`INSERT INTO app_runtime_metadata (key, value, updated_at) VALUES ('phase34_last_system_data_reset',$1::jsonb,NOW()) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, [JSON.stringify({ actorClerkUserId: trim(actorClerkUserId), scopes: selected, resetAt: new Date().toISOString() })]);
         await client.query('COMMIT');
@@ -393,16 +423,20 @@ export const createSystemDataRepository = (pool) => {
     },
 
     async exportSnapshot({ includeOperations = true, includeMembers = false, includePersonalData = false } = {}) {
-      const exportedAt = new Date().toISOString();
+      // All tables in a JSON archive must be read from one MVCC snapshot.
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const exportedAt = new Date().toISOString();
       const [migrationResult, categoryResult, assetResult, siteContentResult, boardConfigResult, boardPostResult, faqCategoryResult, systemConfigResult] = await Promise.all([
-        pool.query(`SELECT name, checksum, applied_at FROM schema_migrations ORDER BY name`),
-        pool.query(`SELECT * FROM app_asset_categories ORDER BY sort_order, id`),
-        pool.query(`SELECT * FROM app_rental_assets ORDER BY asset_no_normalized, asset_id`),
-        pool.query(`SELECT * FROM app_site_content_documents ORDER BY domain, document_key`),
-        pool.query(`SELECT * FROM app_board_configs ORDER BY board_type`),
-        pool.query(`SELECT * FROM app_board_posts ORDER BY board_type, created_at, post_id`),
-        pool.query(`SELECT * FROM app_faq_categories ORDER BY sort_order, category_id`),
-        pool.query(`SELECT * FROM app_system_configuration ORDER BY config_key`),
+        client.query(`SELECT name, checksum, applied_at FROM schema_migrations ORDER BY name`),
+        client.query(`SELECT * FROM app_asset_categories ORDER BY sort_order, id`),
+        client.query(`SELECT * FROM app_rental_assets ORDER BY asset_no_normalized, asset_id`),
+        client.query(`SELECT * FROM app_site_content_documents ORDER BY domain, document_key`),
+        client.query(`SELECT * FROM app_board_configs ORDER BY board_type`),
+        client.query(`SELECT * FROM app_board_posts ORDER BY board_type, created_at, post_id`),
+        client.query(`SELECT * FROM app_faq_categories ORDER BY sort_order, category_id`),
+        client.query(`SELECT * FROM app_system_configuration ORDER BY config_key`),
       ]);
       const redact = (row) => {
         if (includePersonalData) return row;
@@ -429,10 +463,10 @@ export const createSystemDataRepository = (pool) => {
       };
       if (includeOperations) {
         const [requestResult, itemResult, guardResult, eventResult] = await Promise.all([
-          pool.query(`SELECT * FROM app_rental_requests ORDER BY id`),
-          pool.query(`SELECT * FROM app_rental_request_items ORDER BY rental_request_id`),
-          pool.query(`SELECT * FROM app_rental_asset_reservation_guards ORDER BY request_id`),
-          pool.query(`SELECT * FROM app_rental_request_events ORDER BY id`),
+          client.query(`SELECT * FROM app_rental_requests ORDER BY id`),
+          client.query(`SELECT * FROM app_rental_request_items ORDER BY rental_request_id`),
+          client.query(`SELECT * FROM app_rental_asset_reservation_guards ORDER BY request_id`),
+          client.query(`SELECT * FROM app_rental_request_events ORDER BY id`),
         ]);
         const [
           inquirySettingsResult,
@@ -444,14 +478,14 @@ export const createSystemDataRepository = (pool) => {
           inquiryGuestSessionResult,
           inquiryAttachmentResult,
         ] = await Promise.all([
-          pool.query(`SELECT * FROM app_inquiry_settings ORDER BY setting_key`),
-          pool.query(`SELECT * FROM app_inquiry_categories ORDER BY sort_order, category_id`),
-          pool.query(`SELECT * FROM app_inquiry_terms ORDER BY created_at, term_id`),
-          pool.query(`SELECT * FROM app_inquiries ORDER BY created_at, inquiry_id`),
-          pool.query(`SELECT * FROM app_inquiry_answers ORDER BY inquiry_id, created_at, answer_id`),
-          pool.query(`SELECT * FROM app_inquiry_guest_consents ORDER BY inquiry_id, consented_at, consent_id`),
-          pool.query(`SELECT * FROM app_inquiry_guest_sessions ORDER BY created_at, token_hash`),
-          pool.query(`SELECT * FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer') ORDER BY owner_type, owner_id, sort_order, attachment_id`),
+          client.query(`SELECT * FROM app_inquiry_settings ORDER BY setting_key`),
+          client.query(`SELECT * FROM app_inquiry_categories ORDER BY sort_order, category_id`),
+          client.query(`SELECT * FROM app_inquiry_terms ORDER BY created_at, term_id`),
+          client.query(`SELECT * FROM app_inquiries ORDER BY created_at, inquiry_id`),
+          client.query(`SELECT * FROM app_inquiry_answers ORDER BY inquiry_id, created_at, answer_id`),
+          client.query(`SELECT * FROM app_inquiry_guest_consents ORDER BY inquiry_id, consented_at, consent_id`),
+          client.query(`SELECT * FROM app_inquiry_guest_sessions ORDER BY created_at, token_hash`),
+          client.query(`SELECT * FROM app_secure_attachments WHERE owner_type IN ('inquiry','inquiry_answer') ORDER BY owner_type, owner_id, sort_order, attachment_id`),
         ]);
         snapshot.operations = {
           rentalRequests: requestResult.rows.map(redact),
@@ -472,10 +506,10 @@ export const createSystemDataRepository = (pool) => {
       }
       if (includeMembers) {
         const [memberResult, directoryResult, restrictionResult, termsStateResult] = await Promise.all([
-          pool.query(`SELECT * FROM app_member_accounts ORDER BY firebase_uid`),
-          pool.query(`SELECT * FROM app_member_directory_entries ORDER BY sort_order, identity_key`),
-          pool.query(`SELECT * FROM app_rental_restrictions ORDER BY firebase_uid`),
-          pool.query(`SELECT * FROM app_user_term_consent_states ORDER BY firebase_uid, term_id`),
+          client.query(`SELECT * FROM app_member_accounts ORDER BY firebase_uid`),
+          client.query(`SELECT * FROM app_member_directory_entries ORDER BY sort_order, identity_key`),
+          client.query(`SELECT * FROM app_rental_restrictions ORDER BY firebase_uid`),
+          client.query(`SELECT * FROM app_user_term_consent_states ORDER BY firebase_uid, term_id`),
         ]);
         snapshot.members = {
           accounts: memberResult.rows.map(redact),
@@ -485,7 +519,12 @@ export const createSystemDataRepository = (pool) => {
           personalDataIncluded: Boolean(includePersonalData),
         };
       }
+      await client.query('COMMIT');
       return Object.freeze(snapshot);
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
     },
   });
 };

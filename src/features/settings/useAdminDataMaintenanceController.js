@@ -15,6 +15,12 @@ export const RESET_SCOPE_META = {
   [SYSTEM_RESET_SCOPE.SETTINGS]: { label: '사이트·운영 설정', description: 'PostgreSQL 설정 데이터를 관리합니다.', collections: [] },
 };
 
+export const SAFE_RESTORE_SCOPE_META = Object.freeze({
+  site: { label: '사이트·디자인 문서', description: '기본 설정, 홈·팝업·푸터·약관 문서를 추가하거나 기존 키에 덮어씁니다.' },
+  boards: { label: '공지사항·FAQ', description: '게시판 설정, FAQ 구분, 게시글을 추가하거나 기존 ID에 덮어씁니다.' },
+  assets: { label: '자산·카테고리', description: '자산과 카테고리를 추가하거나 기존 ID에 덮어씁니다. 대여내역은 복원하지 않습니다.' },
+  organization: { label: '부서·사용자 명부', description: '개인정보 원문을 포함하여 백업된 사용자 명부만 복원합니다. 회원 계정은 복원하지 않습니다.' },
+});
 export const TEST_DATA_PRESET = [SYSTEM_RESET_SCOPE.ASSETS, SYSTEM_RESET_SCOPE.MEMBERS, SYSTEM_RESET_SCOPE.RENTALS];
 export const FULL_RESET_PRESET = Object.values(SYSTEM_RESET_SCOPE);
 export const RESET_CONFIRM_TEXT = '테스트 데이터 전체 초기화';
@@ -48,6 +54,17 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetBackupReady, setResetBackupReady] = useState(false);
   const [latestResetJob, setLatestResetJob] = useState(null);
+  const [restorePayload, setRestorePayload] = useState(null);
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [selectedRestoreScopes, setSelectedRestoreScopesState] = useState(['site', 'boards']);
+  const [restoreMode, setRestoreModeState] = useState(RESTORE_MODE.ADD_MISSING);
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [restoreAnalysis, setRestoreAnalysis] = useState(null);
+  const [restoreAnalyzeLoading, setRestoreAnalyzeLoading] = useState(false);
+  const [restoreRunning, setRestoreRunning] = useState(false);
+  const [restoreResult, setRestoreResult] = useState(null);
+  const [latestRestoreJob, setLatestRestoreJob] = useState(null);
+
 
   const refreshOverview = useCallback(async ({ silent = false } = {}) => {
     if (!authenticatedAdminAccount?.id) return null;
@@ -171,8 +188,9 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
-      if (forReset) setResetBackupReady(true);
-      triggerToast?.(forReset ? '초기화 전 PostgreSQL 전체 백업 파일을 생성했습니다.' : 'PostgreSQL 운영 데이터 백업 파일을 생성했습니다.', 'success');
+      // A downloaded application JSON is not a PostgreSQL full database backup.
+      // Only the server-side isolated-restore proof can unlock reset.
+      triggerToast?.(forReset ? '조회용 JSON 파일을 생성했습니다. 데이터 초기화에는 별도의 서버 전체 백업·복원 검증이 필요합니다.' : 'PostgreSQL 데이터 JSON 파일을 생성했습니다.', 'success');
       return snapshot;
     } catch (error) {
       const code = error?.code || error?.message || 'system_data_export_failed';
@@ -220,6 +238,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       const result = payload?.systemDataResetScan;
       if (!result || result.authority !== 'postgresql') throw new Error('system_data_reset_scan_payload_missing');
       setResetCounts(result);
+      setResetBackupReady(result.restoreProof?.valid === true);
       setResetProgress({ step: '초기화 대상 확인 완료', completed: 1, total: 1 });
       triggerToast?.('PostgreSQL 초기화 대상을 확인했습니다.', 'success');
       return result;
@@ -240,7 +259,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       return null;
     }
     if (!resetBackupReady) {
-      triggerToast?.('초기화 전 PostgreSQL 전체 백업을 먼저 생성해 주세요.', 'error');
+      triggerToast?.('서버 전체 백업을 격리 DB에 복원 검증한 뒤 초기화 대상을 다시 확인해 주세요.', 'error');
       return null;
     }
     if (resetConfirmText !== RESET_CONFIRM_TEXT) {
@@ -276,6 +295,104 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     }
   }, [refreshOverview, resetBackupReady, resetConfirmText, resetCounts, selectedResetScopes, triggerToast]);
 
+  const clearRestoreState = useCallback(() => {
+    setRestorePayload(null);
+    setRestoreFileName('');
+    setRestoreAnalysis(null);
+    setRestoreResult(null);
+    setRestoreConfirmText('');
+    setLatestRestoreJob(null);
+  }, []);
+
+  const handleRestoreFile = useCallback(async (file) => {
+    clearRestoreState();
+    if (!file) return;
+    if (file.size > 7 * 1024 * 1024) {
+      triggerToast?.('백업 JSON 파일은 7MB 이하만 선택할 수 있습니다.', 'error');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (parsed?.format !== 'mk-rental-postgresql-backup-v1' || parsed?.authority !== 'postgresql' ||
+          !Array.isArray(parsed?.schemaMigrations)) throw new Error('system_restore_file_invalid');
+      setRestorePayload(parsed);
+      setRestoreFileName(file.name);
+      setSelectedRestoreScopesState(['site', 'boards']);
+      triggerToast?.('백업 JSON을 불러왔습니다. 복원 범위를 선택하고 미리보기를 확인해 주세요.', 'success');
+    } catch (error) {
+      triggerToast?.(`백업 파일을 읽지 못했습니다. 오류 코드: ${error?.code || error?.message || 'invalid_json'}`, 'error');
+    }
+  }, [clearRestoreState, triggerToast]);
+
+  const setSelectedRestoreScopes = useCallback((scopes) => {
+    setSelectedRestoreScopesState((previous) => {
+      const value = typeof scopes === 'function' ? scopes(previous) : scopes;
+      return [...new Set((Array.isArray(value) ? value : []).filter((scope) => SAFE_RESTORE_SCOPE_META[scope]))];
+    });
+    setRestoreAnalysis(null);
+    setRestoreConfirmText('');
+  }, []);
+
+  const setRestoreMode = useCallback((mode) => {
+    setRestoreModeState(mode === RESTORE_MODE.OVERWRITE ? RESTORE_MODE.OVERWRITE : RESTORE_MODE.ADD_MISSING);
+    setRestoreAnalysis(null);
+    setRestoreConfirmText('');
+  }, []);
+
+  const analyzeRestore = useCallback(async () => {
+    if (!restorePayload || selectedRestoreScopes.length === 0) {
+      triggerToast?.('백업 파일과 복원 범위를 선택해 주세요.', 'error'); return null;
+    }
+    setRestoreAnalyzeLoading(true);
+    setRestoreResult(null);
+    try {
+      const payload = await clerkStagingClient.previewAdminSystemDataRestore({ snapshot: restorePayload,
+        scopes: selectedRestoreScopes, mode: restoreMode });
+      const preview = payload?.systemDataRestorePreview;
+      if (!preview?.previewSha256) throw new Error('system_restore_preview_missing');
+      setRestoreAnalysis(preview);
+      triggerToast?.('복원 대상 확인이 완료되었습니다.', 'success');
+      return preview;
+    } catch (error) {
+      setRestoreAnalysis(null);
+      triggerToast?.(`복원 대상을 확인하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'restore_preview_failed'}`, 'error');
+      return null;
+    } finally { setRestoreAnalyzeLoading(false); }
+  }, [restorePayload, selectedRestoreScopes, restoreMode, triggerToast]);
+
+  const executeRestore = useCallback(async () => {
+    if (!restorePayload || !restoreAnalysis?.previewSha256) {
+      triggerToast?.('복원 미리보기를 먼저 확인해 주세요.', 'error'); return null;
+    }
+    if (!restoreAnalysis.restoreProof?.valid) {
+      triggerToast?.('전체 DB 백업을 격리 DB에서 복원·검증한 뒤 미리보기를 다시 실행해 주세요.', 'error'); return null;
+    }
+    if (restoreConfirmText !== RESTORE_CONFIRM_TEXT) {
+      triggerToast?.('복원 확인 문구가 일치하지 않습니다.', 'error'); return null;
+    }
+    setRestoreRunning(true);
+    try {
+      const payload = await clerkStagingClient.executeAdminSystemDataRestore({ snapshot: restorePayload,
+        scopes: selectedRestoreScopes, mode: restoreMode,
+        previewSha256: restoreAnalysis.previewSha256, confirmText: restoreConfirmText });
+      const result = payload?.systemDataRestoreResult;
+      if (!result?.success) throw new Error('system_restore_result_missing');
+      setRestoreResult(result);
+      setLatestRestoreJob({ status: 'completed', ...result });
+      setRestoreAnalysis(null);
+      setRestoreConfirmText('');
+      await refreshOverview({ silent: true });
+      triggerToast?.(`복원 작업을 완료했습니다. 변경된 행 ${result.changedRows || 0}건.`, 'success');
+      return result;
+    } catch (error) {
+      const code = error?.code || error?.message || 'restore_failed';
+      setLatestRestoreJob({ status: 'failed', errorMessage: code });
+      setRestoreAnalysis(null);
+      triggerToast?.(`복원 작업에 실패했습니다. 오류 코드: ${code}`, 'error');
+      return null;
+    } finally { setRestoreRunning(false); }
+  }, [restorePayload, restoreAnalysis, restoreConfirmText, selectedRestoreScopes, restoreMode, refreshOverview, triggerToast]);
+
   return {
     overview,
     overviewLoading,
@@ -296,16 +413,16 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     setBackupIncludeMembers,
     setBackupIncludeOperations,
     setBackupIncludePersonalData,
-    analyzeRestore: retiredOperation,
-    clearRestoreState: () => {},
+    analyzeRestore,
+    clearRestoreState,
     downloadResetBackup,
     executeReset,
-    executeRestore: retiredOperation,
+    executeRestore,
     forceProjectConfirm: '',
     forceProjectMismatch: false,
-    handleRestoreFile: retiredOperation,
+    handleRestoreFile,
     latestResetJob,
-    latestRestoreJob: null,
+    latestRestoreJob,
     resetBackupReady,
     resetConfirmText,
     resetCounts,
@@ -313,33 +430,33 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     resetProgress,
     resetRunning,
     resetScanLoading,
-    restoreAnalysis: null,
-    restoreAnalyzeLoading: false,
-    restoreConfirmText: '',
-    restoreFileHash: '',
-    restoreFileName: '',
-    restoreMode: RESTORE_MODE.REPLACE,
+    restoreAnalysis,
+    restoreAnalyzeLoading,
+    restoreConfirmText,
+    restoreFileHash: restoreAnalysis?.snapshotSha256 || '',
+    restoreFileName,
+    restoreMode,
     restorePassword: '',
-    restorePayload: null,
+    restorePayload,
     restoreProgress: null,
-    restoreResult: null,
-    restoreRunning: false,
+    restoreResult,
+    restoreRunning,
     restoreValidation: null,
     scanResetTargets,
     selectedResetScopes,
-    selectedRestoreScopes: [],
+    selectedRestoreScopes,
     setForceProjectConfirm: () => {},
     setForceProjectMismatch: () => {},
     setResetBackupReady,
     setResetConfirmText,
     setResetCounts,
     setResetPassword: () => {},
-    setRestoreAnalysis: () => {},
-    setRestoreConfirmText: () => {},
-    setRestoreMode: () => {},
+    setRestoreAnalysis,
+    setRestoreConfirmText,
+    setRestoreMode,
     setRestorePassword: () => {},
-    setRestoreResult: () => {},
+    setRestoreResult,
     setSelectedResetScopes,
-    setSelectedRestoreScopes: () => {},
+    setSelectedRestoreScopes,
   };
 }

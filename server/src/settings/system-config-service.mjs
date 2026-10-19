@@ -16,6 +16,15 @@ export const createSystemConfigService = ({ repository }) => {
     return key;
   };
   return Object.freeze({
+    withDeviceTrustLock(work) { return repository.withDeviceTrustLock(work); },
+    async getDeviceTrustSyncState() {
+      const state = await repository.get('device-trust-sync-state');
+      return state?.payload || {};
+    },
+    async putDeviceTrustSyncState(payload) {
+      return repository.put({ key: 'device-trust-sync-state', payload,
+        actorClerkUserId: payload.actorClerkUserId || '' });
+    },
     async get(keyValue) {
       const key = ensureKey(keyValue);
       const entry = await repository.get(key);

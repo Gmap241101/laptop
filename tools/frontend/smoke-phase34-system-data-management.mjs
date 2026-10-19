@@ -43,7 +43,7 @@ assert.ok(controller.includes('clerkStagingClient.resetAdminSystemData({'));
 assert.ok(controller.includes('includePersonalData: true'));
 assert.ok(controller.includes('backupIncludePersonalData && (backupIncludeMembers || backupIncludeOperations)'));
 assert.ok(panel.includes('대여·회원·문의 백업'));
-assert.ok(panel.includes('백업·초기화'));
+assert.ok(panel.includes('백업·복원·초기화'));
 assert.ok(panel.includes('기기 대여 신청 관리 열기'));
 assert.ok(panel.includes('테스트 데이터 선택'));
 assert.ok(panel.includes('전체 초기화 범위 선택'));

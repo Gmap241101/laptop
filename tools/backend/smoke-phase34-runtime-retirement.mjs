@@ -1,31 +1,17 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 
-const [envSource, appSource, indexSource, assetSource, boardSource, memberSource] = await Promise.all([
-  readFile(new URL('../../server/src/config/env.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../server/src/app.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../server/src/index.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../server/src/assets/asset-service.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../server/src/boards/board-service.mjs', import.meta.url), 'utf8'),
-  readFile(new URL('../../server/src/members/member-authority-service.mjs', import.meta.url), 'utf8'),
-]);
-
-for (const marker of [
-  "readBoolean('FIREBASE_RUNTIME_DISABLED', false)",
-  'readFirebaseProjectId(appEnv, firebaseRuntimeDisabled)',
-  'firebaseRuntimeDisabled || readBoolean',
-]) assert.ok(envSource.includes(marker), `server retirement config marker: ${marker}`);
-
-for (const marker of [
-  "source: 'clerk-postgresql'",
-  "firebaseRuntime: config.firebaseRuntimeDisabled ? 'retired'",
-  'config.firebaseRuntimeDisabled',
-  "'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS'",
-]) assert.ok(appSource.includes(marker) || indexSource.includes(marker), `server runtime marker: ${marker}`);
-
-for (const source of [assetSource, boardSource, memberSource]) {
-  assert.ok(source.includes("firebaseIdentity?.source === 'clerk-postgresql'"), 'Synthetic Clerk/PostgreSQL identity must bypass Firestore verification/bootstrap.');
-  assert.ok(source.includes("source: 'postgresql-existing'") || source.includes("source: 'postgresql-admin-registry'"));
-}
-
-console.log('[phase34-runtime-retirement-backend-smoke] PASS (single retirement flag disables Firebase config/mirrors and bootstrap fallbacks)');
+assert.equal(existsSync('server/src/firebase'), false);
+assert.equal(existsSync('server/src/firestore'), false);
+const env = readFileSync('server/src/config/env.mjs', 'utf8');
+const app = readFileSync('server/src/app.mjs', 'utf8');
+const index = readFileSync('server/src/index.mjs', 'utf8');
+const db = readFileSync('server/src/db/pool.mjs', 'utf8');
+assert.match(env, /const firebaseRuntimeDisabled = true/, 'Firebase runtime must be permanently retired');
+assert.ok(!env.includes('readFirebaseProjectId('), 'retired Firebase project configuration must not be restored');
+assert.match(db, /readDatabaseRuntimeConfig/, 'database migrations must use isolated DB configuration');
+assert.match(index, /createClerkDeviceTrustService/, 'Clerk user policies remain active');
+assert.match(index, /userIdentityStore: 'postgresql'/, 'canonical user identity is PostgreSQL');
+assert.equal(app.includes('X-Firebase-Authorization'), false, 'retired Firebase token headers must not be accepted');
+assert.ok(app.includes("'/api/admin/system-data/reset'"), 'data maintenance must remain available');
+console.log('[phase34-runtime-retirement-backend-smoke] PASS (Clerk/PostgreSQL authority, Firebase SDK runtime removed)');

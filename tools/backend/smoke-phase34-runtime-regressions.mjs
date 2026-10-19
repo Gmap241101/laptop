@@ -612,7 +612,15 @@ const deviceTrustPolicyStore = new Map([
   ['device-trust-policy', { deviceTrustEmailVerificationEnabled: true }],
 ]);
 const deviceTrustPolicyWrites = [];
+let deviceTrustLockHeld = false;
 const deviceTrustSystemConfigService = {
+  async withDeviceTrustLock(callback) {
+    if (deviceTrustLockHeld) throw Object.assign(new Error('busy'), { code: 'clerk_device_trust_change_in_progress', status: 409 });
+    deviceTrustLockHeld = true;
+    try { return await callback(); } finally { deviceTrustLockHeld = false; }
+  },
+  async getDeviceTrustSyncState() { return deviceTrustPolicyStore.get('device-trust-sync-state') || {}; },
+  async putDeviceTrustSyncState(payload) { deviceTrustPolicyStore.set('device-trust-sync-state', payload); return payload; },
   async get(key) { return { source: 'postgresql', key, payload: deviceTrustPolicyStore.get(key) || {} }; },
   async put({ key, payload, actorClerkUserId }) {
     deviceTrustPolicyStore.set(key, payload);
@@ -671,7 +679,7 @@ await assert.rejects(
 );
 
 const deviceTrustServiceSource = fs.readFileSync(new URL('../../server/src/clerk/clerk-device-trust-service.mjs', import.meta.url), 'utf8');
-assert.match(deviceTrustServiceSource, /bypass_client_trust: Boolean\(bypassClientTrust\)/, 'device-trust policy writes must use Clerk per-user bypass_client_trust through the Backend API');
+assert.match(deviceTrustServiceSource, /bypass_client_trust: bypass/, 'device-trust policy writes must use Clerk per-user bypass_client_trust through the Backend API');
 assert.match(appSource, /GET' && url\.pathname === '\/api\/admin\/clerk-device-trust'/, 'server must expose authenticated new-device verification policy reads');
 assert.match(appSource, /PATCH' && url\.pathname === '\/api\/admin\/clerk-device-trust'[\s\S]*admin_owner_required/, 'only owner administrators may change the new-device verification policy');
 

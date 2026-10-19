@@ -9,6 +9,27 @@ const normalize = (row) => row ? Object.freeze({
 export const createSystemConfigRepository = (pool) => {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('PostgreSQL pool.query() is required.');
   return Object.freeze({
+    async withDeviceTrustLock(work) {
+      if (typeof pool.connect !== 'function') throw new TypeError('PostgreSQL pool.connect() is required.');
+      const client = await pool.connect();
+      let acquired = false;
+      try {
+        const result = await client.query("SELECT pg_try_advisory_lock(hashtext('phase34-device-trust-policy')) AS acquired");
+        acquired = result.rows[0]?.acquired === true;
+        if (!acquired) {
+          throw Object.assign(new Error('Device Trust policy change is already in progress.'), {
+            code: 'clerk_device_trust_change_in_progress', status: 409,
+          });
+        }
+        return await work();
+      } finally {
+        if (acquired) {
+          try { await client.query("SELECT pg_advisory_unlock(hashtext('phase34-device-trust-policy'))"); }
+          catch (error) { client.release(error); throw error; }
+        }
+        client.release();
+      }
+    },
     async get(key) {
       const result = await pool.query(
         `SELECT config_key, payload, updated_by_clerk_user_id, created_at, updated_at

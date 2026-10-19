@@ -1344,6 +1344,24 @@ export const requestAdminClerkDeviceTrust = async ({ clerk, apiBaseUrl, fetchImp
   return payload;
 };
 
+export const requestAdminClerkDeviceTrustReconcile = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({
+    clerk, apiBaseUrl, fetchImpl,
+    path: '/api/admin/clerk-device-trust/reconcile', method: 'POST',
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error('Device Trust account synchronization failed.'), {
+      code: payload?.error || 'clerk_device_trust_reconciliation_failed', status: response.status,
+    });
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.clerkDeviceTrust?.sync?.status !== 'synchronized') {
+    throw Object.assign(new Error('Device Trust synchronization is not confirmed.'), {
+      code: 'clerk_device_trust_reconciliation_unconfirmed',
+    });
+  }
+  return payload;
+};
+
 export const requestAdminClerkDeviceTrustWrite = async ({ clerk, apiBaseUrl, fetchImpl, enabled }) => {
   if (typeof enabled !== 'boolean') {
     throw Object.assign(
@@ -1445,6 +1463,21 @@ export const requestAdminSystemDataReset = async ({ clerk, apiBaseUrl, fetchImpl
   const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path: '/api/admin/system-data/reset', method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes, confirmText, backupConfirmed }) });
   if (!response.ok) { const error = new Error(`System data reset failed with HTTP ${response.status}.`); error.status=response.status; error.code=payload?.error||null; throw error; }
   if (!payload?.authenticated || !payload?.authorized || payload?.systemDataReset?.authority !== 'postgresql') throw new Error('Backend returned an invalid PostgreSQL reset result.');
+  return payload;
+};
+
+export const requestAdminSystemDataRestore = async ({ clerk, apiBaseUrl, fetchImpl, payload: restorePayload, previewOnly = true }) => {
+  const key = previewOnly ? 'systemDataRestorePreview' : 'systemDataRestoreResult';
+  const path = previewOnly ? '/api/admin/system-data/restore/preview' : '/api/admin/system-data/restore/execute';
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl, path,
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(restorePayload) });
+  if (!response.ok) {
+    const error = new Error(`PostgreSQL restore ${previewOnly ? 'preview' : 'execution'} failed with HTTP ${response.status}.`);
+    error.status = response.status; error.code = payload?.error || 'system_data_restore_failed'; throw error;
+  }
+  if (!payload?.authenticated || !payload?.authorized || payload?.[key]?.authority !== 'postgresql') {
+    throw new Error('Backend returned an invalid PostgreSQL restore response.');
+  }
   return payload;
 };
 
@@ -2526,6 +2559,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk = await initialize();
       return requestAdminClerkDeviceTrust({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
     },
+    async reconcileAdminClerkDeviceTrust() {
+      const clerk = await initialize();
+      return requestAdminClerkDeviceTrustReconcile({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
     async saveAdminClerkDeviceTrust(enabled) {
       const clerk = await initialize();
       return requestAdminClerkDeviceTrustWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, enabled });
@@ -2557,6 +2594,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async exportAdminSystemData(options = {}) {
       const clerk = await initialize();
       return requestAdminSystemDataExport({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, options });
+    },
+    async previewAdminSystemDataRestore(payload) {
+      const clerk = await initialize();
+      return requestAdminSystemDataRestore({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, payload, previewOnly: true });
+    },
+    async executeAdminSystemDataRestore(payload) {
+      const clerk = await initialize();
+      return requestAdminSystemDataRestore({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, payload, previewOnly: false });
     },
     async scanAdminSystemDataReset(scopes = []) {
       const clerk = await initialize();

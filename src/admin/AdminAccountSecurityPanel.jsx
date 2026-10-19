@@ -126,9 +126,11 @@ export default function AdminAccountSecurityPanel({ ctx }) {
     configured: false,
     enabled: null,
     errorCode: '',
+    sync: null,
   });
   const [deviceTrustDraft, setDeviceTrustDraft] = useState(false);
   const [savingDeviceTrust, setSavingDeviceTrust] = useState(false);
+  const [reconcilingDeviceTrust, setReconcilingDeviceTrust] = useState(false);
 
   useEffect(() => {
     setAdminDraft(normalizedAdmin);
@@ -145,6 +147,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       configured: false,
       enabled: null,
       errorCode: '',
+      sync: null,
     });
 
     void clerkStagingClient
@@ -158,6 +161,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
           configured: Boolean(state.configured),
           enabled,
           errorCode: '',
+          sync: state.sync || null,
         });
         if (enabled !== null) setDeviceTrustDraft(enabled);
       })
@@ -169,6 +173,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
           configured: false,
           enabled: null,
           errorCode: error?.code || error?.name || 'clerk_device_trust_read_failed',
+          sync: null,
         });
       });
 
@@ -358,6 +363,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
         configured: true,
         enabled,
         errorCode: '',
+        sync: savedState.sync || null,
       });
       setDeviceTrustDraft(enabled);
 
@@ -393,12 +399,39 @@ export default function AdminAccountSecurityPanel({ ctx }) {
     } catch (error) {
       console.error('New-device login verification settings save error:', error);
       setDeviceTrustDraft(previousEnabled);
+      try {
+        const refreshed = (await clerkStagingClient.getAdminClerkDeviceTrust()).clerkDeviceTrust;
+        setDeviceTrustState({ ready: true, configured: true, enabled: refreshed.enabled,
+          sync: refreshed.sync || null, errorCode: '' });
+      } catch { /* retain prior display when backend is unavailable */ }
       triggerToast(
-        `새 기기 로그인 이메일 인증 설정을 저장하지 못했습니다. 기존 설정은 유지됩니다. 오류 코드: ${error?.code || error?.name || 'device_trust_policy_write_failed'}`, 
+        `새 기기 로그인 이메일 인증 설정을 저장하지 못했습니다. 계정 적용 상태를 확인해 주세요. 오류 코드: ${error?.code || error?.name || 'device_trust_policy_write_failed'}`,
         'error',
       );
     } finally {
       setSavingDeviceTrust(false);
+    }
+  };
+
+  const reconcileDeviceTrust = async () => {
+    if (!isOwner || reconcilingDeviceTrust) return;
+    setReconcilingDeviceTrust(true);
+    try {
+      const response = await clerkStagingClient.reconcileAdminClerkDeviceTrust();
+      const state = response.clerkDeviceTrust;
+      setDeviceTrustState({ ready: true, configured: true, enabled: state.enabled,
+        sync: state.sync || null, errorCode: '' });
+      setDeviceTrustDraft(state.enabled);
+      triggerToast('새 기기 로그인 인증 설정을 계정에 다시 적용했습니다.', 'success');
+    } catch (error) {
+      triggerToast(`새 기기 로그인 인증 설정을 다시 적용하지 못했습니다. 오류 코드: ${error?.code || 'device_trust_reconcile_failed'}`, 'error');
+      try {
+        const refreshed = (await clerkStagingClient.getAdminClerkDeviceTrust()).clerkDeviceTrust;
+        setDeviceTrustState({ ready: true, configured: true, enabled: refreshed.enabled,
+          sync: refreshed.sync || null, errorCode: '' });
+      } catch { /* preserve the last-known settings for retry */ }
+    } finally {
+      setReconcilingDeviceTrust(false);
     }
   };
 
@@ -619,6 +652,21 @@ export default function AdminAccountSecurityPanel({ ctx }) {
                   새 기기 로그인 인증 설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
                   {deviceTrustState.errorCode ? ` 오류 코드: ${deviceTrustState.errorCode}` : ''}
                 </div>
+              </div>
+            ) : null}
+            {deviceTrustState.sync?.recoveryRequired ? (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                새 기기 로그인 인증 설정이 일부 계정에 적용되지 않았습니다. 아래에서 다시 적용해 주세요.
+                {` (미적용 ${deviceTrustState.sync.failedAccountCount || 0}건)`}
+              </div>
+            ) : null}
+            {isOwner ? (
+              <div className="flex justify-end py-2">
+                <Button type="button" variant="outline"
+                  disabled={savingDeviceTrust || reconcilingDeviceTrust || !deviceTrustState.configured}
+                  onClick={reconcileDeviceTrust}>
+                  {reconcilingDeviceTrust ? '확인 중' : '기존 계정에 다시 적용'}
+                </Button>
               </div>
             ) : null}
             <div className="flex items-center justify-end gap-2 py-4">
