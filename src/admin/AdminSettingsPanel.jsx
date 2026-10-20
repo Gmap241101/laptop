@@ -339,6 +339,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
     backupVerifyStatus,
     backupReverifyCode,
     backupReverifyPending,
+    backupReverifyConfirmed,
     setBackupReverifyCode,
     requestBackupReverification,
     startBackupVerification,
@@ -901,10 +902,19 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
                 <div className="flex justify-end"><Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void requestBackupReverification()}>이메일로 본인 확인</Button></div>
               ) : (
                 <div className="space-y-2">
-                  <label htmlFor="backup-reverify-code" className="block text-sm font-semibold">이메일 확인 코드</label>
-                  <input id="backup-reverify-code" value={backupReverifyCode} inputMode="numeric" autoComplete="one-time-code" maxLength={10}
-                    onChange={e=>setBackupReverifyCode(e.target.value)} className="block w-full rounded-xl border border-slate-300 p-3 text-sm" />
-                  <div className="flex justify-end"><Button type="button" disabled={backupVerifyBusy || !/^\d{4,10}$/.test(backupReverifyCode)} onClick={() => void startBackupVerification()}>확인 후 검증 시작</Button></div>
+                  {backupReverifyConfirmed ? (
+                    <p className="text-sm text-emerald-800" role="status">본인 확인이 완료되었습니다. 검증 시작을 다시 선택할 수 있습니다.</p>
+                  ) : (
+                    <>
+                      <label htmlFor="backup-reverify-code" className="block text-sm font-semibold">이메일 확인 코드</label>
+                      <input id="backup-reverify-code" value={backupReverifyCode} inputMode="numeric" autoComplete="one-time-code" maxLength={10}
+                        onChange={e=>setBackupReverifyCode(e.target.value)} className="block w-full rounded-xl border border-slate-300 p-3 text-sm" />
+                    </>
+                  )}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {backupReverifyConfirmed && <Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void requestBackupReverification()}>다시 본인 확인</Button>}
+                    <Button type="button" disabled={backupVerifyBusy || (!backupReverifyConfirmed && !/^\d{4,10}$/.test(backupReverifyCode))} onClick={() => void startBackupVerification()}>{backupReverifyConfirmed ? '검증 시작 재시도' : '확인 후 검증 시작'}</Button>
+                  </div>
                 </div>
               )}
             </>

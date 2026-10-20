@@ -1,3 +1,5 @@
+import { waitForBackupReverificationClaims } from './backupReverificationClaims.js';
+
 const CLERK_UI_MAJOR = '1';
 const CLERK_JS_MAJOR = '6';
 
@@ -211,8 +213,8 @@ const endActiveClerkSessionWithoutNavigation = async (clerk) => {
   throw error;
 };
 
-const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body, forceFreshToken = false }) => {
-  const token = forceFreshToken ? await clerk.session.getToken({ skipCache: true }) : await getSessionToken(clerk);
+const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body, forceFreshToken = false, verifiedSessionToken = null }) => {
+  const token = verifiedSessionToken || (forceFreshToken ? await clerk.session.getToken({ skipCache: true }) : await getSessionToken(clerk));
   const authorityHeaders = { ...headers };
   const response = await fetchWithRuntimeTimeout(fetchImpl, `${apiBaseUrl}${path}`, {
     method,
@@ -2591,7 +2593,8 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       if (!/^\d{4,10}$/.test(String(code || '').trim())) throw new Error('backup_reverification_code_invalid');
       const result = await clerk.session.attemptFirstFactorVerification({strategy:'email_code',code:String(code).trim()});
       if (result?.status !== 'complete') throw new Error('backup_reverification_incomplete');
-      await clerk.session.getToken({ skipCache: true });
+      // The code has been consumed by Clerk. Do not attempt to verify it again
+      // when the subsequent app API call fails or the token claims are delayed.
       return { verified: true };
     },
     async readBackupVerification(jobId = '') {
@@ -2603,9 +2606,15 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     },
     async startBackupVerification() {
       const clerk = await initialize();
+      // This is only a client-side readiness check for good UX. Backend still
+      // verifies the RS256 signature, fresh fva and unique reverification ID.
+      const verifiedSessionToken = await waitForBackupReverificationClaims(
+        () => clerk.session.getToken({ skipCache: true })
+      );
       const {response,payload}=await requestWithSession({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,
-        path:'/api/admin/system-data/backup-verification',method:'POST',forceFreshToken:true});
-      if (!response.ok) { const error=new Error('backup_verification_start_failed');error.code=payload?.error||'backup_verification_start_failed';throw error; }
+        path:'/api/admin/system-data/backup-verification',method:'POST',verifiedSessionToken});
+      if (!response.ok) { const error=new Error('backup_verification_start_failed');error.status=response.status;error.code=payload?.error||'backup_verification_start_failed';throw error; }
+      if (!payload?.backupVerificationJob?.id) { const error=new Error('backup_verification_invalid_response');error.code='backup_verification_invalid_response';throw error; }
       return payload.backupVerificationJob;
     },
     async cancelBackupVerification(jobId) {

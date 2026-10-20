@@ -50,6 +50,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [backupVerifyJob, setBackupVerifyJob] = useState(null);
   const [backupReverifyCode, setBackupReverifyCode] = useState('');
   const [backupReverifyPending, setBackupReverifyPending] = useState(false);
+  const [backupReverifyConfirmed, setBackupReverifyConfirmed] = useState(false);
   const [backupVerifyBusy, setBackupVerifyBusy] = useState(false);
 
   const [selectedResetScopes, setSelectedResetScopesState] = useState(TEST_DATA_PRESET);
@@ -128,6 +129,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     try {
       await clerkStagingClient.beginBackupReverification();
       setBackupReverifyPending(true);
+      setBackupReverifyConfirmed(false);
       setBackupReverifyCode('');
       triggerToast?.('확인 코드를 이메일로 발송했습니다.','success');
     } catch(error) {
@@ -139,17 +141,30 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     if (!backupReverifyPending) return;
     setBackupVerifyBusy(true);
     try {
-      await clerkStagingClient.completeBackupReverification(backupReverifyCode);
+      if (!backupReverifyConfirmed) {
+        await clerkStagingClient.completeBackupReverification(backupReverifyCode);
+        // The one-time code was accepted. A failed backend request must not
+        // make the user submit that consumed code again.
+        setBackupReverifyConfirmed(true);
+        setBackupReverifyCode('');
+      }
       const job = await clerkStagingClient.startBackupVerification();
       setBackupVerifyJob(job);
       setBackupReverifyPending(false);
+      setBackupReverifyConfirmed(false);
       setBackupReverifyCode('');
       triggerToast?.(backupVerifyStatus?.mode === 'single-db' ? '데이터 논리 검사를 시작했습니다.' : '백업·복원 검증을 시작했습니다.','success');
       await refreshBackupVerification();
     } catch(error) {
-      triggerToast?.(`검증을 시작하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'verification_failed'}`,'error');
+      const code = error?.code || error?.message || 'verification_failed';
+      const message = code === 'backup_verification_reverification_claim_missing'
+        ? '본인 확인은 완료됐지만 인증 설정을 확인해야 합니다. 관리자에게 문의해 주세요.'
+        : code === 'backup_verification_reauthentication_not_reflected'
+          ? '본인 확인이 세션에 반영되지 않았습니다. 잠시 후 검증 시작을 다시 선택해 주세요.'
+          : '검증을 시작하지 못했습니다.';
+      triggerToast?.(`${message} 오류 코드: ${code}`,'error');
     } finally { setBackupVerifyBusy(false); }
-  },[backupReverifyPending,backupReverifyCode,refreshBackupVerification,triggerToast,backupVerifyStatus?.mode]);
+  },[backupReverifyPending,backupReverifyConfirmed,backupReverifyCode,refreshBackupVerification,triggerToast,backupVerifyStatus?.mode]);
 
   const cancelBackupVerification = useCallback(async () => {
     if (!backupVerifyJob?.id) return;
@@ -484,6 +499,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     backupVerifyStatus,
     backupReverifyCode,
     backupReverifyPending,
+    backupReverifyConfirmed,
     setBackupReverifyCode,
     requestBackupReverification,
     startBackupVerification,

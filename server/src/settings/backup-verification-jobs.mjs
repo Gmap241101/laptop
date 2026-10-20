@@ -16,7 +16,10 @@ const sanitize = (row) => row ? Object.freeze({
 export const requireRecentReverification = (auth, maxMinutes = 5) => {
   const age = auth?.factorVerificationAge?.[0];
   const id = String(auth?.reverificationId || '');
-  if (!Number.isInteger(age) || age < 0 || age >= maxMinutes || !/^[a-zA-Z0-9_-]{10,180}$/.test(id)) {
+  if (!/^[a-zA-Z0-9_-]{10,180}$/.test(id)) {
+    throw makeError('backup_verification_reverification_claim_missing', 403);
+  }
+  if (!Number.isInteger(age) || age < 0 || age >= maxMinutes) {
     throw makeError('backup_verification_reauthentication_required', 403);
   }
   if (!String(auth?.sessionId || '').trim()) throw makeError('backup_verification_session_invalid', 403);
