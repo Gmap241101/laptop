@@ -46,6 +46,12 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [repairLoading, setRepairLoading] = useState(false);
   const [catalogMetadataReconcileLoading, setCatalogMetadataReconcileLoading] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+  const [backupVerifyStatus, setBackupVerifyStatus] = useState(null);
+  const [backupVerifyJob, setBackupVerifyJob] = useState(null);
+  const [backupReverifyCode, setBackupReverifyCode] = useState('');
+  const [backupReverifyPending, setBackupReverifyPending] = useState(false);
+  const [backupVerifyBusy, setBackupVerifyBusy] = useState(false);
+
   const [selectedResetScopes, setSelectedResetScopesState] = useState(TEST_DATA_PRESET);
   const [resetCounts, setResetCounts] = useState(null);
   const [resetScanLoading, setResetScanLoading] = useState(false);
@@ -96,6 +102,65 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     if (mode !== 'data' || !authenticatedAdminAccount?.id) return;
     void refreshOverview({ silent: true });
   }, [authenticatedAdminAccount?.id, mode, refreshOverview]);
+
+  const refreshBackupVerification = useCallback(async () => {
+    if (!authenticatedAdminAccount?.id || mode !== 'data') return;
+    try {
+      const state = await clerkStagingClient.readBackupVerification();
+      setBackupVerifyStatus(state);
+      setBackupVerifyJob(state?.latest || null);
+    } catch { setBackupVerifyStatus({enabled:false}); }
+  }, [authenticatedAdminAccount?.id,mode]);
+
+  useEffect(() => {
+    if (mode !== 'data' || !authenticatedAdminAccount?.id) return;
+    void refreshBackupVerification();
+  }, [mode,authenticatedAdminAccount?.id,refreshBackupVerification]);
+
+  useEffect(() => {
+    if (!['queued','running'].includes(backupVerifyJob?.status) || mode !== 'data') return;
+    const timer = setInterval(() => { void refreshBackupVerification(); }, 4000);
+    return () => clearInterval(timer);
+  }, [mode,backupVerifyJob?.status,refreshBackupVerification]);
+
+  const requestBackupReverification = useCallback(async () => {
+    setBackupVerifyBusy(true);
+    try {
+      await clerkStagingClient.beginBackupReverification();
+      setBackupReverifyPending(true);
+      setBackupReverifyCode('');
+      triggerToast?.('확인 코드를 이메일로 발송했습니다.','success');
+    } catch(error) {
+      triggerToast?.(`재인증을 시작하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'verification_unavailable'}`,'error');
+    } finally { setBackupVerifyBusy(false); }
+  },[triggerToast]);
+
+  const startBackupVerification = useCallback(async () => {
+    if (!backupReverifyPending) return;
+    setBackupVerifyBusy(true);
+    try {
+      await clerkStagingClient.completeBackupReverification(backupReverifyCode);
+      const job = await clerkStagingClient.startBackupVerification();
+      setBackupVerifyJob(job);
+      setBackupReverifyPending(false);
+      setBackupReverifyCode('');
+      triggerToast?.('백업·복원 검증을 시작했습니다.','success');
+      await refreshBackupVerification();
+    } catch(error) {
+      triggerToast?.(`검증을 시작하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'verification_failed'}`,'error');
+    } finally { setBackupVerifyBusy(false); }
+  },[backupReverifyPending,backupReverifyCode,refreshBackupVerification,triggerToast]);
+
+  const cancelBackupVerification = useCallback(async () => {
+    if (!backupVerifyJob?.id) return;
+    setBackupVerifyBusy(true);
+    try {
+      await clerkStagingClient.cancelBackupVerification(backupVerifyJob.id);
+      await refreshBackupVerification();
+      triggerToast?.('검증 중단을 요청했습니다.','success');
+    } catch(error) { triggerToast?.(`중단 요청에 실패했습니다. 오류 코드: ${error?.code || error?.message || 'cancel_failed'}`,'error'); }
+    finally {setBackupVerifyBusy(false);}
+  },[backupVerifyJob?.id,refreshBackupVerification,triggerToast]);
 
   const runIntegrityCheck = useCallback(async () => {
     setIntegrityLoading(true);
@@ -253,6 +318,14 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     }
   }, [selectedResetScopes, triggerToast]);
 
+  // Update the existing destructive-action gate when verification finishes.
+  // A JSON preview is still explicitly re-run by its user before execution.
+  useEffect(() => {
+    if (mode === 'data' && backupVerifyJob?.status === 'verified' && backupVerifyJob.proofActive !== false) {
+      void scanResetTargets();
+    }
+  }, [mode,backupVerifyJob?.status,backupVerifyJob?.proofActive,scanResetTargets]);
+
   const executeReset = useCallback(async () => {
     if (!resetCounts) {
       triggerToast?.('초기화 대상 확인을 먼저 실행해 주세요.', 'error');
@@ -406,6 +479,16 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     backupIncludeOperations,
     backupIncludePersonalData,
     backupLoading,
+    backupVerifyBusy,
+    backupVerifyJob,
+    backupVerifyStatus,
+    backupReverifyCode,
+    backupReverifyPending,
+    setBackupReverifyCode,
+    requestBackupReverification,
+    startBackupVerification,
+    cancelBackupVerification,
+    refreshBackupVerification,
     downloadBackup,
     integrityLoading,
     integrityResult,

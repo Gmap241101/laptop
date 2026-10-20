@@ -211,8 +211,8 @@ const endActiveClerkSessionWithoutNavigation = async (clerk) => {
   throw error;
 };
 
-const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body }) => {
-  const token = await getSessionToken(clerk);
+const requestWithSession = async ({ clerk, apiBaseUrl, fetchImpl, path, method = 'GET', headers = {}, body, forceFreshToken = false }) => {
+  const token = forceFreshToken ? await clerk.session.getToken({ skipCache: true }) : await getSessionToken(clerk);
   const authorityHeaders = { ...headers };
   const response = await fetchWithRuntimeTimeout(fetchImpl, `${apiBaseUrl}${path}`, {
     method,
@@ -2574,6 +2574,46 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminSystemConfiguration(key, payload) {
       const clerk = await initialize();
       return requestSystemConfigurationWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, payload });
+    },
+    async beginBackupReverification() {
+      const clerk = await initialize();
+      const session = clerk?.session;
+      if (typeof session?.startVerification !== 'function') throw new Error('backup_reverification_unavailable');
+      const flow = await session.startVerification({ level: 'first_factor' });
+      const factors = Array.isArray(flow?.supportedFirstFactors) ? flow.supportedFirstFactors : [];
+      const email = factors.find(f => f?.strategy === 'email_code' && f.emailAddressId);
+      if (!email) throw new Error('backup_reverification_email_unavailable');
+      await session.prepareFirstFactorVerification({ strategy: 'email_code', emailAddressId: email.emailAddressId });
+      return { sent: true, destination: email.safeIdentifier || '' };
+    },
+    async completeBackupReverification(code) {
+      const clerk = await initialize();
+      if (!/^\d{4,10}$/.test(String(code || '').trim())) throw new Error('backup_reverification_code_invalid');
+      const result = await clerk.session.attemptFirstFactorVerification({strategy:'email_code',code:String(code).trim()});
+      if (result?.status !== 'complete') throw new Error('backup_reverification_incomplete');
+      await clerk.session.getToken({ skipCache: true });
+      return { verified: true };
+    },
+    async readBackupVerification(jobId = '') {
+      const clerk = await initialize();
+      const path = '/api/admin/system-data/backup-verification' + (jobId ? `/${encodeURIComponent(jobId)}` : '');
+      const { response, payload } = await requestWithSession({clerk, apiBaseUrl:config.apiBaseUrl, fetchImpl,path,method:'GET'});
+      if (!response.ok) { const error=new Error('backup_verification_query_failed');error.code=payload?.error||'backup_verification_query_failed';throw error; }
+      return jobId ? payload.backupVerificationJob : payload.backupVerification;
+    },
+    async startBackupVerification() {
+      const clerk = await initialize();
+      const {response,payload}=await requestWithSession({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,
+        path:'/api/admin/system-data/backup-verification',method:'POST',forceFreshToken:true});
+      if (!response.ok) { const error=new Error('backup_verification_start_failed');error.code=payload?.error||'backup_verification_start_failed';throw error; }
+      return payload.backupVerificationJob;
+    },
+    async cancelBackupVerification(jobId) {
+      const clerk = await initialize();
+      const {response,payload}=await requestWithSession({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,
+        path:`/api/admin/system-data/backup-verification/${encodeURIComponent(jobId)}/cancel`,method:'POST'});
+      if (!response.ok) {const error=new Error('backup_verification_cancel_failed');error.code=payload?.error||'backup_verification_cancel_failed';throw error;}
+      return payload.backupVerificationJob;
     },
     async getAdminSystemDataOverview() {
       const clerk = await initialize();

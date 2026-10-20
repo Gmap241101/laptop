@@ -256,6 +256,14 @@ export const createRequestHandler = ({
       throw error;
     },
   },
+  backupVerificationJobs = {
+    async status() { return {enabled:false}; },
+    async latest() { return null; },
+    async get() { throw Object.assign(new Error('not_configured'),{status:503}); },
+    async start() { throw Object.assign(new Error('not_configured'),{status:503}); },
+    async cancel() { throw Object.assign(new Error('not_configured'),{status:503}); },
+    async assertDurableProof() {},
+  },
   systemDataService = {
     async getOverview() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
     async checkIntegrity() { const error = new Error('System data service is not configured.'); error.code = 'system_data_not_configured'; throw error; },
@@ -2454,6 +2462,45 @@ export const createRequestHandler = ({
       return;
     }
 
+    // Website-initiated full backup/isolated-restore verifier. A job is
+    // queued, never run in the HTTP request. Only owner may see its state.
+    if (/^\/api\/admin\/system-data\/backup-verification(?:\/[0-9a-f-]{36}(?:\/cancel)?)?$/i.test(url.pathname)) {
+      const authority = await authenticateAdminAuthority(request,response,headers,requestId);
+      if (!authority) return;
+      if ((authority.adminAuth?.admin?.adminRole || 'admin') !== 'owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,authorized:false,error:'admin_owner_required'},headers);
+        return;
+      }
+      const jobMatch = url.pathname.match(/^\/api\/admin\/system-data\/backup-verification\/([0-9a-f-]{36})(\/cancel)?$/i);
+      try {
+        if (request.method === 'GET' && !jobMatch) {
+          const [readiness,latest] = await Promise.all([backupVerificationJobs.status(),backupVerificationJobs.latest()]);
+          writeJson(response,200,{...basePayload,authenticated:true,authorized:true,backupVerification:{...readiness,latest}},headers);
+          return;
+        }
+        if (request.method === 'GET' && jobMatch && !jobMatch[2]) {
+          const job = await backupVerificationJobs.get(jobMatch[1]);
+          writeJson(response,200,{...basePayload,authenticated:true,authorized:true,backupVerificationJob:job},headers);
+          return;
+        }
+        if (request.method === 'POST' && !jobMatch) {
+          const job = await backupVerificationJobs.start({auth:authority.auth,actorClerkUserId:authority.auth.userId});
+          writeJson(response,202,{...basePayload,authenticated:true,authorized:true,backupVerificationJob:job},headers);
+          return;
+        }
+        if (request.method === 'POST' && jobMatch?.[2]) {
+          const job = await backupVerificationJobs.cancel(jobMatch[1]);
+          writeJson(response,200,{...basePayload,authenticated:true,authorized:true,backupVerificationJob:job},headers);
+          return;
+        }
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);
+      } catch(error) {
+        writeJson(response,error?.status||503,{...basePayload,authenticated:true,authorized:true,
+          error:error?.status?error.code:'backup_verification_request_failed'},headers);
+      }
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/admin/system-data/overview') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!authority) return;
@@ -2517,6 +2564,7 @@ export const createRequestHandler = ({
       let body = {};
       try { body = await readJsonBody(request); } catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
+        await backupVerificationJobs.assertDurableProof();
         const result = await systemDataService.resetScopes(authority.adminAuth?.admin, body || {});
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, systemDataReset: result }, headers);
       } catch (error) {
@@ -2534,6 +2582,7 @@ export const createRequestHandler = ({
       catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       const previewOnly = url.pathname.endsWith('/preview');
       try {
+        if (!previewOnly) await backupVerificationJobs.assertDurableProof();
         const result = previewOnly
           ? await systemDataService.previewRestore(authority.adminAuth?.admin, body)
           : await systemDataService.executeRestore(authority.adminAuth?.admin, body);

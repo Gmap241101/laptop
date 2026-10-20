@@ -7,7 +7,13 @@ export const describeResetBackupProof = (raw, databaseName, now = Date.now()) =>
   const proof = raw && typeof raw === 'object' ? raw : {};
   const checkedAt = Date.parse(proof.verifiedAt || '');
   const age = now - checkedAt;
-  const valid = proof.type === 'full-pg-dump-isolated-restore-v1' &&
+  const typeValid = proof.type === 'full-pg-dump-isolated-restore-v1' ||
+    (proof.type === 'full-pg-dump-isolated-restore-v2' &&
+      /^[0-9a-f-]{36}$/i.test(proof.jobId || '') &&
+      /^phase34\/(staging|production)\/[0-9a-f-]{36}\.pgdump\.aesgcm$/.test(proof.objectKey || '') &&
+      /^[a-f0-9]{64}$/.test(proof.objectSha256 || '') &&
+      ['staging','production'].includes(proof.environment));
+  const valid = typeValid &&
     proof.databaseName === databaseName &&
     typeof proof.dumpSha256 === 'string' && /^[a-f0-9]{64}$/.test(proof.dumpSha256) &&
     typeof proof.tableCountsSha256 === 'string' && /^[a-f0-9]{64}$/.test(proof.tableCountsSha256) &&

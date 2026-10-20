@@ -146,6 +146,8 @@ export const createClerkSessionAuthenticator = (config) => {
       issuedAt: typeof parsed.payload.iat === 'number' ? parsed.payload.iat : null,
       expiresAt: exp,
       status: typeof parsed.payload.sts === 'string' ? parsed.payload.sts : null,
+      factorVerificationAge: Array.isArray(parsed.payload.fva) ? parsed.payload.fva.slice(0, 2) : null,
+      reverificationId: typeof parsed.payload.reverification_id === 'string' ? parsed.payload.reverification_id : null,
     });
   };
 };
