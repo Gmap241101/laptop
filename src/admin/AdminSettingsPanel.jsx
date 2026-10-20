@@ -33,6 +33,8 @@ import {
 } from '../utils/systemRestore.js';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import { formatKoreanDateTime } from '../utils/appUtils.js';
+import SixDigitVerificationCodeInput from '../components/SixDigitVerificationCodeInput.jsx';
+import { isCompleteVerificationCode } from '../components/verificationCodeInputModel.js';
 import useAdminDataMaintenanceController, {
   FULL_RESET_PRESET,
   SAFE_RESTORE_SCOPE_META,
@@ -882,7 +884,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <SectionCard title="백업·데이터 안전검사" description={backupVerifyStatus?.mode === 'single-db' ? '현재 데이터의 논리적 정합성을 검사합니다. 전체 DB 복원 검사는 제공되지 않습니다.' : '전체 데이터를 안전하게 보관하고 복원 가능 여부를 확인합니다.'}>
+      <SectionCard title="백업·데이터 안전검사" description={backupVerifyStatus?.mode === 'single-db' ? '현재 데이터의 논리적 정합성만 검사합니다. 전체 DB 복원 검사는 지원하지 않으며, 전체 데이터 초기화는 계속 제한됩니다.' : '전체 데이터를 안전하게 보관하고 복원 가능 여부를 확인합니다.'}>
         <div className="space-y-3" aria-live="polite">
           {!backupVerifyStatus?.enabled && (
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">검증 기능을 준비 중입니다. 운영 관리자에게 문의해 주세요.</p>
@@ -896,35 +898,35 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
               {['queued','running'].includes(backupVerifyJob.status) && <div>진행 상태: {{queued:'준비',target_check:'준비',read_only_snapshot:'데이터 점검',snapshot:'백업 준비',backup:'백업 생성',encrypt:'백업 보관',store:'백업 보관',readback:'백업 확인',isolate:'복원 준비',restore:'복원 검사',integrity:'결과 확인',proof:'최종 확인'}[backupVerifyJob.phase] || '확인 중'}</div>}
             </div>
           )}
-          {isOwner && backupVerifyStatus?.enabled && !['queued','running'].includes(backupVerifyJob?.status) && (
-            <>
-              {!backupReverifyPending ? (
-                <div className="flex justify-end"><Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void requestBackupReverification()}>이메일로 본인 확인</Button></div>
-              ) : (
-                <div className="space-y-2">
-                  {backupReverifyConfirmed ? (
-                    <p className="text-sm text-emerald-800" role="status">본인 확인이 완료되었습니다. 검증 시작을 다시 선택할 수 있습니다.</p>
-                  ) : (
-                    <>
-                      <label htmlFor="backup-reverify-code" className="block text-sm font-semibold">이메일 확인 코드</label>
-                      <input id="backup-reverify-code" value={backupReverifyCode} inputMode="numeric" autoComplete="one-time-code" maxLength={10}
-                        onChange={e=>setBackupReverifyCode(e.target.value)} className="block w-full rounded-xl border border-slate-300 p-3 text-sm" />
-                    </>
-                  )}
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {backupReverifyConfirmed && <Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void requestBackupReverification()}>다시 본인 확인</Button>}
-                    <Button type="button" disabled={backupVerifyBusy || (!backupReverifyConfirmed && !/^\d{4,10}$/.test(backupReverifyCode))} onClick={() => void startBackupVerification()}>{backupReverifyConfirmed ? '검증 시작 재시도' : '확인 후 검증 시작'}</Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-          {backupVerifyStatus?.mode === 'single-db' ? <p className="text-xs text-amber-800">이 검사는 전체 백업이나 복원 성공을 의미하지 않습니다. 전체 데이터 초기화는 계속 제한됩니다.</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
+            {isOwner && backupVerifyStatus?.enabled && !['queued','running'].includes(backupVerifyJob?.status) && (
+              <Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void requestBackupReverification()}>이메일 인증</Button>
+            )}
             <Button type="button" variant="outline" onClick={() => void refreshBackupVerification()} disabled={backupVerifyBusy}>상태 새로고침</Button>
             {isOwner && ['queued','running'].includes(backupVerifyJob?.status) &&
               <Button type="button" variant="outline" disabled={backupVerifyBusy} onClick={() => void cancelBackupVerification()}>검증 중단</Button>}
           </div>
+          {isOwner && backupVerifyStatus?.enabled && !['queued','running'].includes(backupVerifyJob?.status) && backupReverifyPending && (
+            <div className="space-y-2">
+              {backupReverifyConfirmed ? (
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <p className="text-sm text-emerald-800" role="status">본인 확인이 완료되었습니다.</p>
+                  <Button type="button" disabled={backupVerifyBusy} onClick={() => void startBackupVerification()}>검증 시작 재시도</Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end justify-end gap-3">
+                  <SixDigitVerificationCodeInput
+                    id="backup-reverify-code"
+                    value={backupReverifyCode}
+                    disabled={backupVerifyBusy}
+                    onChange={setBackupReverifyCode}
+                    onSubmit={() => void startBackupVerification()}
+                  />
+                  <Button type="button" disabled={backupVerifyBusy || !isCompleteVerificationCode(backupReverifyCode)} onClick={() => void startBackupVerification()}>확인 후 검증 시작</Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </SectionCard>
 
