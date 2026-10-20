@@ -946,11 +946,21 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
         <div className="space-y-4">
           {!isOwner ? <p className="text-xs text-amber-700">최고 관리자만 복원 기능을 사용할 수 있습니다.</p> : null}
           <label className="block text-sm font-bold text-slate-900" htmlFor="postgres-restore-json-file">백업 JSON 파일</label>
-          <input id="postgres-restore-json-file" type="file" accept=".json,application/json"
-            disabled={!isOwner || restoreRunning || restoreAnalyzeLoading}
-            onChange={(event) => { void handleRestoreFile(event.target.files?.[0]); event.target.value = ''; }}
-            className="block w-full rounded-xl border border-slate-300 p-3 text-sm" />
-          {restoreFileName ? <p className="text-xs text-slate-600">선택한 파일: {restoreFileName}</p> : null}
+          <div className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-300 p-3">
+            <input id="postgres-restore-json-file" type="file" accept=".json,application/json"
+              aria-label="백업 JSON 파일 선택" aria-describedby="postgres-restore-selected-filename"
+              disabled={!isOwner || restoreRunning || restoreAnalyzeLoading}
+              onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void handleRestoreFile(file); }}
+              className="peer sr-only" />
+            <label htmlFor="postgres-restore-json-file"
+              className="shrink-0 cursor-pointer rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-100 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--mk-orange)] peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
+              파일 선택
+            </label>
+            <span id="postgres-restore-selected-filename" role="status" aria-live="polite"
+              title={restoreFileName || undefined} className="min-w-0 flex-1 truncate text-sm text-slate-700">
+              {restoreFileName || '선택된 파일 없음'}
+            </span>
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {Object.entries(SAFE_RESTORE_SCOPE_META).map(([scope, meta]) => (
               <label key={scope} className="flex gap-3 rounded-xl border border-slate-200 p-3">

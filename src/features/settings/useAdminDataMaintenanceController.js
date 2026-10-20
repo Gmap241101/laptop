@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { SYSTEM_RESET_SCOPE } from '../../utils/systemSettings.js';
@@ -63,6 +63,8 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   const [latestResetJob, setLatestResetJob] = useState(null);
   const [restorePayload, setRestorePayload] = useState(null);
   const [restoreFileName, setRestoreFileName] = useState('');
+  const restoreFileSelectionRef = useRef(0); // Ignore completion of superseded file reads.
+  const restorePreviewRequestRef = useRef(0); // Invalidate previews after file, scope, or mode changes.
   const [selectedRestoreScopes, setSelectedRestoreScopesState] = useState(['site', 'boards']);
   const [restoreMode, setRestoreModeState] = useState(RESTORE_MODE.ADD_MISSING);
   const [restoreConfirmText, setRestoreConfirmText] = useState('');
@@ -384,6 +386,8 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   }, [refreshOverview, resetBackupReady, resetConfirmText, resetCounts, selectedResetScopes, triggerToast]);
 
   const clearRestoreState = useCallback(() => {
+    ++restorePreviewRequestRef.current;
+    setRestoreAnalyzeLoading(false);
     setRestorePayload(null);
     setRestoreFileName('');
     setRestoreAnalysis(null);
@@ -393,6 +397,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
   }, []);
 
   const handleRestoreFile = useCallback(async (file) => {
+    const selectionId = ++restoreFileSelectionRef.current;
     clearRestoreState();
     if (!file) return;
     if (file.size > 7 * 1024 * 1024) {
@@ -401,6 +406,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     }
     try {
       const parsed = JSON.parse(await file.text());
+      if (selectionId !== restoreFileSelectionRef.current) return;
       if (parsed?.format !== 'mk-rental-postgresql-backup-v1' || parsed?.authority !== 'postgresql' ||
           !Array.isArray(parsed?.schemaMigrations)) throw new Error('system_restore_file_invalid');
       setRestorePayload(parsed);
@@ -408,6 +414,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       setSelectedRestoreScopesState(['site', 'boards']);
       triggerToast?.('백업 JSON을 불러왔습니다. 복원 범위를 선택하고 미리보기를 확인해 주세요.', 'success');
     } catch (error) {
+      if (selectionId !== restoreFileSelectionRef.current) return;
       triggerToast?.(`백업 파일을 읽지 못했습니다. 오류 코드: ${error?.code || error?.message || 'invalid_json'}`, 'error');
     }
   }, [clearRestoreState, triggerToast]);
@@ -417,12 +424,16 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       const value = typeof scopes === 'function' ? scopes(previous) : scopes;
       return [...new Set((Array.isArray(value) ? value : []).filter((scope) => SAFE_RESTORE_SCOPE_META[scope]))];
     });
+    ++restorePreviewRequestRef.current;
+    setRestoreAnalyzeLoading(false);
     setRestoreAnalysis(null);
     setRestoreConfirmText('');
   }, []);
 
   const setRestoreMode = useCallback((mode) => {
     setRestoreModeState(mode === RESTORE_MODE.OVERWRITE ? RESTORE_MODE.OVERWRITE : RESTORE_MODE.ADD_MISSING);
+    ++restorePreviewRequestRef.current;
+    setRestoreAnalyzeLoading(false);
     setRestoreAnalysis(null);
     setRestoreConfirmText('');
   }, []);
@@ -431,21 +442,26 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     if (!restorePayload || selectedRestoreScopes.length === 0) {
       triggerToast?.('백업 파일과 복원 범위를 선택해 주세요.', 'error'); return null;
     }
+    const previewRequestId = ++restorePreviewRequestRef.current;
     setRestoreAnalyzeLoading(true);
     setRestoreResult(null);
     try {
       const payload = await clerkStagingClient.previewAdminSystemDataRestore({ snapshot: restorePayload,
         scopes: selectedRestoreScopes, mode: restoreMode });
+      if (previewRequestId !== restorePreviewRequestRef.current) return null;
       const preview = payload?.systemDataRestorePreview;
       if (!preview?.previewSha256) throw new Error('system_restore_preview_missing');
       setRestoreAnalysis(preview);
       triggerToast?.('복원 대상 확인이 완료되었습니다.', 'success');
       return preview;
     } catch (error) {
+      if (previewRequestId !== restorePreviewRequestRef.current) return null;
       setRestoreAnalysis(null);
       triggerToast?.(`복원 대상을 확인하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'restore_preview_failed'}`, 'error');
       return null;
-    } finally { setRestoreAnalyzeLoading(false); }
+    } finally {
+      if (previewRequestId === restorePreviewRequestRef.current) setRestoreAnalyzeLoading(false);
+    }
   }, [restorePayload, selectedRestoreScopes, restoreMode, triggerToast]);
 
   const executeRestore = useCallback(async () => {
