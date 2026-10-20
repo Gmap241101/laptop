@@ -10,3 +10,9 @@ firebase-debug.log
 # Local environment files (never commit secrets)
 .env
 .env.*
+
+# Database backup files must never enter the Git repository or deployment package
+*.dump
+*.pgdump
+*.backup
+backups/

@@ -144,12 +144,12 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       setBackupVerifyJob(job);
       setBackupReverifyPending(false);
       setBackupReverifyCode('');
-      triggerToast?.('백업·복원 검증을 시작했습니다.','success');
+      triggerToast?.(backupVerifyStatus?.mode === 'single-db' ? '데이터 논리 검사를 시작했습니다.' : '백업·복원 검증을 시작했습니다.','success');
       await refreshBackupVerification();
     } catch(error) {
       triggerToast?.(`검증을 시작하지 못했습니다. 오류 코드: ${error?.code || error?.message || 'verification_failed'}`,'error');
     } finally { setBackupVerifyBusy(false); }
-  },[backupReverifyPending,backupReverifyCode,refreshBackupVerification,triggerToast]);
+  },[backupReverifyPending,backupReverifyCode,refreshBackupVerification,triggerToast,backupVerifyStatus?.mode]);
 
   const cancelBackupVerification = useCallback(async () => {
     if (!backupVerifyJob?.id) return;
@@ -437,7 +437,7 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     if (!restorePayload || !restoreAnalysis?.previewSha256) {
       triggerToast?.('복원 미리보기를 먼저 확인해 주세요.', 'error'); return null;
     }
-    if (!restoreAnalysis.restoreProof?.valid) {
+    if (!(restoreAnalysis.scopedSafety === 'transactional-preimage-v1' || restoreAnalysis.restoreProof?.valid)) {
       triggerToast?.('전체 DB 백업을 격리 DB에서 복원·검증한 뒤 미리보기를 다시 실행해 주세요.', 'error'); return null;
     }
     if (restoreConfirmText !== RESTORE_CONFIRM_TEXT) {

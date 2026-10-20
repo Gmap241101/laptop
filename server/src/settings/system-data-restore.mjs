@@ -10,6 +10,7 @@ const sha = (value) => createHash('sha256').update(typeof value === 'string' ? v
 const fail = (code, status = 400) => Object.assign(new Error(code), { code, status });
 const quote = (name) => `"${String(name).replaceAll('"', '""')}"`;
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const scopedSingleDbMode = () => process.env.BACKUP_VERIFY_MODE === 'single-db';
 const hasRedaction = (value) => value === '[redacted]' || (Array.isArray(value) && value.some(hasRedaction)) ||
   (isObject(value) && Object.values(value).some(hasRedaction));
 
@@ -143,13 +144,39 @@ const previewOnClient = async (client, request) => {
   const restoreProof = describeResetBackupProof(proofRow.rows[0]?.value, proofRow.rows[0]?.database_name || '');
   const safeCounts = counts.map(({ scope, table, rows, existing, newRows }) => ({ scope, table, rows, existing, newRows }));
   const fingerprint = sha({ snapshotHash: request.snapshotHash, scopes: request.scopes, mode: request.mode,
-    counts: counts.map(({ metadata, writableColumns, ...safe }) => safe), databaseName: proofRow.rows[0]?.database_name || '' });
+    counts: counts.map(({ metadata, writableColumns, ...safe }) => safe),
+    singleDbScopedSafety: scopedSingleDbMode(), databaseName: proofRow.rows[0]?.database_name || '' });
   return { authority: 'postgresql', mode: request.mode, scopes: request.scopes, snapshotSha256: request.snapshotHash,
     previewSha256: fingerprint, totalRows: request.totalRows, totals: safeCounts,
     willInsert: safeCounts.reduce((n, row) => n + row.newRows, 0),
     willUpdate: request.mode === 'overwrite' ? safeCounts.reduce((n, row) => n + row.existing, 0) : 0,
     willSkip: request.mode === 'addMissing' ? safeCounts.reduce((n, row) => n + row.existing, 0) : 0,
-    deletesRows: false, restoreProof, internalCounts: counts };
+    deletesRows: false, restoreProof, scopedSafety: scopedSingleDbMode() ? 'transactional-preimage-v1' : null,
+    independentRestoreVerified: restoreProof.valid, internalCounts: counts };
+};
+
+// Within SERIALIZABLE transaction, capture the affected row images before any SQL changes.
+// This protects against an accidental scoped overwrite while the DB is healthy,
+// but cannot substitute for independently stored and restored full-DB backups.
+const captureScopedPreimages = async (client, request) => {
+  const changes = [];
+  for (const table of request.tables) {
+    const records = [];
+    for (let offset=0; offset<table.rows.length; offset+=100) {
+      const batch = table.rows.slice(offset,offset+100);
+      const params = batch.flatMap(row=>table.key.map(key=>row[key]));
+      const pairs = batch.map((_,index)=>`(${table.key.map((__,i)=>`$${index*table.key.length+i+1}`).join(',')})`).join(',');
+      const keys = table.key.map(quote).join(',');
+      if (!pairs) continue;
+      // Row locks are acquired before writes to ensure accurate preimages.
+      const existing = await client.query(`SELECT row_to_json(t) AS original FROM ${quote(table.name)} t
+        WHERE (${keys}) IN (${pairs}) FOR UPDATE OF t`,params);
+      records.push(...existing.rows.map(row=>row.original));
+    }
+    changes.push({table:table.name,key:table.key,existing:records,
+      requestedKeys:table.rows.map(row=>table.key.map(key=>row[key]))});
+  }
+  return changes;
 };
 
 const insertRows = async (client, table, detail, mode) => {
@@ -209,8 +236,24 @@ export const createScopedJsonRestore = (pool) => {
         const plan = await previewOnClient(client, request);
         if (plan.previewSha256 !== previewSha256) throw fail('system_restore_preview_stale', 409);
         const locked = await client.query('SELECT value, current_database() AS database_name FROM app_runtime_metadata WHERE key=$1 FOR UPDATE', [RESET_BACKUP_PROOF_KEY]);
-        if (!describeResetBackupProof(locked.rows[0]?.value, locked.rows[0]?.database_name || '').valid) {
+        const singleDb = scopedSingleDbMode();
+        if (!singleDb && !describeResetBackupProof(locked.rows[0]?.value, locked.rows[0]?.database_name || '').valid) {
           throw fail('system_restore_verified_backup_required', 409);
+        }
+        const restoreId = randomUUID();
+        if (singleDb) {
+          const migration = await client.query(`SELECT 1 FROM schema_migrations WHERE name=$1`,
+            ['041_phase34_p0_single_db_scoped_restore_safety.sql']);
+          if (!migration.rows.length) throw fail('system_restore_preimage_migration_required',409);
+          const preimage = await captureScopedPreimages(client,request);
+          const preimageJson = JSON.stringify(preimage);
+          if (Buffer.byteLength(preimageJson,'utf8') > 4*1024*1024) {
+            throw fail('system_restore_preimage_too_large',413);
+          }
+          await client.query(`INSERT INTO app_system_data_restore_preimages
+            (restore_id,actor_clerk_user_id,mode,scopes,snapshot_sha256,preimage)
+            VALUES ($1,$2,$3,$4::jsonb,$5,$6::jsonb)`,
+            [restoreId,actorClerkUserId,request.mode,JSON.stringify(request.scopes),request.snapshotHash,preimageJson]);
         }
         let changed = 0;
         for (const table of request.tables) {
@@ -223,16 +266,17 @@ export const createScopedJsonRestore = (pool) => {
             GREATEST((SELECT COALESCE(MAX(id),0) FROM app_asset_categories), 1),
             EXISTS (SELECT 1 FROM app_asset_categories))`);
         }
-        // Successful restoration consumes the verified whole-database recovery point.
-        await client.query('DELETE FROM app_runtime_metadata WHERE key=$1', [RESET_BACKUP_PROOF_KEY]);
+        // An isolated-restore proof is only consumed by its original mode.
+        if (!singleDb) await client.query('DELETE FROM app_runtime_metadata WHERE key=$1', [RESET_BACKUP_PROOF_KEY]);
         await client.query(`INSERT INTO app_system_data_restore_audit
           (restore_id, actor_clerk_user_id, action, mode, scopes, snapshot_sha256, preview_sha256, affected_rows, detail)
           VALUES ($1,$2,'apply',$3,$4::jsonb,$5,$6,$7,$8::jsonb)`,
-        [randomUUID(), actorClerkUserId, request.mode, JSON.stringify(request.scopes), request.snapshotHash,
+        [restoreId, actorClerkUserId, request.mode, JSON.stringify(request.scopes), request.snapshotHash,
           plan.previewSha256, changed, JSON.stringify({ inserted: plan.willInsert, updated: plan.willUpdate, skipped: plan.willSkip })]);
         await client.query('COMMIT');
         return { authority: 'postgresql', success: true, mode: request.mode, scopes: request.scopes,
-          snapshotSha256: request.snapshotHash, changedRows: changed, expected: {
+          restoreId, recoveryRecord: singleDb ? 'same-database-scoped-preimage' : 'isolated-restore-proof',
+          independentRestoreVerified: !singleDb, snapshotSha256: request.snapshotHash, changedRows: changed, expected: {
             insert: plan.willInsert, update: plan.willUpdate, skip: plan.willSkip,
           }, completedAt: new Date().toISOString() };
       } catch (error) {
@@ -242,7 +286,7 @@ export const createScopedJsonRestore = (pool) => {
           await client.query(`INSERT INTO app_system_data_restore_audit
             (restore_id, actor_clerk_user_id, action, mode, scopes, snapshot_sha256, preview_sha256, detail)
             VALUES ($1,$2,'failed',$3,$4::jsonb,$5,$6,$7::jsonb)`,
-          [randomUUID(), actorClerkUserId, request.mode, JSON.stringify(request.scopes), request.snapshotHash,
+          [restoreId, actorClerkUserId, request.mode, JSON.stringify(request.scopes), request.snapshotHash,
             previewSha256, JSON.stringify({ errorCode: error?.code || 'restore_failed' })]);
         } catch { /* Never mask the original error. */ }
         throw error;

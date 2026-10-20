@@ -1,3 +1,5 @@
+> **사용 중지된 이전 문서**: 이 문서는 추가 격리 DB/S3/Worker가 필요한 이전 개발안이다. 사용자가 2026-10-20에 **추가 비용 0원 및 단일 DB**로 변경 지시하였다. 현재 작업에는 `docs/phase34-p0-single-db-zero-cost-runbook-20261020.md`를 사용할 것. 이 문서의 자원 생성·Worker 활성화 명령 실행 금지.
+
 # Phase 34 P0 | 사이트 내 전체 DB 백업·격리 복원 검증 — 개발/운영 절차
 
 기준 Full ZIP: `rental-system-phase34-p0-json-restore-sql42p02-hotfix-20261019_deployment_package.zip` (SHA-256 `5c5d9306ebbb57cd4cfcce561faa3734a772d43f575bade619b6841e47e121a6`). 이 문서는 후속 변경 사양이다.

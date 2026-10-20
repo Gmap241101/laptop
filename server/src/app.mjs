@@ -2582,7 +2582,9 @@ export const createRequestHandler = ({
       catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       const previewOnly = url.pathname.endsWith('/preview');
       try {
-        if (!previewOnly) await backupVerificationJobs.assertDurableProof();
+        // In single-DB mode, narrow JSON writes use an atomic, scoped preimage journal.
+        // Full data reset still requires an independent, actually restored DB proof.
+        if (!previewOnly && process.env.BACKUP_VERIFY_MODE !== 'single-db') await backupVerificationJobs.assertDurableProof();
         const result = previewOnly
           ? await systemDataService.previewRestore(authority.adminAuth?.admin, body)
           : await systemDataService.executeRestore(authority.adminAuth?.admin, body);

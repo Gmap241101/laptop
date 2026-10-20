@@ -881,18 +881,18 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
 
   const renderResetTab = () => (
     <div className="space-y-5">
-      <SectionCard title="백업·복원 안전검증" description="전체 데이터를 안전하게 보관하고 복원 가능 여부를 확인합니다.">
+      <SectionCard title="백업·데이터 안전검사" description={backupVerifyStatus?.mode === 'single-db' ? '현재 데이터의 논리적 정합성을 검사합니다. 전체 DB 복원 검사는 제공되지 않습니다.' : '전체 데이터를 안전하게 보관하고 복원 가능 여부를 확인합니다.'}>
         <div className="space-y-3" aria-live="polite">
           {!backupVerifyStatus?.enabled && (
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">검증 기능을 준비 중입니다. 운영 관리자에게 문의해 주세요.</p>
           )}
           {backupVerifyJob && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm space-y-1">
-              <div className="font-bold">현재 상태: {(backupVerifyJob.status === 'verified' && backupVerifyJob.proofActive === false ? '검증 기록 사용됨 또는 만료' : ({queued:'대기 중',running:'검증 중',verified:'검증 완료',failed:'검증 실패',cancelled:'중단됨',interrupted:'검증 중단됨'}[backupVerifyJob.status] || '확인 필요'))}</div>
+              <div className="font-bold">현재 상태: {(backupVerifyJob.status === 'verified' && backupVerifyJob.verificationType === 'logical-read-only' ? '데이터 논리 검사 완료' : backupVerifyJob.status === 'verified' && backupVerifyJob.proofActive === false ? '검증 기록 사용됨 또는 만료' : ({queued:'대기 중',running:'검증 중',verified:'검증 완료',failed:'검증 실패',cancelled:'중단됨',interrupted:'검증 중단됨'}[backupVerifyJob.status] || '확인 필요'))}</div>
               {backupVerifyJob.status === 'verified' && backupVerifyJob.verifiedUntil &&
                 <div>유효 기한: {formatKoreanDateTime(backupVerifyJob.verifiedUntil)}</div>}
               {backupVerifyJob.status === 'failed' && <div>검증에 실패했습니다. 작업 ID: {backupVerifyJob.id}</div>}
-              {['queued','running'].includes(backupVerifyJob.status) && <div>진행 상태: {{queued:'준비',target_check:'준비',snapshot:'백업 준비',backup:'백업 생성',encrypt:'백업 보관',store:'백업 보관',readback:'백업 확인',isolate:'복원 준비',restore:'복원 검사',integrity:'결과 확인',proof:'최종 확인'}[backupVerifyJob.phase] || '확인 중'}</div>}
+              {['queued','running'].includes(backupVerifyJob.status) && <div>진행 상태: {{queued:'준비',target_check:'준비',read_only_snapshot:'데이터 점검',snapshot:'백업 준비',backup:'백업 생성',encrypt:'백업 보관',store:'백업 보관',readback:'백업 확인',isolate:'복원 준비',restore:'복원 검사',integrity:'결과 확인',proof:'최종 확인'}[backupVerifyJob.phase] || '확인 중'}</div>}
             </div>
           )}
           {isOwner && backupVerifyStatus?.enabled && !['queued','running'].includes(backupVerifyJob?.status) && (
@@ -909,6 +909,7 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
               )}
             </>
           )}
+          {backupVerifyStatus?.mode === 'single-db' ? <p className="text-xs text-amber-800">이 검사는 전체 백업이나 복원 성공을 의미하지 않습니다. 전체 데이터 초기화는 계속 제한됩니다.</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => void refreshBackupVerification()} disabled={backupVerifyBusy}>상태 새로고침</Button>
             {isOwner && ['queued','running'].includes(backupVerifyJob?.status) &&
@@ -966,15 +967,15 @@ export default function AdminSettingsPanel({ ctx, mode = SETTINGS_MODE.SERVICE, 
               <div className="max-h-44 overflow-auto text-xs text-slate-600 space-y-1">
                 {(restoreAnalysis.totals || []).map((detail) => <div key={detail.table} className="flex justify-between gap-3"><span>{detail.table}</span><span>백업 {detail.rows} / 기존 {detail.existing} / 신규 {detail.newRows}</span></div>)}
               </div>
-              <p className="text-xs text-amber-800">복원은 행을 삭제하지 않습니다. 서버의 전체 DB 백업·격리 복원 검증(60분 이내)이 있어야 실행됩니다. 데이터가 변경되었으면 다시 미리보기를 실행해야 합니다.</p>
+              <p className="text-xs text-amber-800">복원은 행을 삭제하지 않습니다. 데이터가 변경되었으면 미리보기를 다시 확인해야 합니다. 전체 DB 장애 시 별도 백업이 필요합니다.</p>
               <p className={`text-xs font-semibold ${restoreAnalysis.restoreProof?.valid ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {restoreAnalysis.restoreProof?.valid ? '서버 전체 백업·복원 검증 확인됨' : '서버 전체 백업·복원 검증이 필요합니다.'}
+                {restoreAnalysis.scopedSafety === 'transactional-preimage-v1' ? '선택 복원: 변경 전 데이터 기록 및 원자적 처리 (전체 DB 복원 검증과 별개)' : restoreAnalysis.restoreProof?.valid ? '서버 전체 백업·복원 검증 확인됨' : '서버 전체 백업·복원 검증이 필요합니다.'}
               </p>
               <Input label={`실행 확인 문구: ${RESTORE_CONFIRM_TEXT}`} value={restoreConfirmText}
                 onChange={setRestoreConfirmText} disabled={!isOwner || restoreRunning} />
               <div className="flex justify-end">
-                <Button type="button" variant="danger" disabled={!isOwner || restoreRunning || !restoreAnalysis.restoreProof?.valid || restoreConfirmText !== RESTORE_CONFIRM_TEXT}
-                  onClick={() => triggerConfirm('PostgreSQL 선택 데이터 복원', '선택 범위의 PostgreSQL 데이터를 추가하거나 덮어씁니다. 완료 후 이전 상태로 직접 되돌릴 수 없습니다. 계속하시겠습니까?', () => executeRestore())}>
+                <Button type="button" variant="danger" disabled={!isOwner || restoreRunning || !(restoreAnalysis.scopedSafety === 'transactional-preimage-v1' || restoreAnalysis.restoreProof?.valid) || restoreConfirmText !== RESTORE_CONFIRM_TEXT}
+                  onClick={() => triggerConfirm('PostgreSQL 선택 데이터 복원', '선택 범위의 데이터를 변경합니다. 단일 DB 방식은 변경 전 행을 같은 DB에 기록하지만, DB 전체 장애 복구를 보장하지 않습니다. 계속하시겠습니까?', () => executeRestore())}>
                   <Upload size={14} />{restoreRunning ? '복원 중' : '선택 데이터 복원 실행'}
                 </Button>
               </div>

@@ -47,6 +47,7 @@ import { createSystemConfigService } from './settings/system-config-service.mjs'
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
 import { createSystemDataService } from './settings/system-data-service.mjs';
 import { createBackupVerificationJobs } from './settings/backup-verification-jobs.mjs';
+import { createSingleDbVerificationJobs } from './settings/backup-verification-single-db.mjs';
 
 const config = readServerConfig();
 const authenticateRequest = createClerkSessionAuthenticator(config);
@@ -66,7 +67,8 @@ const clerkClient = config.clerkSecretKey
       async deleteUser() { const error = new Error('Clerk Backend API is not configured.'); error.code = 'clerk_backend_not_configured'; throw error; },
     };
 const pool = getPool();
-const backupVerificationJobs = createBackupVerificationJobs(pool);
+const backupVerificationJobs = process.env.BACKUP_VERIFY_MODE === 'single-db'
+  ? createSingleDbVerificationJobs(pool) : createBackupVerificationJobs(pool);
 const userRepository = createUserRepository(pool);
 const accountRecoveryRepository = createAccountRecoveryRepository(pool);
 const accountRecoveryService = createAccountRecoveryService({ repository: accountRecoveryRepository });

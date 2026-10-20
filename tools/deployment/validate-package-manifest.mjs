@@ -21,6 +21,7 @@ function protectedReason(rawPath) {
   if (segments.includes('.performance-reports')) return '.performance-reports';
   if (segments.includes('secrets') || segments.includes('.secrets')) return 'secrets';
   if (basename === 'deploy.ps1') return 'deploy.ps1';
+  if (/\.(dump|pgdump|backup)$/i.test(basename)) return 'database-backup';
   if (segments.some((segment) => segment.startsWith('.env'))) return '.env*';
   return null;
 }
