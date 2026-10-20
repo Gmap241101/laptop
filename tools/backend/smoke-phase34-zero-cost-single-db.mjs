@@ -97,5 +97,7 @@ try {
   assert.equal(broken.getState().payload.title,'before');
   assert.equal(broken.images().length,0,'preimage insert must roll back along with the failed write');
   assert(broken.calls.includes('ROLLBACK'));
+  assert.equal(broken.audit().length,1,'failed restore must write a separate failure audit entry after rollback');
+  assert.match(String(broken.audit()[0][0]),/^[0-9a-f-]{36}$/,'failed audit must carry a unique restore ID');
 } finally { if(previousMode===undefined)delete process.env.BACKUP_VERIFY_MODE; else process.env.BACKUP_VERIFY_MODE=previousMode; }
 console.log('[phase34-zero-cost-scoped-restore] PASS: scoped overwrite, same-transaction preimage, failed upsert rollback');

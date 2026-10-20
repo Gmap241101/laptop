@@ -228,6 +228,7 @@ export const createScopedJsonRestore = (pool) => {
       if (!actorClerkUserId) throw fail('system_restore_actor_required', 403);
       const request = normalizeRestoreRequest(payload);
       const client = await pool.connect();
+      const restoreId = randomUUID();
       let started = false;
       try {
         await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
@@ -240,7 +241,6 @@ export const createScopedJsonRestore = (pool) => {
         if (!singleDb && !describeResetBackupProof(locked.rows[0]?.value, locked.rows[0]?.database_name || '').valid) {
           throw fail('system_restore_verified_backup_required', 409);
         }
-        const restoreId = randomUUID();
         if (singleDb) {
           const migration = await client.query(`SELECT 1 FROM schema_migrations WHERE name=$1`,
             ['041_phase34_p0_single_db_scoped_restore_safety.sql']);
