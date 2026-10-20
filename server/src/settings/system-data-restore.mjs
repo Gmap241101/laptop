@@ -120,7 +120,7 @@ const existingCounts = async (client, table) => {
   for (let offset = 0; offset < table.rows.length; offset += 100) {
     const batch = table.rows.slice(offset, offset + 100);
     const params = batch.flatMap((row) => keys.map((column) => row[column]));
-    const tuples = batch.map((_, index) => `(${keys.map((__, i) => `$${index * keys.length + i}`).join(',')})`).join(',');
+    const tuples = batch.map((_, index) => `(${keys.map((__, i) => `$${index * keys.length + i + 1}`).join(',')})`).join(',');
     const sql = `SELECT ${keys.map(quote).join(',')}, row_to_json(t)::text AS restore_row FROM ${quote(table.name)} t WHERE (${keys.map(quote).join(',')}) IN (${tuples})`;
     const rows = (await client.query(sql, params)).rows;
     existing += rows.length;
@@ -170,7 +170,7 @@ const insertRows = async (client, table, detail, mode) => {
       return (metadata.get(column).udt_name === 'jsonb' || metadata.get(column).udt_name === 'json') && value != null
         ? JSON.stringify(value) : value;
     }));
-    const tuples = rows.map((_, index) => `(${columns.map((__, i) => `$${index * columns.length + i}`).join(',')})`).join(',');
+    const tuples = rows.map((_, index) => `(${columns.map((__, i) => `$${index * columns.length + i + 1}`).join(',')})`).join(',');
     const overriding = table.identity ? ' OVERRIDING SYSTEM VALUE' : '';
     const result = await client.query(`INSERT INTO ${quote(table.name)} (${colList})${overriding} VALUES ${tuples} ${conflictClause}`, params);
     changes += Number(result.rowCount || 0);

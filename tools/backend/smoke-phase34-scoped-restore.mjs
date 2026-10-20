@@ -26,6 +26,16 @@ const makePool = ({ missingProof = false, failOnInsert = false } = {}) => {
     async query(sql, params = []) {
       const text = String(sql).trim();
       queries.push(text);
+      // pg rejects $0 with SQLSTATE 42P02. Validate actual bind-marker
+      // numbering here rather than letting the mock silently accept it.
+      const placeholders = [...text.matchAll(/\$(\d+)\b/g)].map((match) => Number(match[1]));
+      if (placeholders.length) {
+        const used = [...new Set(placeholders)].sort((a, b) => a - b);
+        assert.deepEqual(used, Array.from({ length: params.length }, (_, index) => index + 1),
+          `Invalid PostgreSQL parameter numbering in ${text.slice(0, 140)}`);
+      } else {
+        assert.equal(params.length, 0, `Unexpected values without SQL placeholders in ${text.slice(0, 140)}`);
+      }
       if (text.startsWith('BEGIN')) { active = { data: clone([...source.entries()]), proof: clone(currentProof) }; return { rows: [] }; }
       if (text === 'COMMIT') { active = null; return { rows: [] }; }
       if (text === 'ROLLBACK') {
@@ -48,11 +58,14 @@ const makePool = ({ missingProof = false, failOnInsert = false } = {}) => {
       }
       if (text.startsWith('INSERT INTO "app_site_content_documents"')) {
         if (failOnInsert && !failedOnce) { failedOnce = true; throw Object.assign(new Error('Injected statement failure'), { code: 'forced_restore_failure' }); }
-        const incoming = { domain: params[0], document_key: params[1], payload: JSON.parse(params[2]), enabled: params[3] };
-        const key = pk(incoming);
-        const was = source.has(key);
-        if (!was || !text.includes('DO NOTHING')) source.set(key, incoming);
-        return { rowCount: !was || !text.includes('DO NOTHING') ? 1 : 0, rows: [] };
+        let rowCount = 0;
+        for (let i = 0; i < params.length; i += 4) {
+          const incoming = { domain: params[i], document_key: params[i + 1], payload: JSON.parse(params[i + 2]), enabled: params[i + 3] };
+          const key = pk(incoming);
+          const was = source.has(key);
+          if (!was || !text.includes('DO NOTHING')) { source.set(key, incoming); rowCount += 1; }
+        }
+        return { rowCount, rows: [] };
       }
       if (text.startsWith('DELETE FROM app_runtime_metadata')) { currentProof = null; return { rowCount: 1, rows: [] }; }
       if (text.startsWith('INSERT INTO app_system_data_restore_audit')) { audit.push(params); return { rowCount: 1, rows: [] }; }
@@ -95,6 +108,21 @@ assert.equal((await restorer.execute({ ...overwrite, actorClerkUserId: 'admin', 
   confirmText: '백업 데이터 복원' })).changedRows, 1);
 assert.equal(mocked.get('home:homePage/config').payload.value, 2);
 assert.equal(mocked.audit.length, 2);
+// Multiple rows must allocate $1..$N contiguously in SELECT and INSERT.
+const multi = makePool();
+const multiSnapshot = fixture([
+  { domain: 'home', document_key: 'homePage/config', payload: { value: 9 }, enabled: true },
+  { domain: 'footer', document_key: 'footer/test-restore', payload: { value: 8 }, enabled: true },
+]);
+const multiPayload = { snapshot: multiSnapshot, scopes: ['site'], mode: 'overwrite' };
+const multiService = createScopedJsonRestore(multi.pool);
+const multiPreview = await multiService.preview(multiPayload);
+assert.equal(multiPreview.willUpdate, 1);
+assert.equal(multiPreview.willInsert, 1);
+assert.equal((await multiService.execute({ ...multiPayload, actorClerkUserId: 'admin',
+  previewSha256: multiPreview.previewSha256, confirmText: '백업 데이터 복원' })).changedRows, 2);
+assert.equal(multi.get('home:homePage/config').payload.value, 9);
+assert.equal(multi.get('footer:footer/test-restore').payload.value, 8);
 const stale = makePool();
 const staleRestore = createScopedJsonRestore(stale.pool);
 const oldPreview = await staleRestore.preview(payload);
@@ -125,4 +153,4 @@ await assert.rejects(() => service.previewRestore(nonOwner, payload), (e) => e.c
 await assert.rejects(() => service.executeRestore(nonOwner, { ...payload, confirmText: '백업 데이터 복원' }),
   (e) => e.code === 'admin_owner_required');
 assert.equal((await service.previewRestore(owner, overwrite)).mode, 'overwrite');
-console.log('[phase34-scoped-restore-smoke] PASS: preview, redactions, 2 modes, stale checks, proof, rollback, owner, row limit');
+console.log('[phase34-scoped-restore-smoke] PASS: PostgreSQL $1-based bind indexes, multi-row preview/upsert, redactions, 2 modes, stale checks, proof, rollback, owner, row limit');

@@ -2540,8 +2540,19 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true,
           [previewOnly ? 'systemDataRestorePreview' : 'systemDataRestoreResult']: result }, headers);
       } catch (error) {
-        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true,
-          authorized: false, error: error?.code || 'system_data_restore_failed' }, headers);
+        // An expected owner/validation denial is returned without a noisy log.
+        // Unexpected PostgreSQL errors require a safe server-side diagnostic;
+        // never log the uploaded JSON, SQL statement, values, or credentials.
+        const expected = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500;
+        if (!expected) {
+          console.error('[system-data-restore] request failed', {
+            requestId, operation: previewOnly ? 'preview' : 'execute',
+            code: String(error?.code || 'unknown').slice(0, 90),
+            name: String(error?.name || 'Error').slice(0, 90),
+          });
+        }
+        writeJson(response, expected ? error.status : 503, { ...basePayload, authenticated: true,
+          authorized: false, error: expected ? error.code : 'system_data_restore_failed' }, headers);
       }
       return;
     }
