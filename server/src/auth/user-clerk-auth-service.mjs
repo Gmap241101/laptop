@@ -53,6 +53,27 @@ export const createUserClerkAuthService = ({
     throw new TypeError('PostgreSQL account lifecycle service is required when user Firebase Auth compatibility is retired.');
   }
 
+  // Enrollment and policy mutation share the same PostgreSQL advisory lock.
+  // A signup may exist in Clerk before PG linking; only the final authority
+  // activation is allowed to complete after the Clerk policy is verified.
+  const withEnrollment = async (work) => {
+    if (!systemConfigService || typeof systemConfigService.withDeviceTrustEnrollment !== 'function') {
+      throw serviceError('device_trust_policy_unavailable', 'Account security check is temporarily unavailable.', 503);
+    }
+    return systemConfigService.withDeviceTrustEnrollment(work);
+  };
+  const verifyEnrollment = async (id, bypass) => {
+    let user = await clerkClient.getUser(id);
+    if (user?.bypassClientTrust !== bypass) {
+      user = await clerkClient.updateUser(id, { bypass_client_trust: bypass });
+      user = await clerkClient.getUser(id);
+    }
+    if (user?.bypassClientTrust !== bypass) {
+      throw serviceError('device_trust_enrollment_unverified', 'Account security could not be verified.', 503);
+    }
+    return user;
+  };
+
   const currentUserAuthCache = new Map();
   const currentUserAuthPending = new Map();
 
@@ -109,6 +130,7 @@ export const createUserClerkAuthService = ({
   };
 
   const ensureClerkUser = async ({ firebaseIdentity, password, migration }) => {
+    return withEnrollment(async ({ enabled }) => {
     if (typeof password !== 'string' || password.length < 8) throw serviceError('user_clerk_password_too_short', 'Clerk user passwords must be at least 8 characters.', 400);
     const source = await readProvisionUser(firebaseIdentity);
     if (trim(source.fields.status) === 'retired') throw serviceError('user_account_retired', 'Retired accounts cannot be migrated to Clerk.', 403);
@@ -116,7 +138,7 @@ export const createUserClerkAuthService = ({
     if (!email) throw serviceError('user_email_missing', 'User email is required for Clerk migration.', 409);
     if (lower(source.fields.email) && lower(source.fields.email) !== email) throw serviceError('user_email_mismatch', 'Firebase and member profile email addresses do not match.', 409);
 
-    const bypassClientTrust = await readDeviceTrustBypass(systemConfigService);
+    const bypassClientTrust = !enabled;
     let clerkUser = await clerkClient.findUserByEmail(email);
     if (!clerkUser) {
       clerkUser = await clerkClient.createUser({
@@ -143,6 +165,7 @@ export const createUserClerkAuthService = ({
       });
     }
 
+    clerkUser = await verifyEnrollment(clerkUser.clerkUserId, !enabled);
     const appUser = await userRepository.upsertFromClerk(clerkUser);
     await firebaseLinkRepository.link(appUser.id, firebaseIdentity);
     if (!accountLifecycleCompatibilityDisabled) {
@@ -151,6 +174,7 @@ export const createUserClerkAuthService = ({
     const linked = await repository.linkAuthority({ appUserId: appUser.id, firebaseUid: source.uid });
     if (!linked) throw serviceError('user_member_authority_not_ready', 'PostgreSQL member account must be synchronized before Clerk authority can be linked.', 409);
     return { source, clerkUser, appUser, account: await repository.findByFirebaseUid(source.uid) };
+    });
   };
 
   const loadCurrent = async (clerkUserId) => {
@@ -205,6 +229,7 @@ export const createUserClerkAuthService = ({
     getCurrent: ({ clerkUserId }) => getCurrent(clerkUserId),
 
     async createAdminManagedMember({ actorClerkUserId, input = {}, password }) {
+      return withEnrollment(async ({ enabled }) => {
       if (!userFirebaseAuthCompatibilityDisabled) {
         throw serviceError('admin_member_native_provision_not_enabled', 'Administrator member provisioning requires Clerk/PostgreSQL user authority.', 409);
       }
@@ -249,8 +274,12 @@ export const createUserClerkAuthService = ({
           },
           externalId: `rental-user:${legacyMemberKey}`,
           skipPasswordChecks: false,
-          bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
+          bypassClientTrust: !enabled,
         });
+        clerkUser = await verifyEnrollment(clerkUser.clerkUserId, !enabled);
+        clerkUser = await verifyEnrollment(clerkUser.clerkUserId, !enabled);
+        clerkUser = await verifyEnrollment(clerkUser.clerkUserId, !enabled);
+        clerkUser = await verifyEnrollment(clerkUser.clerkUserId, !enabled);
         const linked = await linkClerkAuthority({
           clerkUser,
           legacyMemberKey,
@@ -277,9 +306,11 @@ export const createUserClerkAuthService = ({
         }
         throw error;
       }
+      });
     },
 
     async signupNative({ input = {}, password }) {
+      return withEnrollment(async ({ enabled }) => {
       if (!userFirebaseAuthCompatibilityDisabled) {
         throw serviceError('user_native_signup_not_enabled', 'Native Clerk signup is not enabled.', 409);
       }
@@ -308,7 +339,7 @@ export const createUserClerkAuthService = ({
           privateMetadata: privateMetadata(legacyMemberKey),
           externalId: `rental-user:${legacyMemberKey}`,
           skipPasswordChecks: false,
-          bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
+          bypassClientTrust: !enabled,
         });
         const linked = await linkClerkAuthority({
           clerkUser,
@@ -334,9 +365,11 @@ export const createUserClerkAuthService = ({
         }
         throw error;
       }
+      });
     },
 
     async signupVerifiedCurrent({ clerkUserId, input = {} }) {
+      return withEnrollment(async ({ enabled }) => {
       if (!userFirebaseAuthCompatibilityDisabled) {
         throw serviceError('user_verified_signup_not_enabled', 'Verified Clerk signup is not enabled.', 409);
       }
@@ -370,7 +403,7 @@ export const createUserClerkAuthService = ({
         clerkUser = await clerkClient.updateUser(id, {
           ...(trim(input.name) ? { first_name: trim(input.name) } : {}),
           external_id: `rental-user:${legacyMemberKey}`,
-          bypass_client_trust: await readDeviceTrustBypass(systemConfigService),
+          bypass_client_trust: !enabled,
         });
         clerkUser = await clerkClient.updateUserMetadata(id, {
           publicMetadata: publicMetadata(),
@@ -400,9 +433,11 @@ export const createUserClerkAuthService = ({
         await clerkClient.deleteUser(id).catch(() => {});
         throw error;
       }
+      });
     },
 
     async ensureRecoveryClerkIdentity({ firebaseUid, email }) {
+      return withEnrollment(async ({ enabled }) => {
       const uid = trim(firebaseUid);
       const normalizedEmail = lower(email);
       if (!uid || !normalizedEmail) throw serviceError('account_recovery_identity_missing', 'Recovery member identity is incomplete.', 400);
@@ -429,14 +464,14 @@ export const createUserClerkAuthService = ({
             privateMetadata: privateMetadata(uid),
             externalId: `rental-user:${uid}`,
             skipPasswordChecks: false,
-            bypassClientTrust: await readDeviceTrustBypass(systemConfigService),
+            bypassClientTrust: !enabled,
           });
           created = true;
         } else {
           const linkedKey = trim(clerkUser.privateMetadata?.rentalSystemFirebaseUid || clerkUser.privateMetadata?.rentalSystemLegacyMemberKey);
           if (linkedKey && linkedKey !== uid) throw serviceError('user_clerk_link_conflict', 'Clerk user is linked to a different member identity.', 409);
           clerkUser = await clerkClient.updateUser(clerkUser.clerkUserId, {
-            bypass_client_trust: await readDeviceTrustBypass(systemConfigService),
+            bypass_client_trust: !enabled,
           });
           clerkUser = await clerkClient.updateUserMetadata(clerkUser.clerkUserId, {
             publicMetadata: publicMetadata(),
@@ -462,6 +497,7 @@ export const createUserClerkAuthService = ({
         }
         throw error;
       }
+      });
     },
 
     async migrateCurrent({ firebaseIdentity, password }) {

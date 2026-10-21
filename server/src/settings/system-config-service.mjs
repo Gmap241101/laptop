@@ -17,6 +17,25 @@ export const createSystemConfigService = ({ repository }) => {
   };
   return Object.freeze({
     withDeviceTrustLock(work) { return repository.withDeviceTrustLock(work); },
+    async withDeviceTrustEnrollment(work) {
+      if (typeof work !== 'function') throw new TypeError('Enrollment callback required.');
+      return repository.withDeviceTrustLock(async () => work(await this.readDeviceTrustEnrollmentPolicy()));
+    },
+    async readDeviceTrustEnrollmentPolicy() {
+      const policy = await this.get('device-trust-policy');
+      const payload = policy.payload;
+      if (!policy.present) return Object.freeze({ enabled: true, revision: 0, source: 'secure-default' });
+      if (typeof payload.deviceTrustEmailVerificationEnabled !== 'boolean') {
+        throw serviceError('device_trust_policy_invalid', 'Security settings require administrator attention.', 503);
+      }
+      const revision = payload.policyRevision == null ? 0 : payload.policyRevision;
+      if (!Number.isSafeInteger(revision) || revision < 0) {
+        throw serviceError('device_trust_policy_invalid', 'Security settings require administrator attention.', 503);
+      }
+      return Object.freeze({ enabled: payload.deviceTrustEmailVerificationEnabled, revision, source: 'postgresql' });
+    },
+    async listDeviceTrustAudit({ limit = 50 } = {}) { return repository.listDeviceTrustAudit({ limit }); },
+    async appendDeviceTrustAudit(event) { return repository.appendDeviceTrustAudit(event); },
     async getDeviceTrustSyncState() {
       const state = await repository.get('device-trust-sync-state');
       return state?.payload || {};
@@ -28,7 +47,7 @@ export const createSystemConfigService = ({ repository }) => {
     async get(keyValue) {
       const key = ensureKey(keyValue);
       const entry = await repository.get(key);
-      return Object.freeze({ key, source: 'postgresql', payload: entry?.payload || {}, updatedAt: entry?.updatedAt || null });
+      return Object.freeze({ key, source: 'postgresql', present: Boolean(entry), payload: entry?.payload || {}, updatedAt: entry?.updatedAt || null });
     },
     async put({ key: keyValue, payload, actorClerkUserId }) {
       const key = ensureKey(keyValue);

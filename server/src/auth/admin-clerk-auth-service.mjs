@@ -83,15 +83,26 @@ export const createAdminClerkAuthService = ({ repository, clerkClient, systemCon
       if (existingByLogin) throw serviceError('admin_login_id_duplicate', 'Administrator ID already exists.', 409);
       if (await clerkClient.findUserByEmail(authEmail)) throw serviceError('admin_clerk_email_duplicate', 'A Clerk account already uses this email.', 409);
       const legacyAdminKey = `admin:${randomUUID()}`;
+      if (!systemConfigService || typeof systemConfigService.withDeviceTrustEnrollment !== 'function') {
+        throw serviceError('device_trust_policy_unavailable', 'Account security check is temporarily unavailable.', 503);
+      }
+      return systemConfigService.withDeviceTrustEnrollment(async ({ enabled }) => {
       let clerkUser = null;
       try {
-        clerkUser = await clerkClient.createUser({ email: authEmail, password, firstName: userName, publicMetadata: { rentalSystemRole: 'admin', adminRole }, privateMetadata: { rentalSystemAdminKey: legacyAdminKey, rentalSystemAdminLoginId: adminLoginId, rentalSystemAdminRegistry: 'postgresql' }, externalId: `rental-admin:${legacyAdminKey}`, bypassClientTrust: await readDeviceTrustBypass(systemConfigService) });
+        clerkUser = await clerkClient.createUser({ email: authEmail, password, firstName: userName, publicMetadata: { rentalSystemRole: 'admin', adminRole }, privateMetadata: { rentalSystemAdminKey: legacyAdminKey, rentalSystemAdminLoginId: adminLoginId, rentalSystemAdminRegistry: 'postgresql' }, externalId: `rental-admin:${legacyAdminKey}`, bypassClientTrust: !enabled });
+        let checked = await clerkClient.getUser(clerkUser.clerkUserId);
+        if (checked?.bypassClientTrust !== !enabled) {
+          await clerkClient.updateUser(clerkUser.clerkUserId, { bypass_client_trust: !enabled });
+          checked = await clerkClient.getUser(clerkUser.clerkUserId);
+        }
+        if (checked?.bypassClientTrust !== !enabled) throw serviceError('device_trust_enrollment_unverified', 'Account security could not be verified.', 503);
         const admin = await repository.create({ legacyAdminKey, adminLoginId, authEmail, organizationName, userName, phone, adminRole, clerkUserId: clerkUser.clerkUserId });
         return Object.freeze({ source: 'clerk-postgresql', account: serialize(admin) });
       } catch (error) {
         if (clerkUser?.clerkUserId) await clerkClient.deleteUser(clerkUser.clerkUserId).catch(() => {});
         throw error;
       }
+      });
     },
     async update({ actorClerkUserId, targetKey, input }) {
       const actor = await requireActor(actorClerkUserId);

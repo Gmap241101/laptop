@@ -408,7 +408,7 @@ export const createSystemDataRepository = (pool) => {
           await client.query(`INSERT INTO app_site_content_documents (domain, document_key, payload, enabled, sort_order, source_mode, synced_at, updated_at) VALUES ('site-settings','siteSettings/config','{}'::jsonb,true,NULL,'postgresql-reset',NOW(),NOW())`);
           // Device Trust is a security policy mirrored into Clerk user records.
           // Never reset it or its reconciliation record as ordinary site settings.
-          await client.query("DELETE FROM app_system_configuration WHERE config_key NOT IN ('device-trust-policy','device-trust-sync-state')");
+          await client.query("DELETE FROM app_system_configuration WHERE config_key NOT IN ('device-trust-policy','device-trust-sync-state','system-settings-audit')");
         }
         await client.query(`INSERT INTO app_runtime_metadata (key, value, updated_at) VALUES ('phase34_last_system_data_reset',$1::jsonb,NOW()) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, [JSON.stringify({ actorClerkUserId: trim(actorClerkUserId), scopes: selected, resetAt: new Date().toISOString() })]);
         await client.query('COMMIT');

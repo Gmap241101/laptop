@@ -621,6 +621,8 @@ const deviceTrustSystemConfigService = {
   },
   async getDeviceTrustSyncState() { return deviceTrustPolicyStore.get('device-trust-sync-state') || {}; },
   async putDeviceTrustSyncState(payload) { deviceTrustPolicyStore.set('device-trust-sync-state', payload); return payload; },
+  async appendDeviceTrustAudit(event) { return event; },
+  async listDeviceTrustAudit() { return []; },
   async get(key) { return { source: 'postgresql', key, payload: deviceTrustPolicyStore.get(key) || {} }; },
   async put({ key, payload, actorClerkUserId }) {
     deviceTrustPolicyStore.set(key, payload);
@@ -689,8 +691,8 @@ const adminClerkAuthSource = fs.readFileSync(new URL('../../server/src/auth/admi
 const userClerkAuthSource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-service.mjs', import.meta.url), 'utf8');
 const userClerkAuthRepositorySource = fs.readFileSync(new URL('../../server/src/auth/user-clerk-auth-repository.mjs', import.meta.url), 'utf8');
 assert.match(clerkApiSource, /bypass_client_trust/, 'Clerk Backend API client must support the per-user client-trust bypass field');
-assert.match(adminClerkAuthSource, /bypassClientTrust:\s*await readDeviceTrustBypass\(systemConfigService\)/, 'new administrator Clerk accounts must inherit the saved new-device verification policy');
-assert.ok((userClerkAuthSource.match(/readDeviceTrustBypass\(systemConfigService\)/g) || []).length >= 5, 'user provisioning, signup, verified signup and recovery paths must inherit the saved new-device verification policy');
+assert.match(adminClerkAuthSource, /withDeviceTrustEnrollment/, 'new administrator Clerk accounts must serialize final enrollment with policy updates');
+assert.ok((userClerkAuthSource.match(/return withEnrollment\(/g) || []).length >= 5, 'user provisioning, signup, verified signup and recovery paths must use the common policy lock');
 assert.match(userClerkAuthRepositorySource, /async listActiveClerkUsers\(\)/, 'device-trust policy synchronization must enumerate active PostgreSQL-linked Clerk users');
 assert.equal(deviceTrustServiceSource.includes('platform/applications'), false, 'new-device verification settings must no longer depend on the Clerk Platform API');
 

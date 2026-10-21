@@ -2371,6 +2371,23 @@ export const createRequestHandler = ({
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/admin/clerk-device-trust/audit') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      if ((authority.adminAuth?.admin?.adminRole || 'admin') !== 'owner') {
+        writeJson(response, 403, { ...basePayload, authenticated: true, authorized: false, error: 'admin_owner_required' }, headers);
+        return;
+      }
+      try {
+        const events = await clerkDeviceTrustService.listAudit({ limit: url.searchParams.get('limit') || 50 });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, events }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, authorized: true,
+          error: error?.code || 'clerk_device_trust_audit_read_failed' }, headers);
+      }
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/admin/clerk-device-trust') {
       const authority = await authenticateAdminAuthority(request, response, headers, requestId);
       if (!authority) return;

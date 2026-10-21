@@ -20,6 +20,8 @@ const makeFixture = (initialCount = 10) => {
     async put({ key, payload }) { store.set(key, payload); return { payload }; },
     async getDeviceTrustSyncState() { return store.get('device-trust-sync-state') || {}; },
     async putDeviceTrustSyncState(payload) { store.set('device-trust-sync-state', payload); },
+    async appendDeviceTrustAudit(entry) { return entry; },
+    async listDeviceTrustAudit() { return []; },
   };
   const client = {
     async getUser(id) {
@@ -113,7 +115,7 @@ assert.equal(queries.some((query) => query.includes('DELETE FROM app_system_conf
   'invalid backup proof must stop reset before DELETE');
 validProof = true;
 await repository.resetScopes({ scopes: ['settings'], actorClerkUserId: 'admin' });
-assert.ok(queries.some((query) => query.includes("config_key NOT IN ('device-trust-policy','device-trust-sync-state')")),
+assert.ok(queries.some((query) => query.includes("config_key NOT IN ('device-trust-policy','device-trust-sync-state','system-settings-audit')")),
   'site settings reset must preserve Device Trust policy and reconciliation record');
 assert.ok(queries.some((query) => query.includes('DELETE FROM app_runtime_metadata WHERE key=$1')),
   'restore proof must be one-time and consumed with reset transaction');

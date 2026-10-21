@@ -30,6 +30,39 @@ export const createSystemConfigRepository = (pool) => {
         client.release();
       }
     },
+    async listDeviceTrustAudit({ limit = 50 } = {}) {
+      const safeLimit = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 50)));
+      const result = await pool.query(`SELECT event_id, operation_id, actor_clerk_user_id, event_type,
+          policy_revision, previous_enabled, requested_enabled, final_enabled,
+          result_status, account_count, failed_account_count,
+          skipped_account_count, error_code, created_at
+        FROM app_device_trust_audit_events ORDER BY created_at DESC LIMIT $1`, [safeLimit]);
+      return result.rows.map(row => ({
+        eventId: row.event_id, operationId: row.operation_id, actorClerkUserId: row.actor_clerk_user_id,
+        eventType: row.event_type, policyRevision: Number(row.policy_revision),
+        previousEnabled: row.previous_enabled, requestedEnabled: row.requested_enabled,
+        finalEnabled: row.final_enabled, status: row.result_status,
+        accountCount: Number(row.account_count), failedAccountCount: Number(row.failed_account_count),
+        skippedAccountCount: Number(row.skipped_account_count), errorCode: row.error_code,
+        createdAt: row.created_at,
+      }));
+    },
+    async appendDeviceTrustAudit({ eventType, operationId = '', actorClerkUserId = '', policyRevision = 0,
+      previousEnabled = null, requestedEnabled = null, finalEnabled = null, status = 'pending',
+      accountCount = 0, failedAccountCount = 0, skippedAccountCount = 0, errorCode = '' } = {}) {
+      const event = String(eventType || '').trim();
+      if (!/^[a-z][a-z0-9_]{1,79}$/.test(event)) throw new TypeError('Invalid security audit event.');
+      const result = await pool.query(`INSERT INTO app_device_trust_audit_events
+          (event_type, operation_id, actor_clerk_user_id, policy_revision,
+           previous_enabled, requested_enabled, final_enabled, result_status,
+           account_count, failed_account_count, skipped_account_count, error_code)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        RETURNING event_id, created_at`, [event, String(operationId || ''), String(actorClerkUserId || ''),
+          Number(policyRevision || 0), previousEnabled, requestedEnabled, finalEnabled,
+          String(status || ''), Number(accountCount || 0), Number(failedAccountCount || 0),
+          Number(skippedAccountCount || 0), String(errorCode || '').slice(0,120)]);
+      return result.rows[0];
+    },
     async get(key) {
       const result = await pool.query(
         `SELECT config_key, payload, updated_by_clerk_user_id, created_at, updated_at

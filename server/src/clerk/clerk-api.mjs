@@ -59,7 +59,8 @@ export const normalizeClerkBackendUser = (user) => {
     privateMetadata: user?.private_metadata || user?.privateMetadata || {},
     clerkCreatedAt: readTimestamp(user?.created_at ?? user?.createdAt),
     clerkUpdatedAt: readTimestamp(user?.updated_at ?? user?.updatedAt),
-    bypassClientTrust: Boolean(user?.bypass_client_trust ?? user?.bypassClientTrust),
+    bypassClientTrust: typeof (user?.bypass_client_trust ?? user?.bypassClientTrust) === 'boolean'
+      ? (user?.bypass_client_trust ?? user?.bypassClientTrust) : null,
   });
 };
 

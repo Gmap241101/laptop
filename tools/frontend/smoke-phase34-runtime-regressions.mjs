@@ -398,7 +398,9 @@ assert.match(adminAccountSecuritySource, /title="새 기기 로그인 인증"/, 
 assert.match(adminAccountSecuritySource, /새로운 기기에서 이메일 인증 사용/, 'Device Trust control must describe the requested yes/no behavior');
 assert.match(adminAccountSecuritySource, /getAdminClerkDeviceTrust\(\)/, 'new-device verification control must read the persisted backend policy');
 assert.match(adminAccountSecuritySource, /saveAdminClerkDeviceTrust\(/, 'new-device verification control must write the backend policy and synchronize Clerk users');
-assert.match(adminAccountSecuritySource, /device-trust-settings-update/, 'Device Trust changes must be recorded in system settings audit history');
+assert.doesNotMatch(adminAccountSecuritySource, /device-trust-settings-update/, 'Device Trust authoritative audit must be written by backend, not a second browser call');
+assert.doesNotMatch(adminAccountSecuritySource, /Device Trust settings audit write error|auditWriteError\s*=\s*error;[\s\S]{0,180}새 기기 로그인 이메일 인증 설정/, 'W01 must not leave the removed client-side Device Trust audit catch block in the JSX save handler');
+assert.match(adminAccountSecuritySource, /Security events are recorded atomically by the Backend/, 'W01 Device Trust save must rely on the server audit and must not repeat a client-side settings audit');
 assert.match(adminAccountSecuritySource, /deviceTrustDraft[\s\S]*'예'[\s\S]*'아니오'/, 'Device Trust setting must visibly expose yes/no state');
 assert.equal(adminAccountSecuritySource.includes('CLERK_PLATFORM_API_KEY'), false, 'administrator UI must not expose obsolete Clerk Platform API configuration instructions');
 assert.equal(adminAccountSecuritySource.includes('연동 필요'), false, 'new-device verification must not be disabled behind an unavailable Platform API integration badge');

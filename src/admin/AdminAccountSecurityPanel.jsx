@@ -367,35 +367,9 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       });
       setDeviceTrustDraft(enabled);
 
-      let auditWriteError = null;
-      try {
-        await clerkStagingClient.appendAdminSystemSettingsAudit({
-          action: 'device-trust-settings-update',
-          section: '계정 보안 설정',
-          summary: `새 기기 로그인 이메일 인증을 ${enabled ? '사용' : '사용 안 함'}으로 변경했습니다.`,
-          beforeValues: {
-            deviceTrustEmailVerificationEnabled: previousEnabled,
-          },
-          afterValues: {
-            deviceTrustEmailVerificationEnabled: enabled,
-          },
-        });
-      } catch (error) {
-        auditWriteError = error;
-        console.error('Device Trust settings audit write error:', error);
-      }
-
-      if (auditWriteError) {
-        triggerToast(
-          `새 기기 로그인 이메일 인증 설정은 성공적으로 저장 및 반영되었지만 변경 이력 기록에 실패했습니다. 오류 코드: ${auditWriteError?.code || auditWriteError?.name || 'system_settings_audit_write_failed'}`,
-          'error',
-        );
-      } else {
-        triggerToast(
-          '새 기기 로그인 이메일 인증 설정이 성공적으로 저장 및 반영되었습니다.',
-          'success',
-        );
-      }
+      // Security events are recorded atomically by the Backend, not by a
+      // second browser-originated settings-audit request.
+      triggerToast('새 기기 로그인 인증 설정이 성공적으로 저장 및 반영되었습니다.', 'success');
     } catch (error) {
       console.error('New-device login verification settings save error:', error);
       setDeviceTrustDraft(previousEnabled);

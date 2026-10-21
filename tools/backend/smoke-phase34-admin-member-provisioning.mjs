@@ -146,7 +146,7 @@ let linkedProvider = '';
 let provisionDirectoryOverride = null;
 let clerkPasswordUpdate = null;
 const clerkClient = {
-  async getUser() { return { clerkUserId: 'user_created', primaryEmail: 'member@example.com', primaryEmailVerified: true, privateMetadata: {}, publicMetadata: {} }; },
+  async getUser() { return { clerkUserId: 'user_created', primaryEmail: 'member@example.com', primaryEmailVerified: true, privateMetadata: {}, publicMetadata: {}, bypassClientTrust: false }; },
   async findUserByEmail() { return null; },
   async createUser(input) {
     clerkCreateInput = input;
@@ -203,6 +203,7 @@ const userClerkAuthService = createUserClerkAuthService({
   },
   accountLifecycleCompatibilityDisabled: true,
   userFirebaseAuthCompatibilityDisabled: true,
+  systemConfigService: { async withDeviceTrustEnrollment(work) { return work({ enabled: true, revision: 0 }); } },
 });
 
 const result = await userClerkAuthService.createAdminManagedMember({
