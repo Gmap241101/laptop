@@ -44,12 +44,10 @@ import {
 
 export { createDefaultAdminAuthForm } from './authSessionService.js';
 
-const signOutClerkForRuntimeSurface = (runtimeSurface) =>
-  clerkStagingClient.signOut(
-    runtimeSurface === 'admin'
-      ? { redirectUrl: '/admin' }
-      : undefined
-  );
+// The dedicated /admin root already owns the logged-out login screen.
+// Requesting a redirect to the same path after sign-out remounted the entire
+// auth bootstrap and re-opened the admin data loading screen between logins.
+const signOutClerkForRuntimeSurface = () => clerkStagingClient.signOut();
 
 const syncAdminRouteIntentAfterAuthClear = (runtimeSurface) => {
   if (runtimeSurface === 'admin') {

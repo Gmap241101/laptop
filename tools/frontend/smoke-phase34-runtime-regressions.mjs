@@ -157,7 +157,8 @@ assert.match(
   /const authoritativeSecurity = await loadAuthoritativeAdminSecuritySettings\(\);[\s\S]*?confirmedPolicyMismatch =[\s\S]*?adminAuthPolicyVersion !== authoritativeSecurity\.adminSecurityPolicyVersion/,
   'administrator policy mismatch logout must be confirmed against PostgreSQL before invalidating the Clerk session'
 );
-assert.match(adminAuthSource, /runtimeSurface === 'admin'[\s\S]*redirectUrl: '\/admin'/, 'administrator Clerk sign-out must explicitly return to the dedicated /admin login surface');
+assert.match(adminAuthSource, /const signOutClerkForRuntimeSurface = \(\) => clerkStagingClient\.signOut\(\);/, 'administrator Clerk sign-out must preserve the existing admin route without remounting its auth bootstrap');
+assert.doesNotMatch(adminAuthSource, /redirectUrl: '\/admin'/, 'administrator sign-out must not redirect to the same dedicated admin route');
 assert.match(userAuthPanelSource, /<DeviceTrustVerificationPanel[\s\S]*surface="user"/, 'user new-device verification must use the shared Device Trust code-entry panel');
 assert.match(adminWorkspaceLoginSource, /<DeviceTrustVerificationPanel[\s\S]*surface="admin"/, 'administrator new-device verification must use the same shared Device Trust code-entry panel');
 assert.match(deviceTrustPanelSource, /새로운 기기에서 로그인하셨습니다\.[\s\S]*로 보낸 인증코드를 입력해주세요\./, 'shared Device Trust panel must show the unified new-device verification message');

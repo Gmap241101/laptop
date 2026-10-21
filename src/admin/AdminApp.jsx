@@ -76,6 +76,7 @@ import useAdminAuthenticationController, {
 import {
   clearUserAuthSession,
   clearUserAuthTransition,
+  readAdminAuthTransition,
 } from '../features/auth/authSessionService.js';
 import useAdminAccountManagementController, {
   useAdminAccountManagementState,
@@ -657,6 +658,7 @@ export default function AdminApp() {
   } = selectAppReadiness({
     adminAccountsLoadErrorMessage,
     adminAccountsReady,
+    adminAuthTransitionPending: readAdminAuthTransition()?.status === 'pending',
     adminLogoutInProgress,
     authenticatedAdminId,
     currentAuthAdminAccount,

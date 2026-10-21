@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-06T03:26:46.566Z",
+  "generatedAt": "2026-10-21T12:41:54.727Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,19 +32,19 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1486595,
+        "sourceBytes": 1495386,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
             "bytes": 93761
           },
           {
-            "file": "src/user/UserInquiryPanel.jsx",
-            "bytes": 64669
+            "file": "src/clerk/clerkUserClient.js",
+            "bytes": 68718
           },
           {
-            "file": "src/clerk/clerkUserClient.js",
-            "bytes": 62893
+            "file": "src/user/UserInquiryPanel.jsx",
+            "bytes": 64669
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -140,7 +140,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18053
+            "bytes": 18083
           },
           {
             "file": "src/features/content/siteContentCutover.js",
@@ -179,24 +179,24 @@
             "bytes": 12654
           },
           {
+            "file": "src/features/auth/useUserAuthenticationSessionController.js",
+            "bytes": 12437
+          },
+          {
             "file": "src/features/boards/useUserPopupFooterContentSubscriptionController.js",
             "bytes": 12111
           },
           {
-            "file": "src/features/auth/useUserAuthenticationSessionController.js",
-            "bytes": 11910
+            "file": "src/features/auth/authSessionService.js",
+            "bytes": 12110
           },
           {
             "file": "src/utils/systemSettings.js",
-            "bytes": 11835
+            "bytes": 11861
           },
           {
             "file": "src/features/terms/termsService.js",
             "bytes": 11066
-          },
-          {
-            "file": "src/features/auth/authSessionService.js",
-            "bytes": 10760
           },
           {
             "file": "src/features/members/useUserMyPageSecurity.js",
@@ -291,6 +291,10 @@
             "bytes": 5748
           },
           {
+            "file": "src/selectors/appReadinessSelectors.js",
+            "bytes": 5316
+          },
+          {
             "file": "src/components/PaginationControls.jsx",
             "bytes": 5262
           },
@@ -325,10 +329,6 @@
           {
             "file": "src/shell/AppBlockingStateScreen.jsx",
             "bytes": 4569
-          },
-          {
-            "file": "src/selectors/appReadinessSelectors.js",
-            "bytes": 4283
           },
           {
             "file": "src/features/settings/useSiteSettingsController.js",
@@ -553,12 +553,12 @@
     "admin": {
       "entry": "src/admin-main.jsx",
       "initial": {
-        "moduleCount": 94,
-        "sourceBytes": 1060224,
+        "moduleCount": 95,
+        "sourceBytes": 1080550,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 119557
+            "bytes": 131981
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -566,7 +566,7 @@
           },
           {
             "file": "src/admin/AdminApp.jsx",
-            "bytes": 48115
+            "bytes": 48353
           },
           {
             "file": "src/admin/AdminDashboardPanel.jsx",
@@ -574,7 +574,7 @@
           },
           {
             "file": "src/features/auth/useAdminAuthenticationController.js",
-            "bytes": 45255
+            "bytes": 46333
           },
           {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
@@ -590,7 +590,7 @@
           },
           {
             "file": "src/admin/AdminWorkspace.jsx",
-            "bytes": 29061
+            "bytes": 29196
           },
           {
             "file": "src/utils/richTextCore.js",
@@ -626,7 +626,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18053
+            "bytes": 18083
           },
           {
             "file": "src/admin/useAdminNavigationController.js",
@@ -653,6 +653,10 @@
             "bytes": 16627
           },
           {
+            "file": "src/features/auth/useAdminIdentityPolicyController.js",
+            "bytes": 14621
+          },
+          {
             "file": "src/features/auth/useAdminAccountManagementController.js",
             "bytes": 13612
           },
@@ -669,20 +673,16 @@
             "bytes": 12654
           },
           {
-            "file": "src/features/auth/useAdminIdentityPolicyController.js",
-            "bytes": 12603
-          },
-          {
             "file": "src/features/boards/useAdminPopupPostController.js",
             "bytes": 12308
           },
           {
-            "file": "src/utils/systemSettings.js",
-            "bytes": 11835
+            "file": "src/features/auth/authSessionService.js",
+            "bytes": 12110
           },
           {
-            "file": "src/features/auth/authSessionService.js",
-            "bytes": 10760
+            "file": "src/utils/systemSettings.js",
+            "bytes": 11861
           },
           {
             "file": "src/features/boards/useBoardDerivedSelectors.js",
@@ -737,12 +737,16 @@
             "bytes": 5748
           },
           {
+            "file": "src/admin/AdminShell.jsx",
+            "bytes": 5369
+          },
+          {
             "file": "src/admin/useAdminContextAssembler.js",
             "bytes": 5324
           },
           {
-            "file": "src/admin/AdminShell.jsx",
-            "bytes": 5265
+            "file": "src/selectors/appReadinessSelectors.js",
+            "bytes": 5316
           },
           {
             "file": "src/features/auth/accountLifecycleAuthority.js",
@@ -759,10 +763,6 @@
           {
             "file": "src/shell/AppBlockingStateScreen.jsx",
             "bytes": 4569
-          },
-          {
-            "file": "src/selectors/appReadinessSelectors.js",
-            "bytes": 4283
           },
           {
             "file": "src/features/settings/useSiteSettingsController.js",
@@ -857,6 +857,10 @@
             "bytes": 1897
           },
           {
+            "file": "src/clerk/backupReverificationClaims.js",
+            "bytes": 1890
+          },
+          {
             "file": "src/components/ModalPortal.jsx",
             "bytes": 1847
           },
@@ -935,12 +939,12 @@
         ]
       },
       "complete": {
-        "moduleCount": 163,
-        "sourceBytes": 2044440,
+        "moduleCount": 166,
+        "sourceBytes": 2096584,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 119557
+            "bytes": 131981
           },
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -948,7 +952,7 @@
           },
           {
             "file": "src/admin/AdminSettingsPanel.jsx",
-            "bytes": 63394
+            "bytes": 75888
           },
           {
             "file": "src/admin/AdminRequestsPanel.jsx",
@@ -964,7 +968,7 @@
           },
           {
             "file": "src/admin/AdminApp.jsx",
-            "bytes": 48115
+            "bytes": 48353
           },
           {
             "file": "src/admin/AdminDashboardPanel.jsx",
@@ -972,7 +976,7 @@
           },
           {
             "file": "src/features/auth/useAdminAuthenticationController.js",
-            "bytes": 45255
+            "bytes": 46333
           },
           {
             "file": "src/admin/AdminFooterPanel.jsx",
@@ -1004,11 +1008,19 @@
           },
           {
             "file": "src/admin/AdminWorkspace.jsx",
-            "bytes": 29061
+            "bytes": 29196
           },
           {
             "file": "src/features/requests/useAdminRequestsController.js",
             "bytes": 28723
+          },
+          {
+            "file": "src/features/settings/useAdminDataMaintenanceController.js",
+            "bytes": 28615
+          },
+          {
+            "file": "src/admin/AdminAccountSecurityPanel.jsx",
+            "bytes": 28352
           },
           {
             "file": "src/utils/richTextCore.js",
@@ -1017,10 +1029,6 @@
           {
             "file": "src/features/requests/useAdminRequestMutationController.js",
             "bytes": 26848
-          },
-          {
-            "file": "src/admin/AdminAccountSecurityPanel.jsx",
-            "bytes": 26713
           },
           {
             "file": "src/admin/AdminMemberAccountsPanel.jsx",
@@ -1080,7 +1088,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18053
+            "bytes": 18083
           },
           {
             "file": "src/admin/useAdminNavigationController.js",
@@ -1123,8 +1131,8 @@
             "bytes": 15995
           },
           {
-            "file": "src/features/settings/useAdminDataMaintenanceController.js",
-            "bytes": 15937
+            "file": "src/features/auth/useAdminIdentityPolicyController.js",
+            "bytes": 14621
           },
           {
             "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -1143,16 +1151,16 @@
             "bytes": 12654
           },
           {
-            "file": "src/features/auth/useAdminIdentityPolicyController.js",
-            "bytes": 12603
-          },
-          {
             "file": "src/features/boards/useAdminPopupPostController.js",
             "bytes": 12308
           },
           {
+            "file": "src/features/auth/authSessionService.js",
+            "bytes": 12110
+          },
+          {
             "file": "src/utils/systemSettings.js",
-            "bytes": 11835
+            "bytes": 11861
           },
           {
             "file": "src/admin/AdminRequestDialogs.jsx",
@@ -1169,10 +1177,6 @@
           {
             "file": "src/admin/AdminAssetCategoriesPanel.jsx",
             "bytes": 10888
-          },
-          {
-            "file": "src/features/auth/authSessionService.js",
-            "bytes": 10760
           },
           {
             "file": "src/features/requests/useAdminRequestDetailController.js",
@@ -1299,12 +1303,16 @@
             "bytes": 5592
           },
           {
+            "file": "src/admin/AdminShell.jsx",
+            "bytes": 5369
+          },
+          {
             "file": "src/admin/useAdminContextAssembler.js",
             "bytes": 5324
           },
           {
-            "file": "src/admin/AdminShell.jsx",
-            "bytes": 5265
+            "file": "src/selectors/appReadinessSelectors.js",
+            "bytes": 5316
           },
           {
             "file": "src/components/PaginationControls.jsx",
@@ -1355,10 +1363,6 @@
             "bytes": 4345
           },
           {
-            "file": "src/selectors/appReadinessSelectors.js",
-            "bytes": 4283
-          },
-          {
             "file": "src/features/settings/useSiteSettingsController.js",
             "bytes": 4281
           },
@@ -1397,6 +1401,10 @@
           {
             "file": "src/features/members/memberDirectorySaveService.js",
             "bytes": 3576
+          },
+          {
+            "file": "src/components/SixDigitVerificationCodeInput.jsx",
+            "bytes": 3563
           },
           {
             "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
@@ -1507,6 +1515,10 @@
             "bytes": 1897
           },
           {
+            "file": "src/clerk/backupReverificationClaims.js",
+            "bytes": 1890
+          },
+          {
             "file": "src/components/ModalPortal.jsx",
             "bytes": 1847
           },
@@ -1521,6 +1533,10 @@
           {
             "file": "src/hooks/useResponsiveAssetGridColumns.js",
             "bytes": 1558
+          },
+          {
+            "file": "src/components/verificationCodeInputModel.js",
+            "bytes": 1444
           },
           {
             "file": "src/runtime/appSurface.js",
@@ -1622,7 +1638,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 604942,
+    "sourceBytes": 607381,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1658,7 +1674,7 @@
       },
       {
         "file": "src/context/appContextSlices.js",
-        "bytes": 18053
+        "bytes": 18083
       },
       {
         "file": "src/features/content/siteContentCutover.js",
@@ -1673,16 +1689,16 @@
         "bytes": 12654
       },
       {
+        "file": "src/features/auth/authSessionService.js",
+        "bytes": 12110
+      },
+      {
         "file": "src/utils/systemSettings.js",
-        "bytes": 11835
+        "bytes": 11861
       },
       {
         "file": "src/features/terms/termsService.js",
         "bytes": 11066
-      },
-      {
-        "file": "src/features/auth/authSessionService.js",
-        "bytes": 10760
       },
       {
         "file": "src/features/boards/useBoardDerivedSelectors.js",
@@ -1737,6 +1753,10 @@
         "bytes": 5748
       },
       {
+        "file": "src/selectors/appReadinessSelectors.js",
+        "bytes": 5316
+      },
+      {
         "file": "src/components/PaginationControls.jsx",
         "bytes": 5262
       },
@@ -1767,10 +1787,6 @@
       {
         "file": "src/shell/AppBlockingStateScreen.jsx",
         "bytes": 4569
-      },
-      {
-        "file": "src/selectors/appReadinessSelectors.js",
-        "bytes": 4283
       },
       {
         "file": "src/features/settings/useSiteSettingsController.js",
@@ -1912,15 +1928,15 @@
   },
   "userOnlyComplete": {
     "moduleCount": 56,
-    "sourceBytes": 881653,
+    "sourceBytes": 888005,
     "files": [
+      {
+        "file": "src/clerk/clerkUserClient.js",
+        "bytes": 68718
+      },
       {
         "file": "src/user/UserInquiryPanel.jsx",
         "bytes": 64669
-      },
-      {
-        "file": "src/clerk/clerkUserClient.js",
-        "bytes": 62893
       },
       {
         "file": "src/user/UserBoardPanel.jsx",
@@ -2011,12 +2027,12 @@
         "bytes": 13714
       },
       {
-        "file": "src/features/boards/useUserPopupFooterContentSubscriptionController.js",
-        "bytes": 12111
+        "file": "src/features/auth/useUserAuthenticationSessionController.js",
+        "bytes": 12437
       },
       {
-        "file": "src/features/auth/useUserAuthenticationSessionController.js",
-        "bytes": 11910
+        "file": "src/features/boards/useUserPopupFooterContentSubscriptionController.js",
+        "bytes": 12111
       },
       {
         "file": "src/features/members/useUserMyPageSecurity.js",
@@ -2141,16 +2157,16 @@
     ]
   },
   "adminOnlyComplete": {
-    "moduleCount": 92,
-    "sourceBytes": 1439498,
+    "moduleCount": 95,
+    "sourceBytes": 1489203,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 119557
+        "bytes": 131981
       },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
-        "bytes": 63394
+        "bytes": 75888
       },
       {
         "file": "src/admin/AdminRequestsPanel.jsx",
@@ -2162,7 +2178,7 @@
       },
       {
         "file": "src/admin/AdminApp.jsx",
-        "bytes": 48115
+        "bytes": 48353
       },
       {
         "file": "src/admin/AdminDashboardPanel.jsx",
@@ -2170,7 +2186,7 @@
       },
       {
         "file": "src/features/auth/useAdminAuthenticationController.js",
-        "bytes": 45255
+        "bytes": 46333
       },
       {
         "file": "src/admin/AdminFooterPanel.jsx",
@@ -2198,19 +2214,23 @@
       },
       {
         "file": "src/admin/AdminWorkspace.jsx",
-        "bytes": 29061
+        "bytes": 29196
       },
       {
         "file": "src/features/requests/useAdminRequestsController.js",
         "bytes": 28723
       },
       {
-        "file": "src/features/requests/useAdminRequestMutationController.js",
-        "bytes": 26848
+        "file": "src/features/settings/useAdminDataMaintenanceController.js",
+        "bytes": 28615
       },
       {
         "file": "src/admin/AdminAccountSecurityPanel.jsx",
-        "bytes": 26713
+        "bytes": 28352
+      },
+      {
+        "file": "src/features/requests/useAdminRequestMutationController.js",
+        "bytes": 26848
       },
       {
         "file": "src/admin/AdminMemberAccountsPanel.jsx",
@@ -2285,8 +2305,8 @@
         "bytes": 15995
       },
       {
-        "file": "src/features/settings/useAdminDataMaintenanceController.js",
-        "bytes": 15937
+        "file": "src/features/auth/useAdminIdentityPolicyController.js",
+        "bytes": 14621
       },
       {
         "file": "src/features/auth/useAdminAccountManagementController.js",
@@ -2299,10 +2319,6 @@
       {
         "file": "src/features/boards/useAdminBoardSettingsController.js",
         "bytes": 12986
-      },
-      {
-        "file": "src/features/auth/useAdminIdentityPolicyController.js",
-        "bytes": 12603
       },
       {
         "file": "src/features/boards/useAdminPopupPostController.js",
@@ -2393,12 +2409,12 @@
         "bytes": 5592
       },
       {
-        "file": "src/admin/useAdminContextAssembler.js",
-        "bytes": 5324
+        "file": "src/admin/AdminShell.jsx",
+        "bytes": 5369
       },
       {
-        "file": "src/admin/AdminShell.jsx",
-        "bytes": 5265
+        "file": "src/admin/useAdminContextAssembler.js",
+        "bytes": 5324
       },
       {
         "file": "src/features/assets/useAssetBulkUpload.js",
@@ -2431,6 +2447,10 @@
       {
         "file": "src/features/members/memberDirectorySaveService.js",
         "bytes": 3576
+      },
+      {
+        "file": "src/components/SixDigitVerificationCodeInput.jsx",
+        "bytes": 3563
       },
       {
         "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
@@ -2481,8 +2501,16 @@
         "bytes": 1964
       },
       {
+        "file": "src/clerk/backupReverificationClaims.js",
+        "bytes": 1890
+      },
+      {
         "file": "src/admin/AdminPanelRuntimeErrorBoundary.jsx",
         "bytes": 1687
+      },
+      {
+        "file": "src/components/verificationCodeInputModel.js",
+        "bytes": 1444
       },
       {
         "file": "src/features/members/memberAccountHistoryService.js",
@@ -2516,28 +2544,28 @@
   },
   "runtimeSourceReachability": {
     "all": {
-      "moduleCount": 218,
-      "sourceBytes": 2913439,
+      "moduleCount": 221,
+      "sourceBytes": 2971935,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 119557
+          "bytes": 131981
         },
         {
           "file": "src/components/RichTextEditor.jsx",
           "bytes": 93761
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 64669
-        },
-        {
           "file": "src/admin/AdminSettingsPanel.jsx",
-          "bytes": 63394
+          "bytes": 75888
         },
         {
           "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62893
+          "bytes": 68718
+        },
+        {
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 64669
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",
@@ -2553,7 +2581,7 @@
         },
         {
           "file": "src/admin/AdminApp.jsx",
-          "bytes": 48115
+          "bytes": 48353
         },
         {
           "file": "src/admin/AdminDashboardPanel.jsx",
@@ -2561,7 +2589,7 @@
         },
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
-          "bytes": 45255
+          "bytes": 46333
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
@@ -2645,11 +2673,19 @@
         },
         {
           "file": "src/admin/AdminWorkspace.jsx",
-          "bytes": 29061
+          "bytes": 29196
         },
         {
           "file": "src/features/requests/useAdminRequestsController.js",
           "bytes": 28723
+        },
+        {
+          "file": "src/features/settings/useAdminDataMaintenanceController.js",
+          "bytes": 28615
+        },
+        {
+          "file": "src/admin/AdminAccountSecurityPanel.jsx",
+          "bytes": 28352
         },
         {
           "file": "src/utils/richTextCore.js",
@@ -2658,10 +2694,6 @@
         {
           "file": "src/features/requests/useAdminRequestMutationController.js",
           "bytes": 26848
-        },
-        {
-          "file": "src/admin/AdminAccountSecurityPanel.jsx",
-          "bytes": 26713
         },
         {
           "file": "src/admin/AdminMemberAccountsPanel.jsx",
@@ -2733,7 +2765,7 @@
         },
         {
           "file": "src/context/appContextSlices.js",
-          "bytes": 18053
+          "bytes": 18083
         },
         {
           "file": "src/admin/useAdminNavigationController.js",
@@ -2784,16 +2816,16 @@
           "bytes": 15995
         },
         {
-          "file": "src/features/settings/useAdminDataMaintenanceController.js",
-          "bytes": 15937
-        },
-        {
           "file": "src/features/requests/useUserRentalRequestController.js",
           "bytes": 15236
         },
         {
           "file": "src/routing/useAppNavigationController.js",
           "bytes": 14911
+        },
+        {
+          "file": "src/features/auth/useAdminIdentityPolicyController.js",
+          "bytes": 14621
         },
         {
           "file": "src/user/UserPopupLayer.jsx",
@@ -2816,8 +2848,8 @@
           "bytes": 12986
         },
         {
-          "file": "src/features/auth/useAdminIdentityPolicyController.js",
-          "bytes": 12603
+          "file": "src/features/auth/useUserAuthenticationSessionController.js",
+          "bytes": 12437
         },
         {
           "file": "src/features/boards/useAdminPopupPostController.js",
@@ -2828,12 +2860,12 @@
           "bytes": 12111
         },
         {
-          "file": "src/features/auth/useUserAuthenticationSessionController.js",
-          "bytes": 11910
+          "file": "src/features/auth/authSessionService.js",
+          "bytes": 12110
         },
         {
           "file": "src/utils/systemSettings.js",
-          "bytes": 11835
+          "bytes": 11861
         },
         {
           "file": "src/admin/AdminRequestDialogs.jsx",
@@ -2850,10 +2882,6 @@
         {
           "file": "src/admin/AdminAssetCategoriesPanel.jsx",
           "bytes": 10888
-        },
-        {
-          "file": "src/features/auth/authSessionService.js",
-          "bytes": 10760
         },
         {
           "file": "src/features/requests/useAdminRequestDetailController.js",
@@ -3020,12 +3048,16 @@
           "bytes": 5592
         },
         {
+          "file": "src/admin/AdminShell.jsx",
+          "bytes": 5369
+        },
+        {
           "file": "src/admin/useAdminContextAssembler.js",
           "bytes": 5324
         },
         {
-          "file": "src/admin/AdminShell.jsx",
-          "bytes": 5265
+          "file": "src/selectors/appReadinessSelectors.js",
+          "bytes": 5316
         },
         {
           "file": "src/components/PaginationControls.jsx",
@@ -3080,10 +3112,6 @@
           "bytes": 4345
         },
         {
-          "file": "src/selectors/appReadinessSelectors.js",
-          "bytes": 4283
-        },
-        {
           "file": "src/features/settings/useSiteSettingsController.js",
           "bytes": 4281
         },
@@ -3134,6 +3162,10 @@
         {
           "file": "src/features/members/memberDirectorySaveService.js",
           "bytes": 3576
+        },
+        {
+          "file": "src/components/SixDigitVerificationCodeInput.jsx",
+          "bytes": 3563
         },
         {
           "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
@@ -3272,6 +3304,10 @@
           "bytes": 1897
         },
         {
+          "file": "src/clerk/backupReverificationClaims.js",
+          "bytes": 1890
+        },
+        {
           "file": "src/components/ModalPortal.jsx",
           "bytes": 1847
         },
@@ -3298,6 +3334,10 @@
         {
           "file": "src/features/requests/memberRentalStatusReadService.js",
           "bytes": 1514
+        },
+        {
+          "file": "src/components/verificationCodeInputModel.js",
+          "bytes": 1444
         },
         {
           "file": "src/user-main.jsx",
@@ -3394,28 +3434,28 @@
       ]
     },
     "reachable": {
-      "moduleCount": 219,
-      "sourceBytes": 2926093,
+      "moduleCount": 222,
+      "sourceBytes": 2984589,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 119557
+          "bytes": 131981
         },
         {
           "file": "src/components/RichTextEditor.jsx",
           "bytes": 93761
         },
         {
-          "file": "src/user/UserInquiryPanel.jsx",
-          "bytes": 64669
-        },
-        {
           "file": "src/admin/AdminSettingsPanel.jsx",
-          "bytes": 63394
+          "bytes": 75888
         },
         {
           "file": "src/clerk/clerkUserClient.js",
-          "bytes": 62893
+          "bytes": 68718
+        },
+        {
+          "file": "src/user/UserInquiryPanel.jsx",
+          "bytes": 64669
         },
         {
           "file": "src/admin/AdminRequestsPanel.jsx",
@@ -3431,7 +3471,7 @@
         },
         {
           "file": "src/admin/AdminApp.jsx",
-          "bytes": 48115
+          "bytes": 48353
         },
         {
           "file": "src/admin/AdminDashboardPanel.jsx",
@@ -3439,7 +3479,7 @@
         },
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
-          "bytes": 45255
+          "bytes": 46333
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
@@ -3523,11 +3563,19 @@
         },
         {
           "file": "src/admin/AdminWorkspace.jsx",
-          "bytes": 29061
+          "bytes": 29196
         },
         {
           "file": "src/features/requests/useAdminRequestsController.js",
           "bytes": 28723
+        },
+        {
+          "file": "src/features/settings/useAdminDataMaintenanceController.js",
+          "bytes": 28615
+        },
+        {
+          "file": "src/admin/AdminAccountSecurityPanel.jsx",
+          "bytes": 28352
         },
         {
           "file": "src/utils/richTextCore.js",
@@ -3536,10 +3584,6 @@
         {
           "file": "src/features/requests/useAdminRequestMutationController.js",
           "bytes": 26848
-        },
-        {
-          "file": "src/admin/AdminAccountSecurityPanel.jsx",
-          "bytes": 26713
         },
         {
           "file": "src/admin/AdminMemberAccountsPanel.jsx",
@@ -3611,7 +3655,7 @@
         },
         {
           "file": "src/context/appContextSlices.js",
-          "bytes": 18053
+          "bytes": 18083
         },
         {
           "file": "src/admin/useAdminNavigationController.js",
@@ -3662,16 +3706,16 @@
           "bytes": 15995
         },
         {
-          "file": "src/features/settings/useAdminDataMaintenanceController.js",
-          "bytes": 15937
-        },
-        {
           "file": "src/features/requests/useUserRentalRequestController.js",
           "bytes": 15236
         },
         {
           "file": "src/routing/useAppNavigationController.js",
           "bytes": 14911
+        },
+        {
+          "file": "src/features/auth/useAdminIdentityPolicyController.js",
+          "bytes": 14621
         },
         {
           "file": "src/user/UserPopupLayer.jsx",
@@ -3698,8 +3742,8 @@
           "bytes": 12654
         },
         {
-          "file": "src/features/auth/useAdminIdentityPolicyController.js",
-          "bytes": 12603
+          "file": "src/features/auth/useUserAuthenticationSessionController.js",
+          "bytes": 12437
         },
         {
           "file": "src/features/boards/useAdminPopupPostController.js",
@@ -3710,12 +3754,12 @@
           "bytes": 12111
         },
         {
-          "file": "src/features/auth/useUserAuthenticationSessionController.js",
-          "bytes": 11910
+          "file": "src/features/auth/authSessionService.js",
+          "bytes": 12110
         },
         {
           "file": "src/utils/systemSettings.js",
-          "bytes": 11835
+          "bytes": 11861
         },
         {
           "file": "src/admin/AdminRequestDialogs.jsx",
@@ -3732,10 +3776,6 @@
         {
           "file": "src/admin/AdminAssetCategoriesPanel.jsx",
           "bytes": 10888
-        },
-        {
-          "file": "src/features/auth/authSessionService.js",
-          "bytes": 10760
         },
         {
           "file": "src/features/requests/useAdminRequestDetailController.js",
@@ -3902,12 +3942,16 @@
           "bytes": 5592
         },
         {
+          "file": "src/admin/AdminShell.jsx",
+          "bytes": 5369
+        },
+        {
           "file": "src/admin/useAdminContextAssembler.js",
           "bytes": 5324
         },
         {
-          "file": "src/admin/AdminShell.jsx",
-          "bytes": 5265
+          "file": "src/selectors/appReadinessSelectors.js",
+          "bytes": 5316
         },
         {
           "file": "src/components/PaginationControls.jsx",
@@ -3962,10 +4006,6 @@
           "bytes": 4345
         },
         {
-          "file": "src/selectors/appReadinessSelectors.js",
-          "bytes": 4283
-        },
-        {
           "file": "src/features/settings/useSiteSettingsController.js",
           "bytes": 4281
         },
@@ -4016,6 +4056,10 @@
         {
           "file": "src/features/members/memberDirectorySaveService.js",
           "bytes": 3576
+        },
+        {
+          "file": "src/components/SixDigitVerificationCodeInput.jsx",
+          "bytes": 3563
         },
         {
           "file": "src/features/requests/useAdminRequestProgressiveSearch.js",
@@ -4154,6 +4198,10 @@
           "bytes": 1897
         },
         {
+          "file": "src/clerk/backupReverificationClaims.js",
+          "bytes": 1890
+        },
+        {
           "file": "src/components/ModalPortal.jsx",
           "bytes": 1847
         },
@@ -4180,6 +4228,10 @@
         {
           "file": "src/features/requests/memberRentalStatusReadService.js",
           "bytes": 1514
+        },
+        {
+          "file": "src/components/verificationCodeInputModel.js",
+          "bytes": 1444
         },
         {
           "file": "src/user-main.jsx",

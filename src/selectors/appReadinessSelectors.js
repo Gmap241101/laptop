@@ -45,6 +45,7 @@ export const selectUserAppReadiness = ({
 export const selectAppReadiness = ({
   adminAccountsLoadErrorMessage,
   adminAccountsReady,
+  adminAuthTransitionPending = false,
   adminLogoutInProgress,
   authenticatedAdminId,
   currentAuthAdminAccount,
@@ -103,6 +104,17 @@ export const selectAppReadiness = ({
   const adminLoadError = Boolean(
     adminAccountsLoadErrorMessage || currentAuthRoleErrorMessage
   );
+  // No administrator session and no in-flight login transition: the login form
+  // is safe to render even while an unrelated Clerk bootstrap finishes.
+  // Do not treat a restored or pending session as anonymous.
+  const adminAnonymousLoginReady = Boolean(
+    view === 'admin' &&
+    !authenticatedAdminId &&
+    !adminLogoutInProgress &&
+    !adminAuthTransitionPending &&
+    !adminLoadError &&
+    !isAdminAuthenticated
+  );
   const adminAuthoritativeSessionPending = Boolean(
     view === 'admin' &&
       authenticatedAdminId &&
@@ -133,15 +145,17 @@ export const selectAppReadiness = ({
     shouldShowAdminLoadingPage:
       view === 'admin' &&
       !adminLogoutInProgress &&
+      !adminAnonymousLoginReady &&
       (!firebaseAuthReady ||
         !currentAuthRoleReady ||
         (!adminAccountsReady && !currentAuthAdminAccount) ||
         adminAuthoritativeSessionPending),
     shouldShowAdminLoginPage:
-      !adminLogoutInProgress &&
-      adminBaseReady &&
-      !adminLoadError &&
-      !adminAuthoritativeSessionPending &&
-      !isAdminAuthenticated,
+      adminAnonymousLoginReady ||
+      (!adminLogoutInProgress &&
+        adminBaseReady &&
+        !adminLoadError &&
+        !adminAuthoritativeSessionPending &&
+        !isAdminAuthenticated),
   };
 };
