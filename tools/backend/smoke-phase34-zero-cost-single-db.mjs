@@ -82,7 +82,7 @@ try {
   const preview=await repo.preview(req);
   assert.equal(preview.restoreProof.valid,false);
   assert.equal(preview.scopedSafety,'transactional-preimage-v1');
-  const outcome=await repo.execute({...req,actorClerkUserId:'admin',previewSha256:preview.previewSha256,
+  const outcome=await repo.execute({...req,actorClerkUserId:'admin',previewSha256:preview.previewSha256,previewIssuedAt:preview.previewIssuedAt,
     confirmText:'백업 데이터 복원'});
   assert.equal(outcome.changedRows,1);
   assert.equal(outcome.independentRestoreVerified,false);
@@ -92,7 +92,7 @@ try {
   assert.equal(good.images()[0][0].existing[0].payload.title,'before');
   const broken=prepare({injectFailure:true}); const repoBroken=createScopedJsonRestore(broken.pool);
   const before=await repoBroken.preview(req);
-  await assert.rejects(repoBroken.execute({...req,actorClerkUserId:'admin',previewSha256:before.previewSha256,
+  await assert.rejects(repoBroken.execute({...req,actorClerkUserId:'admin',previewSha256:before.previewSha256,previewIssuedAt:before.previewIssuedAt,
     confirmText:'백업 데이터 복원'}), e=>e.code==='TEST_FAIL');
   assert.equal(broken.getState().payload.title,'before');
   assert.equal(broken.images().length,0,'preimage insert must roll back along with the failed write');

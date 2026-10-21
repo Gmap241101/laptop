@@ -478,7 +478,8 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
     try {
       const payload = await clerkStagingClient.executeAdminSystemDataRestore({ snapshot: restorePayload,
         scopes: selectedRestoreScopes, mode: restoreMode,
-        previewSha256: restoreAnalysis.previewSha256, confirmText: restoreConfirmText });
+        previewSha256: restoreAnalysis.previewSha256, previewIssuedAt: restoreAnalysis.previewIssuedAt,
+        confirmText: restoreConfirmText });
       const result = payload?.systemDataRestoreResult;
       if (!result?.success) throw new Error('system_restore_result_missing');
       setRestoreResult(result);
@@ -492,7 +493,9 @@ export default function useAdminDataMaintenanceController({ authenticatedAdminAc
       const code = error?.code || error?.message || 'restore_failed';
       setLatestRestoreJob({ status: 'failed', errorMessage: code });
       setRestoreAnalysis(null);
-      triggerToast?.(`복원 작업에 실패했습니다. 오류 코드: ${code}`, 'error');
+      triggerToast?.(code === 'system_restore_preview_expired' || code === 'system_restore_preview_required'
+        ? '복원 미리보기가 만료되었습니다. 복원 대상을 다시 확인해 주세요.'
+        : `복원 작업에 실패했습니다. 오류 코드: ${code}`, 'error');
       return null;
     } finally { setRestoreRunning(false); }
   }, [restorePayload, restoreAnalysis, restoreConfirmText, selectedRestoreScopes, restoreMode, refreshOverview, triggerToast]);

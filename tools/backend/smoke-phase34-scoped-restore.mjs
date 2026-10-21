@@ -94,9 +94,9 @@ assert.equal(preview.willInsert, 0);
 assert.equal(preview.willSkip, 1);
 assert.equal(preview.restoreProof.valid, true);
 assert.ok(mocked.queries.some((sql) => sql.includes('REPEATABLE READ READ ONLY')));
-await assert.rejects(() => restorer.execute({ ...payload, actorClerkUserId: 'admin', previewSha256: preview.previewSha256, confirmText: 'wrong' }),
+await assert.rejects(() => restorer.execute({ ...payload, actorClerkUserId: 'admin', previewSha256: preview.previewSha256, previewIssuedAt: preview.previewIssuedAt, confirmText: 'wrong' }),
   (e) => e.code === 'system_restore_confirmation_invalid');
-assert.equal((await restorer.execute({ ...payload, actorClerkUserId: 'admin', previewSha256: preview.previewSha256,
+assert.equal((await restorer.execute({ ...payload, actorClerkUserId: 'admin', previewSha256: preview.previewSha256, previewIssuedAt: preview.previewIssuedAt,
   confirmText: '백업 데이터 복원' })).changedRows, 0);
 assert.equal(mocked.get('home:homePage/config').payload.value, 1);
 assert.equal(mocked.proof(), null, 'successful operation consumes the full backup proof');
@@ -104,7 +104,7 @@ const overwrite = { ...payload, mode: 'overwrite' };
 mocked.setProof(clone(proof));
 const overPreview = await restorer.preview(overwrite);
 assert.equal(overPreview.willUpdate, 1);
-assert.equal((await restorer.execute({ ...overwrite, actorClerkUserId: 'admin', previewSha256: overPreview.previewSha256,
+assert.equal((await restorer.execute({ ...overwrite, actorClerkUserId: 'admin', previewSha256: overPreview.previewSha256, previewIssuedAt: overPreview.previewIssuedAt,
   confirmText: '백업 데이터 복원' })).changedRows, 1);
 assert.equal(mocked.get('home:homePage/config').payload.value, 2);
 assert.equal(mocked.audit.length, 2);
@@ -120,7 +120,7 @@ const multiPreview = await multiService.preview(multiPayload);
 assert.equal(multiPreview.willUpdate, 1);
 assert.equal(multiPreview.willInsert, 1);
 assert.equal((await multiService.execute({ ...multiPayload, actorClerkUserId: 'admin',
-  previewSha256: multiPreview.previewSha256, confirmText: '백업 데이터 복원' })).changedRows, 2);
+  previewSha256: multiPreview.previewSha256, previewIssuedAt: multiPreview.previewIssuedAt, confirmText: '백업 데이터 복원' })).changedRows, 2);
 assert.equal(multi.get('home:homePage/config').payload.value, 9);
 assert.equal(multi.get('footer:footer/test-restore').payload.value, 8);
 const stale = makePool();
@@ -129,20 +129,20 @@ const oldPreview = await staleRestore.preview(payload);
 // A modification to an existing row (same ID and count) invalidates its preview.
 stale.set('home:homePage/config', { domain: 'home', document_key: 'homePage/config', payload: { value: 999 }, enabled: true });
 await assert.rejects(() => staleRestore.execute({ ...payload, actorClerkUserId: 'admin',
-  previewSha256: oldPreview.previewSha256, confirmText: '백업 데이터 복원' }),
+  previewSha256: oldPreview.previewSha256, previewIssuedAt: oldPreview.previewIssuedAt, confirmText: '백업 데이터 복원' }),
 (e) => e.code === 'system_restore_preview_stale');
 assert.equal(stale.get('home:homePage/config').payload.value, 999);
 const missing = makePool({ missingProof: true });
 const noProofPreview = await createScopedJsonRestore(missing.pool).preview(payload);
 assert.equal(noProofPreview.restoreProof.valid, false);
 await assert.rejects(() => createScopedJsonRestore(missing.pool).execute({ ...payload, actorClerkUserId: 'admin',
-  previewSha256: noProofPreview.previewSha256, confirmText: '백업 데이터 복원' }),
+  previewSha256: noProofPreview.previewSha256, previewIssuedAt: noProofPreview.previewIssuedAt, confirmText: '백업 데이터 복원' }),
 (e) => e.code === 'system_restore_verified_backup_required');
 const interrupted = makePool({ failOnInsert: true });
 const recovery = createScopedJsonRestore(interrupted.pool);
 const interruptedPreview = await recovery.preview(overwrite);
 await assert.rejects(() => recovery.execute({ ...overwrite, actorClerkUserId: 'admin',
-  previewSha256: interruptedPreview.previewSha256, confirmText: '백업 데이터 복원' }),
+  previewSha256: interruptedPreview.previewSha256, previewIssuedAt: interruptedPreview.previewIssuedAt, confirmText: '백업 데이터 복원' }),
 (e) => e.code === 'forced_restore_failure');
 assert.equal(interrupted.get('home:homePage/config').payload.value, 1, 'failed upsert must roll back');
 assert.ok(interrupted.proof(), 'failed restore must not consume backup proof');

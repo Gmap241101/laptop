@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const controller=readFileSync(new URL('../../src/features/settings/useAdminDataMaintenanceController.js',import.meta.url),'utf8');
+const api=readFileSync(new URL('../../src/clerk/clerkStagingClient.js',import.meta.url),'utf8');
+assert.match(controller,/previewIssuedAt: restoreAnalysis\.previewIssuedAt/);
+assert.match(controller,/system_restore_preview_expired/);
+assert.match(controller,/복원 미리보기가 만료되었습니다\. 복원 대상을 다시 확인해 주세요/);
+assert.match(controller,/restoreAnalysis\.scopedSafety === 'transactional-preimage-v1'/);
+assert.match(controller,/restoreConfirmText !== RESTORE_CONFIRM_TEXT/);
+assert.match(api,/executeAdminSystemDataRestore/);
+console.log('[phase34-w03-preview-ttl-front] PASS: preview-issued-at forward, expiry UX, scope gate and confirmation preserved');

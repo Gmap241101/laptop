@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-21T13:02:26.408Z",
+  "generatedAt": "2026-10-21T13:49:37.797Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -944,7 +944,7 @@
       },
       "complete": {
         "moduleCount": 167,
-        "sourceBytes": 2097453,
+        "sourceBytes": 2097712,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1015,12 +1015,12 @@
             "bytes": 29196
           },
           {
-            "file": "src/features/requests/useAdminRequestsController.js",
-            "bytes": 28723
+            "file": "src/features/settings/useAdminDataMaintenanceController.js",
+            "bytes": 28874
           },
           {
-            "file": "src/features/settings/useAdminDataMaintenanceController.js",
-            "bytes": 28615
+            "file": "src/features/requests/useAdminRequestsController.js",
+            "bytes": 28723
           },
           {
             "file": "src/admin/AdminAccountSecurityPanel.jsx",
@@ -2166,7 +2166,7 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 96,
-    "sourceBytes": 1490072,
+    "sourceBytes": 1490331,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
@@ -2225,12 +2225,12 @@
         "bytes": 29196
       },
       {
-        "file": "src/features/requests/useAdminRequestsController.js",
-        "bytes": 28723
+        "file": "src/features/settings/useAdminDataMaintenanceController.js",
+        "bytes": 28874
       },
       {
-        "file": "src/features/settings/useAdminDataMaintenanceController.js",
-        "bytes": 28615
+        "file": "src/features/requests/useAdminRequestsController.js",
+        "bytes": 28723
       },
       {
         "file": "src/admin/AdminAccountSecurityPanel.jsx",
@@ -2557,7 +2557,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 222,
-      "sourceBytes": 2972804,
+      "sourceBytes": 2973063,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2688,12 +2688,12 @@
           "bytes": 29196
         },
         {
-          "file": "src/features/requests/useAdminRequestsController.js",
-          "bytes": 28723
+          "file": "src/features/settings/useAdminDataMaintenanceController.js",
+          "bytes": 28874
         },
         {
-          "file": "src/features/settings/useAdminDataMaintenanceController.js",
-          "bytes": 28615
+          "file": "src/features/requests/useAdminRequestsController.js",
+          "bytes": 28723
         },
         {
           "file": "src/admin/AdminAccountSecurityPanel.jsx",
@@ -3451,7 +3451,7 @@
     },
     "reachable": {
       "moduleCount": 223,
-      "sourceBytes": 2985458,
+      "sourceBytes": 2985717,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3582,12 +3582,12 @@
           "bytes": 29196
         },
         {
-          "file": "src/features/requests/useAdminRequestsController.js",
-          "bytes": 28723
+          "file": "src/features/settings/useAdminDataMaintenanceController.js",
+          "bytes": 28874
         },
         {
-          "file": "src/features/settings/useAdminDataMaintenanceController.js",
-          "bytes": 28615
+          "file": "src/features/requests/useAdminRequestsController.js",
+          "bytes": 28723
         },
         {
           "file": "src/admin/AdminAccountSecurityPanel.jsx",

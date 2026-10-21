@@ -5,12 +5,24 @@ export const RESTORE_CONFIRM_TEXT = '백업 데이터 복원';
 export const RESTORE_MODES = Object.freeze(['addMissing', 'overwrite']);
 export const RESTORE_SCOPES = Object.freeze(['site', 'boards', 'assets', 'organization']);
 export const RESTORE_MAX_ROWS = 2500;
+// A preview is a time-bounded permission to attempt a scoped transaction, not a backup proof.
+export const RESTORE_PREVIEW_MAX_AGE_MS = 10 * 60 * 1000;
 const allowedSiteDomains = new Set(['site-settings', 'rental-config', 'home', 'popup', 'footer', 'terms']);
 const sha = (value) => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 const fail = (code, status = 400) => Object.assign(new Error(code), { code, status });
 const quote = (name) => `"${String(name).replaceAll('"', '""')}"`;
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 const scopedSingleDbMode = () => process.env.BACKUP_VERIFY_MODE === 'single-db';
+const checkPreviewIssuedAt = (value, now = Date.now()) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    throw fail('system_restore_preview_required', 409);
+  }
+  const created = Date.parse(value);
+  if (!Number.isFinite(created) || created > now || now - created > RESTORE_PREVIEW_MAX_AGE_MS) {
+    throw fail('system_restore_preview_expired', 409);
+  }
+  return value;
+};
 const hasRedaction = (value) => value === '[redacted]' || (Array.isArray(value) && value.some(hasRedaction)) ||
   (isObject(value) && Object.values(value).some(hasRedaction));
 
@@ -131,7 +143,7 @@ const existingCounts = async (client, table) => {
   return { existing, existingSha256: sha(checksums) };
 };
 
-const previewOnClient = async (client, request) => {
+const previewOnClient = async (client, request, previewIssuedAt) => {
   await schemaCheck(client, request);
   const counts = [];
   for (const table of request.tables) {
@@ -145,9 +157,12 @@ const previewOnClient = async (client, request) => {
   const safeCounts = counts.map(({ scope, table, rows, existing, newRows }) => ({ scope, table, rows, existing, newRows }));
   const fingerprint = sha({ snapshotHash: request.snapshotHash, scopes: request.scopes, mode: request.mode,
     counts: counts.map(({ metadata, writableColumns, ...safe }) => safe),
-    singleDbScopedSafety: scopedSingleDbMode(), databaseName: proofRow.rows[0]?.database_name || '' });
+    singleDbScopedSafety: scopedSingleDbMode(), databaseName: proofRow.rows[0]?.database_name || '',
+    previewIssuedAt });
   return { authority: 'postgresql', mode: request.mode, scopes: request.scopes, snapshotSha256: request.snapshotHash,
-    previewSha256: fingerprint, totalRows: request.totalRows, totals: safeCounts,
+    previewSha256: fingerprint, previewIssuedAt,
+    previewExpiresAt: new Date(Date.parse(previewIssuedAt) + RESTORE_PREVIEW_MAX_AGE_MS).toISOString(),
+    totalRows: request.totalRows, totals: safeCounts,
     willInsert: safeCounts.reduce((n, row) => n + row.newRows, 0),
     willUpdate: request.mode === 'overwrite' ? safeCounts.reduce((n, row) => n + row.existing, 0) : 0,
     willSkip: request.mode === 'addMissing' ? safeCounts.reduce((n, row) => n + row.existing, 0) : 0,
@@ -210,10 +225,11 @@ export const createScopedJsonRestore = (pool) => {
   return Object.freeze({
     async preview(payload) {
       const request = normalizeRestoreRequest(payload);
+      const previewIssuedAt = new Date().toISOString();
       const client = await pool.connect();
       try {
         await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-        const plan = await previewOnClient(client, request);
+        const plan = await previewOnClient(client, request, previewIssuedAt);
         await client.query('COMMIT');
         const { internalCounts, ...publicResult } = plan;
         return publicResult;
@@ -222,10 +238,11 @@ export const createScopedJsonRestore = (pool) => {
         throw error;
       } finally { client.release(); }
     },
-    async execute({ actorClerkUserId, previewSha256, confirmText, ...payload }) {
+    async execute({ actorClerkUserId, previewSha256, previewIssuedAt, confirmText, ...payload }) {
       if (confirmText !== RESTORE_CONFIRM_TEXT) throw fail('system_restore_confirmation_invalid');
       if (!/^[a-f0-9]{64}$/.test(previewSha256 || '')) throw fail('system_restore_preview_required', 409);
       if (!actorClerkUserId) throw fail('system_restore_actor_required', 403);
+      checkPreviewIssuedAt(previewIssuedAt);
       const request = normalizeRestoreRequest(payload);
       const client = await pool.connect();
       const restoreId = randomUUID();
@@ -234,7 +251,7 @@ export const createScopedJsonRestore = (pool) => {
         await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
         started = true;
         await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-system-data-reset'))");
-        const plan = await previewOnClient(client, request);
+        const plan = await previewOnClient(client, request, previewIssuedAt);
         if (plan.previewSha256 !== previewSha256) throw fail('system_restore_preview_stale', 409);
         const locked = await client.query('SELECT value, current_database() AS database_name FROM app_runtime_metadata WHERE key=$1 FOR UPDATE', [RESET_BACKUP_PROOF_KEY]);
         const singleDb = scopedSingleDbMode();
