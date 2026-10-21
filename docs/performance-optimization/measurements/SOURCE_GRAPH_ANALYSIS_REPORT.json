@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-21T12:41:54.727Z",
+  "generatedAt": "2026-10-21T13:02:26.408Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -553,12 +553,12 @@
     "admin": {
       "entry": "src/admin-main.jsx",
       "initial": {
-        "moduleCount": 95,
-        "sourceBytes": 1080550,
+        "moduleCount": 96,
+        "sourceBytes": 1081419,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 131981
+            "bytes": 132231
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -574,7 +574,7 @@
           },
           {
             "file": "src/features/auth/useAdminAuthenticationController.js",
-            "bytes": 46333
+            "bytes": 46460
           },
           {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
@@ -905,6 +905,10 @@
             "bytes": 628
           },
           {
+            "file": "src/features/auth/adminClerkSignOutPolicy.js",
+            "bytes": 492
+          },
+          {
             "file": "src/hooks/useDebouncedValue.js",
             "bytes": 385
           },
@@ -939,12 +943,12 @@
         ]
       },
       "complete": {
-        "moduleCount": 166,
-        "sourceBytes": 2096584,
+        "moduleCount": 167,
+        "sourceBytes": 2097453,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 131981
+            "bytes": 132231
           },
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -976,7 +980,7 @@
           },
           {
             "file": "src/features/auth/useAdminAuthenticationController.js",
-            "bytes": 46333
+            "bytes": 46460
           },
           {
             "file": "src/admin/AdminFooterPanel.jsx",
@@ -1575,6 +1579,10 @@
             "bytes": 628
           },
           {
+            "file": "src/features/auth/adminClerkSignOutPolicy.js",
+            "bytes": 492
+          },
+          {
             "file": "src/hooks/useDebouncedValue.js",
             "bytes": 385
           },
@@ -2157,12 +2165,12 @@
     ]
   },
   "adminOnlyComplete": {
-    "moduleCount": 95,
-    "sourceBytes": 1489203,
+    "moduleCount": 96,
+    "sourceBytes": 1490072,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 131981
+        "bytes": 132231
       },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
@@ -2186,7 +2194,7 @@
       },
       {
         "file": "src/features/auth/useAdminAuthenticationController.js",
-        "bytes": 46333
+        "bytes": 46460
       },
       {
         "file": "src/admin/AdminFooterPanel.jsx",
@@ -2529,6 +2537,10 @@
         "bytes": 628
       },
       {
+        "file": "src/features/auth/adminClerkSignOutPolicy.js",
+        "bytes": 492
+      },
+      {
         "file": "src/features/content/useAdminPublicContentSynchronizationController.js",
         "bytes": 255
       },
@@ -2544,12 +2556,12 @@
   },
   "runtimeSourceReachability": {
     "all": {
-      "moduleCount": 221,
-      "sourceBytes": 2971935,
+      "moduleCount": 222,
+      "sourceBytes": 2972804,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 131981
+          "bytes": 132231
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -2589,7 +2601,7 @@
         },
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
-          "bytes": 46333
+          "bytes": 46460
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
@@ -3392,6 +3404,10 @@
           "bytes": 576
         },
         {
+          "file": "src/features/auth/adminClerkSignOutPolicy.js",
+          "bytes": 492
+        },
+        {
           "file": "src/hooks/useDebouncedValue.js",
           "bytes": 385
         },
@@ -3434,12 +3450,12 @@
       ]
     },
     "reachable": {
-      "moduleCount": 222,
-      "sourceBytes": 2984589,
+      "moduleCount": 223,
+      "sourceBytes": 2985458,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 131981
+          "bytes": 132231
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -3479,7 +3495,7 @@
         },
         {
           "file": "src/features/auth/useAdminAuthenticationController.js",
-          "bytes": 46333
+          "bytes": 46460
         },
         {
           "file": "src/user/UserBoardPanel.jsx",
@@ -4284,6 +4300,10 @@
         {
           "file": "src/features/requests/rentalRequestId.js",
           "bytes": 576
+        },
+        {
+          "file": "src/features/auth/adminClerkSignOutPolicy.js",
+          "bytes": 492
         },
         {
           "file": "src/hooks/useDebouncedValue.js",

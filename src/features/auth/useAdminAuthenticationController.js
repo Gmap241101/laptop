@@ -27,6 +27,7 @@ import { normalizeSystemAdminSettings } from '../../utils/systemSettings.js';
 import { formatKoreanDateTime } from '../../utils/appUtils.js';
 import { clerkStagingClient } from '../../clerk/clerkStagingClient.js';
 import { getClerkPasswordSignInErrorMessage } from './loginErrorMessages.js';
+import { getAdminClerkSignOutOptions } from './adminClerkSignOutPolicy.js';
 import {
   publishAccountAuthObservation,
   readAccountAuthCutoverConfig,
@@ -44,10 +45,11 @@ import {
 
 export { createDefaultAdminAuthForm } from './authSessionService.js';
 
-// The dedicated /admin root already owns the logged-out login screen.
-// Requesting a redirect to the same path after sign-out remounted the entire
-// auth bootstrap and re-opened the admin data loading screen between logins.
-const signOutClerkForRuntimeSurface = () => clerkStagingClient.signOut();
+// ClerkJS can navigate to its default sign-out destination ('/') when no
+// redirect is supplied. Preserve the dedicated /admin login document by
+// explicitly selecting its destination; do not alter the user surface.
+const signOutClerkForRuntimeSurface = (runtimeSurface) =>
+  clerkStagingClient.signOut(getAdminClerkSignOutOptions(runtimeSurface));
 
 const syncAdminRouteIntentAfterAuthClear = (runtimeSurface) => {
   if (runtimeSurface === 'admin') {

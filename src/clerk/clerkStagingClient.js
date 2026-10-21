@@ -1954,6 +1954,12 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
         await withRuntimeTimeout(
           () => windowRef.Clerk.load({
             ui: { ClerkUI: windowRef.__internal_ClerkUICtor },
+            ...(String(windowRef.location?.pathname || '').match(/^\/admin(?:\/|$)/)
+              ? {
+                  afterSignOutUrl: '/admin',
+                  afterMultiSessionSingleSignOutUrl: '/admin',
+                }
+              : {}),
           }),
           CLERK_OPERATION_TIMEOUT_MS,
           'clerk_initialize_timeout',

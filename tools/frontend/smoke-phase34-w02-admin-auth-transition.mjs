@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { selectAppReadiness } from '../../src/selectors/appReadinessSelectors.js';
+import { getAdminClerkSignOutOptions } from '../../src/features/auth/adminClerkSignOutPolicy.js';
+import { createClerkStagingClient } from '../../src/clerk/clerkStagingClient.js';
 const read = path => readFileSync(path, 'utf8');
 const base = {
   view: 'admin', authenticatedAdminId:'ADMIN-1', currentAuthAdminAccount:{ id: 'ADMIN-1' },
@@ -63,9 +65,81 @@ assert.match(ui,/adminSecuritySettingsRef\.current = systemAdminSettings/);n++;
 assert.match(ui,/securitySettingsOverride \|\| adminSecuritySettingsRef\.current/);n++;
 assert.doesNotMatch(ui,/window\.setTimeout\(applyAdminRoute|requestAnimationFrame\?\.\(applyAdminRoute\)/);n++;
 assert.equal((ui.match(/setAdminTab\('dashboard'\);/g)||[]).length, 2);n++;
-assert.match(ui, /const signOutClerkForRuntimeSurface = \(\) => clerkStagingClient\.signOut\(\);/);
-assert.doesNotMatch(ui, /redirectUrl: ['\"]\/admin['\"]/);
-n += 2;
+assert.match(ui, /clerkStagingClient\.signOut\(getAdminClerkSignOutOptions\(runtimeSurface\)\)/); n++;
+assert.match(ui, /const signOutClerkForRuntimeSurface = \(runtimeSurface\)/); n++;
+assert.deepEqual(getAdminClerkSignOutOptions('admin'), { redirectUrl: '/admin' }); n++;
+assert.equal(getAdminClerkSignOutOptions('user'), undefined); n++;
+// Emulate ClerkJS post-sign-out navigation and assert that the actual adapter
+// receives the admin override. The old no-argument call navigated to '/'.
+let navigatedTo = null;
+const fakeClerk = {
+  loaded: true,
+  load: async () => {},
+  signOut: async (options) => { navigatedTo = options?.redirectUrl || '/'; },
+};
+const fakeClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging', VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: `pk_test_${Buffer.from('staging.clerk.example$').toString('base64')}`,
+    VITE_API_URL: 'https://staging-api.example',
+  },
+  windowRef: {
+    Clerk: fakeClerk, atob: value => Buffer.from(value, 'base64').toString('utf8'),
+    location: { pathname: '/admin', search: '' },
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw Error('No network expected during sign-out mock'); },
+});
+await fakeClient.signOut(getAdminClerkSignOutOptions('admin'));
+assert.equal(navigatedTo, '/admin', 'admin sign-out must not enter the user homepage'); n++;
+await fakeClient.signOut(getAdminClerkSignOutOptions('user'));
+assert.equal(navigatedTo, '/', 'user surface behavior must remain unchanged'); n++;
+// A fresh ClerkJS boot must also use admin-specific after-sign-out defaults,
+// protecting implicit session cleanup and multi-session sign-out paths.
+let clerkLoadOptions = null;
+const clerkBootstrapMock = {
+  loaded: false,
+  load: async options => { clerkLoadOptions = options; clerkBootstrapMock.loaded = true; },
+  signOut: async () => {},
+};
+const bootClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging', VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: `pk_test_${Buffer.from('staging.clerk.example$').toString('base64')}`,
+    VITE_API_URL: 'https://staging-api.example',
+  },
+  windowRef: {
+    Clerk: clerkBootstrapMock,
+    atob: value => Buffer.from(value, 'base64').toString('utf8'),
+    location: { pathname: '/admin', search: '' },
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw Error('No network expected during Clerk bootstrap mock'); },
+});
+await bootClient.initialize();
+assert.equal(clerkLoadOptions.afterSignOutUrl, '/admin'); n++;
+assert.equal(clerkLoadOptions.afterMultiSessionSingleSignOutUrl, '/admin'); n++;
+const userBootstrapMock = {
+  loaded: false,
+  load: async options => { clerkLoadOptions = options; userBootstrapMock.loaded = true; },
+};
+const userBootClient = createClerkStagingClient({
+  env: {
+    MODE: 'staging', VITE_CLERK_STAGING_ENABLED: 'true',
+    VITE_CLERK_PUBLISHABLE_KEY: `pk_test_${Buffer.from('staging.clerk.example$').toString('base64')}`,
+    VITE_API_URL: 'https://staging-api.example',
+  },
+  windowRef: {
+    Clerk: userBootstrapMock,
+    atob: value => Buffer.from(value, 'base64').toString('utf8'),
+    location: { pathname: '/', search: '' },
+  },
+  documentRef: {},
+  fetchImpl: async () => { throw Error('No network expected during Clerk bootstrap mock'); },
+});
+await userBootClient.initialize();
+assert.equal(clerkLoadOptions.afterSignOutUrl, undefined); n++;
+
 const app = read('src/admin/AdminApp.jsx');
 assert.match(app, /adminAuthTransitionPending: readAdminAuthTransition\(\)\?\.status === ['\"]pending['\"]/);n++;
 const boot = read('src/features/auth/useAdminIdentityPolicyController.js');
