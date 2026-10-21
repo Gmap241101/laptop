@@ -135,6 +135,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
     setAdminTab,
     shouldShowAdminAccountsErrorPage,
     shouldShowAdminLoadingPage,
+    shouldShowAdminSigningOutPage,
     shouldShowAdminLoginPage,
   } = ctx;
 
@@ -338,7 +339,9 @@ function AdminWorkspace({ ctx, panelCtx }) {
   };
 
   return (
-          shouldShowAdminLoadingPage ? (
+          shouldShowAdminSigningOutPage ? (
+            <div role="status" className="mx-auto p-8 text-center text-sm text-slate-500">로그아웃 중...</div>
+          ) : shouldShowAdminLoadingPage ? (
             <Card className="mx-auto w-full max-w-xl overflow-hidden border-slate-200 bg-white shadow-sm">
               <CardContent className="p-8 text-center">
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl mk-brand-gradient-tr text-white mk-brand-shadow-md">
@@ -348,7 +351,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   관리자 데이터를 확인하는 중입니다.
                 </h2>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
-                  PostgreSQL 관리자 레지스트리와 Clerk 인증 상태를 확인한 뒤 관리자 인증 화면을 표시합니다.
+                  관리자 로그인 상태를 확인하고 있습니다.
                 </p>
               </CardContent>
             </Card>

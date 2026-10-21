@@ -30,6 +30,48 @@ export const createSystemConfigRepository = (pool) => {
         client.release();
       }
     },
+    async deleteDeviceTrustPolicy() {
+      // Must be called under the existing Device Trust advisory lock.
+      await pool.query("DELETE FROM app_system_configuration WHERE config_key = 'device-trust-policy'");
+    },
+    async startDeviceTrustOperation({ operationId, kind, policyRevision, previousPolicyPresent = false,
+      previousPolicy = null, requestedEnabled, targetIds = [] }) {
+      await pool.query(`INSERT INTO app_device_trust_operations
+        (operation_id, operation_kind, result_status, policy_revision, previous_policy_present,
+         previous_policy, requested_enabled, target_ids)
+        VALUES ($1::uuid,$2,'applying',$3,$4,$5::jsonb,$6,$7::jsonb)`,
+      [operationId, kind, policyRevision, previousPolicyPresent,
+        previousPolicy == null ? null : JSON.stringify(previousPolicy), requestedEnabled, JSON.stringify(targetIds)]);
+    },
+    async updateDeviceTrustOperation({ operationId, status, checkpoint = 'verified', errorCode = '',
+      failedIds = [], accountResults = [] }) {
+      const result = await pool.query(`UPDATE app_device_trust_operations SET
+        result_status=$2, checkpoint=$3, error_code=$4, failed_ids=$5::jsonb,
+        account_results=$6::jsonb, updated_at=NOW(),
+        completed_at=CASE WHEN $2 IN ('synchronized','failed_recovered','recovered') THEN NOW() ELSE NULL END
+        WHERE operation_id=$1::uuid RETURNING operation_id`,
+      [operationId, status, checkpoint, String(errorCode).slice(0,120),
+        JSON.stringify(failedIds), JSON.stringify(accountResults)]);
+      if (!result.rows.length) throw Object.assign(new Error('Device Trust operation checkpoint missing'), {
+        code: 'device_trust_operation_checkpoint_missing', status: 503,
+      });
+    },
+    async listPendingDeviceTrustOperations() {
+      const result = await pool.query(`SELECT operation_id, result_status, requested_enabled,
+        policy_revision, error_code, checkpoint, created_at, updated_at
+        FROM app_device_trust_operations
+        WHERE result_status IN ('applying','recovery_required')
+        ORDER BY created_at LIMIT 20`);
+      return result.rows.map(row => ({ operationId: row.operation_id, status: row.result_status,
+        requestedEnabled: row.requested_enabled, policyRevision: Number(row.policy_revision),
+        errorCode: row.error_code, checkpoint: row.checkpoint, updatedAt: row.updated_at }));
+    },
+    async markRecoveredDeviceTrustOperations(exceptOperationId = '') {
+      await pool.query(`UPDATE app_device_trust_operations SET result_status='recovered',
+        checkpoint='reconciled', completed_at=NOW(), updated_at=NOW()
+        WHERE result_status IN ('applying','recovery_required')
+          AND operation_id::text <> $1`, [String(exceptOperationId)]);
+    },
     async listDeviceTrustAudit({ limit = 50 } = {}) {
       const safeLimit = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 50)));
       const result = await pool.query(`SELECT event_id, operation_id, actor_clerk_user_id, event_type,

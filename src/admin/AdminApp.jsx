@@ -652,6 +652,7 @@ export default function AdminApp() {
     memberIdentityClaimsReady,
     shouldShowAdminAccountsErrorPage,
     shouldShowAdminLoadingPage,
+    shouldShowAdminSigningOutPage,
     shouldShowAdminLoginPage,
   } = selectAppReadiness({
     adminAccountsLoadErrorMessage,
@@ -1410,6 +1411,7 @@ export default function AdminApp() {
     setAdminTab,
     shouldShowAdminAccountsErrorPage,
     shouldShowAdminLoadingPage,
+    shouldShowAdminSigningOutPage,
     shouldShowAdminLoginPage,
     startEditAdminAccount,
     stats,

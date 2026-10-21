@@ -76,12 +76,15 @@ export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurfac
     () => (runtimeSurface === 'admin' ? readAdminAuthSession().policyVersion : 0)
   );
   const adminLogoutInProgressRef = useRef(false);
+  // Policy refreshes must not recreate the session bootstrap callback.
+  const adminSecuritySettingsRef = useRef(systemAdminSettings);
+  adminSecuritySettingsRef.current = systemAdminSettings;
 
   const setAdminAuthenticatedSession = useCallback(
     (adminId, securitySettingsOverride = null) => {
       const nextSession = saveAdminAuthSession(
         adminId,
-        securitySettingsOverride || systemAdminSettings
+        securitySettingsOverride || adminSecuritySettingsRef.current
       );
 
       setAuthenticatedAdminId(nextSession.adminId);
@@ -89,7 +92,7 @@ export const useAdminAuthenticationState = ({ systemAdminSettings, runtimeSurfac
       setAdminAuthAbsoluteExpiresAt(nextSession.absoluteExpiresAt);
       setAdminAuthPolicyVersion(nextSession.policyVersion);
     },
-    [systemAdminSettings]
+    []
   );
 
   const clearAdminAuthenticatedSession = useCallback(() => {
@@ -278,26 +281,15 @@ export default function useAdminAuthenticationController({
   }, [normalizeAdminAccounts, setAdminAccounts, setCurrentAuthAdminAccount, setCurrentAuthRoleErrorMessage, setCurrentAuthRoleReady]);
 
   const stabilizeAdminPostLoginRoute = useCallback(() => {
-    const applyAdminRoute = () => {
-      replaceAppPath('admin');
-      setAdminTab('dashboard');
-      setView('admin');
-      setIsCommunityMenuOpen(false);
-    };
-
-    applyAdminRoute();
-
-    if (typeof window !== 'undefined') {
-      if (typeof window.queueMicrotask === 'function') {
-        window.queueMicrotask(applyAdminRoute);
-      }
-      window.requestAnimationFrame?.(() => {
-        window.requestAnimationFrame?.(applyAdminRoute);
-      });
-      window.setTimeout(applyAdminRoute, 150);
-      window.setTimeout(applyAdminRoute, 600);
-    }
-  }, [setAdminTab, setIsCommunityMenuOpen, setView]);
+    // A single synchronous correction: later timers used to overwrite the
+    // administrator's own tab selection after login.
+    const path = typeof window === 'undefined' ? '/admin' : window.location.pathname.replace(/\/+$/, '') || '/';
+    if (!['/admin', '/admin/index.html'].includes(path)) replaceAppPath('admin');
+    setView('admin');
+    setIsCommunityMenuOpen(false);
+    // The interactive login handler chooses dashboard exactly once; correcting
+    // a wrong URL must not rewrite the current administrator tab.
+  }, [setIsCommunityMenuOpen, setView]);
 
   useEffect(() => {
     if (runtimeSurface !== 'admin') return undefined;
@@ -783,6 +775,7 @@ export default function useAdminAuthenticationController({
     setAdminAuthForm(createDefaultAdminAuthForm());
     writeAdminRouteIntent();
     setAdminPostLoginRouteGuardActive(true);
+    setAdminTab('dashboard');
     stabilizeAdminPostLoginRoute();
 
     triggerToast(
@@ -877,6 +870,7 @@ export default function useAdminAuthenticationController({
         setAdminAuthForm(createDefaultAdminAuthForm());
         writeAdminRouteIntent();
         setAdminPostLoginRouteGuardActive(true);
+        setAdminTab('dashboard');
         stabilizeAdminPostLoginRoute();
         publishAccountAuthObservation({
           adminClerkAuthRequested: true,

@@ -10,13 +10,25 @@ const trim = (value) => String(value ?? '').trim();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isMissing = (error) => Number(error?.status || 0) === 404 || error?.code === 'clerk_user_not_found';
-const transient = (error) => [429, 500, 502, 503, 504].includes(Number(error?.status || 0));
+const transient = (error) => [408, 429, 500, 502, 503, 504].includes(Number(error?.status || 0)) ||
+  ['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_CONNECT_TIMEOUT', 'AbortError', 'clerk_api_timeout', 'clerk_api_unavailable'].includes(String(error?.code || error?.name || ''));
+const retryAfterMs = (error) => {
+  const value = error?.retryAfter ?? error?.headers?.['retry-after'] ?? error?.headers?.get?.('retry-after');
+  if (value == null) return 0;
+  const seconds = Number(value);
+  const millis = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+  return Number.isFinite(millis) ? Math.max(0, millis) : 0;
+};
 const withRetry = async (work) => {
   for (let attempt = 0; ; attempt += 1) {
     try { return await work(); }
     catch (error) {
       if (attempt >= 2 || !transient(error)) throw error;
-      await sleep((attempt + 1) * 200);
+      const exponential = Math.min(1500, 200 * 2 ** attempt);
+      const delay = Math.max(retryAfterMs(error), exponential + Math.floor(Math.random() * 75));
+      // A long Retry-After must not be violated or hold the Heroku request indefinitely.
+      if (delay > 5000) throw error;
+      await sleep(delay);
     }
   }
 };
@@ -115,13 +127,16 @@ export const createClerkDeviceTrustService = ({
     }
     return confirmed.user;
   };
-  const applyAndVerify = async (ids, bypass) => {
+  const applyAndVerify = async (ids, bypass, onFirstPass = null) => {
     const first = await settleConcurrent(ids, async (id) => {
       const inspected = await readUser(id);
       if (inspected.missing) return 'missing';
       if (inspected.user?.bypassClientTrust !== bypass) await updateUser(id, bypass);
       return 'updated';
     });
+    if (onFirstPass) await onFirstPass({ failedIds: first.flatMap((r,i) => r.ok ? [] : [ids[i]]),
+      accountResults: first.map((r,i) => ({ id: ids[i], status: r.ok ? 'applied' : 'uncertain',
+        errorCode: r.ok ? '' : trim(r.error?.code || r.error?.status || 'clerk_failed') })) });
     // Re-read the authoritative account list: an account could have been created
     // during a long-running bulk update. Never claim success until verified.
     const latestIds = await collectTargets();
@@ -143,6 +158,8 @@ export const createClerkDeviceTrustService = ({
     return {
       failedIds: [...new Set(failed)],
       accountCount: latestIds.length,
+      accountResults: checked.map((r,i) => ({ id: latestIds[i], status: r.ok ? 'verified' : 'uncertain',
+        errorCode: r.ok ? '' : trim(r.error?.code || r.error?.status || 'clerk_failed') })),
       orphanedActiveAccountCount: [...first, ...checked].filter(
         (result) => !result.ok && result.error?.code === 'clerk_device_trust_orphaned_active').length,
       skippedAccountCount: checked.filter((result) => result.ok && result.value === 'missing').length,
@@ -169,8 +186,25 @@ export const createClerkDeviceTrustService = ({
     policyRevision: Number(state?.policyRevision || 0),
     orphanedActiveAccountCount: Number(state?.orphanedActiveAccountCount || 0),
     recoveryRequired: ['recovery_required', 'applying'].includes(state?.status),
+    recoveryErrorCode: trim(state?.recoveryErrorCode || ''),
   });
 
+  // W02 durable checkpoints. Legacy in-memory smoke fixtures omit these hooks,
+  // while the production system-config repository implements all of them.
+  const journal = async (method, payload) => {
+    if (typeof systemConfigService[method] === 'function') return systemConfigService[method](payload);
+  };
+  const checkpoint = async (operationId, status, checkpointName, outcome = {}, errorCode = '') => {
+    await journal('updateDeviceTrustOperation', { operationId, status, checkpoint: checkpointName,
+      errorCode, failedIds: outcome.failedIds || [], accountResults: outcome.accountResults || [] });
+  };
+  const pendingOperations = async () =>
+    typeof systemConfigService.listPendingDeviceTrustOperations === 'function'
+      ? systemConfigService.listPendingDeviceTrustOperations() : [];
+  const beginOperation = async ({ operationId, kind, revision, previousPolicyPresent,
+    previousPolicy, requestedEnabled, targetIds }) =>
+    journal('startDeviceTrustOperation', { operationId, kind, policyRevision: revision,
+      previousPolicyPresent, previousPolicy, requestedEnabled, targetIds });
   const reconcileUnderLock = async (enabled, actorClerkUserId, operationId, revision = 0) => {
     const desired = !enabled;
     const ids = await collectTargets();
@@ -198,9 +232,15 @@ export const createClerkDeviceTrustService = ({
       const [policy, syncState] = await Promise.all([
         readDeviceTrustPolicy(systemConfigService), systemConfigService.getDeviceTrustSyncState(),
       ]);
+      const pending = await pendingOperations();
+      const sync = redactedState(syncState);
+      const stale = pending.some(op => op.status === 'recovery_required' ||
+        !Number.isFinite(Date.parse(op.updatedAt)) || Date.now() - Date.parse(op.updatedAt) >= 90000);
       return Object.freeze({ ...configurationStatus, enabled: policy.enabled,
         bypassClientTrust: !policy.enabled, policySource: policy.source,
-        sync: redactedState(syncState) });
+        sync: pending.length ? { ...sync, status: stale ? 'recovery_required' : 'applying',
+          recoveryRequired: stale, pendingOperationCount: pending.length,
+          recoveryErrorCode: pending[0]?.errorCode || sync.recoveryErrorCode } : sync });
     },
     async reconcile({ actorClerkUserId = '' } = {}) {
       ensureConfigured();
@@ -209,21 +249,36 @@ export const createClerkDeviceTrustService = ({
         const policy = await readDeviceTrustPolicy(systemConfigService);
         const { enabled, revision } = policy;
         const operationId = randomUUID();
+        const targetIds = await collectTargets();
+        await beginOperation({ operationId, kind: 'reconcile', revision,
+          previousPolicyPresent: policy.source === 'postgresql', previousPolicy: null,
+          requestedEnabled: enabled, targetIds });
         await audit('reconcile_started', { operationId, actorClerkUserId, policyRevision: revision,
           requestedEnabled: enabled, status: 'applying' });
         let result;
         try {
           result = await reconcileUnderLock(enabled, actorClerkUserId, operationId, revision);
+          await checkpoint(operationId, result.status, 'verified', result);
+          if (result.status === 'synchronized') {
+            await journal('markRecoveredDeviceTrustOperations', operationId);
+          }
           await audit('reconcile_finished', { operationId, actorClerkUserId, policyRevision: revision,
             finalEnabled: enabled, status: result.status, accountCount: result.accountCount,
             failedAccountCount: result.failedIds.length, skippedAccountCount: result.skippedAccountCount,
             errorCode: result.orphanedActiveAccountCount ? 'clerk_device_trust_orphaned_active' : '' });
         } catch (error) {
+          const failure = result || {};
+          await checkpoint(operationId, 'recovery_required', 'reconcile_failed', failure,
+            trim(error?.code || 'reconciliation_failed'));
           await saveState({ status: 'recovery_required', operationId, policyEnabled: enabled,
-            policyRevision: revision, failedAccountCount: 0,
+            policyRevision: revision, accountCount: failure.accountCount || 0,
+            failedAccountCount: failure.failedIds?.length || 0,
+            failedClerkUserIds: failure.failedIds || [],
             recoveryErrorCode: trim(error?.code || 'reconciliation_failed') }, actorClerkUserId);
           await audit('reconcile_failed', { operationId, actorClerkUserId, policyRevision: revision,
-            finalEnabled: enabled, status: 'recovery_required', errorCode: trim(error?.code || 'reconciliation_failed') });
+            finalEnabled: enabled, status: 'recovery_required', accountCount: failure.accountCount || 0,
+            failedAccountCount: failure.failedIds?.length || 0,
+            errorCode: trim(error?.code || 'reconciliation_failed') });
           throw error;
         }
         if (result.status !== 'synchronized') {
@@ -244,19 +299,29 @@ export const createClerkDeviceTrustService = ({
         throw serviceError('clerk_device_trust_enabled_invalid', 'Device Trust enabled must be a boolean.', 400);
       }
       return systemConfigService.withDeviceTrustLock(async () => {
+        const pending = await pendingOperations();
+        if (pending.length) throw serviceError('clerk_device_trust_recovery_required',
+          'Finish the pending Device Trust recovery before changing policy.', 409);
         const policy = await readDeviceTrustPolicy(systemConfigService);
         const previousEnabled = policy.enabled;
         const revision = policy.revision + 1;
         const existing = await systemConfigService.get(POLICY_KEY);
         const operationId = randomUUID();
         const targets = await collectTargets();
+        const previousPolicyPresent = policy.source === 'postgresql';
+        await beginOperation({ operationId, kind: 'policy_change', revision,
+          previousPolicyPresent, previousPolicy: previousPolicyPresent ? existing.payload : null,
+          requestedEnabled: enabledValue, targetIds: targets });
         await audit('policy_change_started', { operationId, actorClerkUserId, policyRevision: revision,
           previousEnabled, requestedEnabled: enabledValue, status: 'applying', accountCount: targets.length });
         await saveState({ status: 'applying', operationId, policyEnabled: previousEnabled,
           policyRevision: policy.revision, requestedEnabled: enabledValue,
           accountCount: targets.length, failedAccountCount: 0 }, actorClerkUserId);
         try {
-          const result = await applyAndVerify(targets, !enabledValue);
+          const result = await applyAndVerify(targets, !enabledValue, (first) =>
+            checkpoint(operationId, 'applying', 'initial_clerk_pass', first));
+          await checkpoint(operationId, result.failedIds.length ? 'recovery_required' : 'applying',
+            'verified_clerk_accounts', result);
           if (result.failedIds.length) {
             throw serviceError('clerk_device_trust_user_sync_partial_failure', 'Some Clerk account updates failed.', 503);
           }
@@ -271,6 +336,7 @@ export const createClerkDeviceTrustService = ({
             accountCount: result.accountCount, failedAccountCount: 0,
             skippedAccountCount: result.skippedAccountCount,
             orphanedActiveAccountCount: result.orphanedActiveAccountCount }, actorClerkUserId);
+          await checkpoint(operationId, 'synchronized', 'committed', result);
           await audit('policy_change_finished', { operationId, actorClerkUserId, policyRevision: revision,
             previousEnabled, requestedEnabled: enabledValue, finalEnabled: enabledValue,
             status: 'synchronized', accountCount: result.accountCount,
@@ -286,26 +352,45 @@ export const createClerkDeviceTrustService = ({
           // Roll back *all* candidates, not only the operations that returned a
           // success response. Clerk may apply a change and then time out.
           let recovery = { status: 'recovery_required', failedIds: targets, accountCount: targets.length };
+          let compensationError = null;
           try {
-            await systemConfigService.put({ key: POLICY_KEY,
-              actorClerkUserId: trim(actorClerkUserId), payload: existing?.payload || {} });
+            // If the previous policy was the secure default, restore ABSENCE,
+            // never create an invalid empty JSON object as a bogus policy.
+            if (previousPolicyPresent) {
+              await systemConfigService.put({ key: POLICY_KEY,
+                actorClerkUserId: trim(actorClerkUserId), payload: existing.payload });
+            } else {
+              if (typeof systemConfigService.deleteDeviceTrustPolicy !== 'function') {
+                throw serviceError('device_trust_policy_delete_unavailable', 'Cannot restore default policy.', 503);
+              }
+              await systemConfigService.deleteDeviceTrustPolicy();
+            }
             recovery = await reconcileUnderLock(previousEnabled, actorClerkUserId, operationId, policy.revision);
-          } catch { /* an error never means compensation succeeded */ }
+          } catch (rollbackError) {
+            compensationError = rollbackError;
+          }
+          const recoverNeeded = Boolean(compensationError || recovery.failedIds?.length);
+          const recoveryStatus = recoverNeeded ? 'recovery_required' : 'failed_recovered';
+          const recoveryCode = trim(compensationError?.code || error?.code || 'policy_change_failed');
+          // A durable operation checkpoint is recorded even when the normal
+          // sync-state record fails; it can be inspected after a dyno restart.
+          await checkpoint(operationId, recoveryStatus, compensationError ? 'compensation_failed' : recovery.failedIds?.length ? 'compensation_partial' : 'compensation_verified',
+            recovery, recoveryCode);
           try {
-            await saveState({ status: recovery.failedIds?.length ? 'recovery_required' : 'failed_recovered',
-              operationId, policyEnabled: previousEnabled, policyRevision: policy.revision,
+            await saveState({ status: recoveryStatus, operationId,
+              policyEnabled: previousEnabled, policyRevision: policy.revision,
               accountCount: recovery.accountCount,
-              failedAccountCount: recovery.failedIds?.length || 0,
-              failedClerkUserIds: recovery.failedIds || [] }, actorClerkUserId);
+              failedAccountCount: recoverNeeded ? Math.max(1, recovery.failedIds?.length || 0) : 0,
+              failedClerkUserIds: recovery.failedIds || [], recoveryErrorCode: recoveryCode }, actorClerkUserId);
           } catch {
             throw serviceError('clerk_device_trust_recovery_record_failed', 'Device Trust recovery and audit status could not be saved.', 503);
           }
           await audit('policy_change_failed', { operationId, actorClerkUserId,
             policyRevision: revision, previousEnabled, requestedEnabled: enabledValue,
-            finalEnabled: previousEnabled, status: recovery.failedIds?.length ? 'recovery_required' : 'failed_recovered',
-            accountCount: recovery.accountCount, failedAccountCount: recovery.failedIds?.length || 0,
-            errorCode: trim(error?.code || 'policy_change_failed') });
-          if (recovery.failedIds?.length) {
+            finalEnabled: previousEnabled, status: recoveryStatus,
+            accountCount: recovery.accountCount, failedAccountCount: recoverNeeded ? Math.max(1, recovery.failedIds?.length || 0) : 0,
+            errorCode: recoveryCode });
+          if (recoverNeeded) {
             throw serviceError('clerk_device_trust_recovery_required', 'Device Trust synchronization failed; reconciliation is required.', 503);
           }
           throw serviceError(error?.code || 'clerk_device_trust_write_failed', 'Device Trust update failed; the previous policy has been restored.', error?.status || 503);

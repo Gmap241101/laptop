@@ -72,7 +72,7 @@ const AdminShell = ({
           </button>
 
           <div className="flex w-fit items-center gap-2">
-            {isAdminAuthenticated && authenticatedAdminAccount ? (
+            {isAdminAuthenticated && !adminLogoutInProgress && authenticatedAdminAccount ? (
               <div className="hidden rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 sm:block">
                 {authenticatedAdminAccount.adminLoginId} 인증됨
               </div>
@@ -82,7 +82,7 @@ const AdminShell = ({
               관리자 모드
             </div>
 
-            {isAdminAuthenticated ? (
+            {isAdminAuthenticated && !adminLogoutInProgress ? (
               <>
                 <Button
                   type="button"
@@ -108,7 +108,7 @@ const AdminShell = ({
       </header>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
-        {shouldShowStats ? (
+        {shouldShowStats && !adminLogoutInProgress ? (
           <DevRenderProfiler id="Admin:RentalStatusBoard">
             <RentalStatusBoard
               stats={stats}
@@ -127,7 +127,7 @@ const AdminShell = ({
         </DevRenderProfiler>
       </main>
 
-      {shouldRenderAdminDialogs ? (
+      {shouldRenderAdminDialogs && !adminLogoutInProgress ? (
         <DevRenderProfiler id="Admin:Dialogs">
           <AdminDialogs ctx={contextGroups.app.dialogs} />
         </DevRenderProfiler>

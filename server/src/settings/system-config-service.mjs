@@ -34,6 +34,11 @@ export const createSystemConfigService = ({ repository }) => {
       }
       return Object.freeze({ enabled: payload.deviceTrustEmailVerificationEnabled, revision, source: 'postgresql' });
     },
+    async deleteDeviceTrustPolicy() { return repository.deleteDeviceTrustPolicy?.(); },
+    async startDeviceTrustOperation(data) { return repository.startDeviceTrustOperation?.(data); },
+    async updateDeviceTrustOperation(data) { return repository.updateDeviceTrustOperation?.(data); },
+    async listPendingDeviceTrustOperations() { return repository.listPendingDeviceTrustOperations?.() || []; },
+    async markRecoveredDeviceTrustOperations(exceptId) { return repository.markRecoveredDeviceTrustOperations?.(exceptId); },
     async listDeviceTrustAudit({ limit = 50 } = {}) { return repository.listDeviceTrustAudit({ limit }); },
     async appendDeviceTrustAudit(event) { return repository.appendDeviceTrustAudit(event); },
     async getDeviceTrustSyncState() {

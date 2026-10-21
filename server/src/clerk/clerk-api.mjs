@@ -108,6 +108,11 @@ export const createClerkBackendClient = ({ secretKey, apiUrl = DEFAULT_CLERK_API
       }
       const error = createClerkApiError('clerk_api_error', `Clerk Backend API returned HTTP ${response.status}.`, response.status);
       error.details = details;
+      // W02: preserve bounded Retry-After guidance from Clerk rate limits.
+      // Never expose authorization headers, secret keys or response bodies to UI.
+      if (response.status === 429 || response.status === 503) {
+        error.retryAfter = response.headers?.get?.('retry-after') ?? null;
+      }
       throw error;
     }
 

@@ -630,8 +630,12 @@ export default function AdminAccountSecurityPanel({ ctx }) {
             ) : null}
             {deviceTrustState.sync?.recoveryRequired ? (
               <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                새 기기 로그인 인증 설정이 일부 계정에 적용되지 않았습니다. 아래에서 다시 적용해 주세요.
-                {` (미적용 ${deviceTrustState.sync.failedAccountCount || 0}건)`}
+                새 기기 로그인 인증 설정의 계정 적용 상태를 확인해야 합니다. 다시 적용해 주세요.
+                {deviceTrustState.sync.failedAccountCount > 0
+                  ? ` (미적용 ${deviceTrustState.sync.failedAccountCount}건)`
+                  : ' (상태 재확인 필요)'}
+                {deviceTrustState.sync.recoveryErrorCode
+                  ? ` 오류 코드: ${deviceTrustState.sync.recoveryErrorCode}` : ''}
               </div>
             ) : null}
             {isOwner ? (
