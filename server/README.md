@@ -1,63 +1,58 @@
-# Rental API - Phase 34 current runtime
+# Rental API — Phase 34 current runtime and operations (2026-10-21)
 
-## Current authority
+## Authoritative services
 
-- Authentication: Clerk
-- Application data: PostgreSQL
-- Administrator registry and security policy: PostgreSQL
-- Rental requests, assets, members, boards, site content, policy content, and data-management operations: PostgreSQL
-- Runtime server entry: `server/src/index.mjs`
-- Main HTTP application: `server/src/app.mjs`
+- **Authentication and Device Trust:** Clerk. Server-side authorization, owner-only administration, recovery and audit are enforced by the Node API.
+- **Application data:** PostgreSQL (Heroku Staging Essential-0; single existing database). Membership, rentals, assets, board content, settings and data maintenance are authoritative in PostgreSQL.
+- **Runtime:** `server/src/index.mjs` starts `server/src/app.mjs`.
+- **Firebase:** externally retired from the application runtime. `src/firebase.js`, server Firebase/Firestore clients and Firebase npm SDK are absent. Compatibility fields such as `firebase_uid` and the table `app_user_firebase_links` remain for historical identity reference. **Never delete those columns or tables merely to remove Firebase.** The locally implemented `retiredLegacyDataCompat.js` is not a live Firebase client.
 
-## Deployment
+## Environments and release control
 
-Heroku runs the Node.js API with `DATABASE_URL` and Clerk server credentials. Production GitHub Pages Actions builds and serves the Vite user and administrator frontend documents; Vercel provides Staging.
+- **Staging frontend:** `https://mkrental.vercel.app` (administrator path `/admin`); Staging source is GitHub `gh-pages-3`.
+- **Staging backend:** Heroku app `notebook-rental-api-staging-01`; the Git remote must be `heroku-staging`.
+- **Production backend:** configured separately; do **not** push to the `heroku` or `heroku-production` remotes while testing Staging.
+- **Production frontend:** GitHub Pages from the `gh-pages` branch via `.github/workflows/pages-production.yml`. The workflow uses Node.js 22, checkout/setup-node v6, and `npm run build:production:pages`. The only standard production promotion mechanism is `tools/deployment/promote-github-pages-actions-production.ps1` (requires a separate explicit approval). `deploy.ps1 v13.5` is the Staging ZIP-apply/build/push operator flow; do not select its Production publish option as a production promotion substitute.
+- `gh-pages-2` is a historical backup branch. It must not be assumed to be the commit immediately preceding a new production promotion.
+- Historical GitHub Actions Node 20/runner warnings are maintenance issues to reassess against live GitHub workflow logs. Do not change Actions versions, secrets, runner or deployment settings without separate approval.
 
-## Migrations
+## Database migrations
 
-Applied migrations are immutable. Add a new numbered migration for future schema changes instead of editing an already-applied migration. The current Phase 34 line expects migrations through 038. Migration 028 consolidates the first duplicate legacy PostgreSQL stores into canonical tables/documents. Migration 029 performs the final verified physical cleanup: it moves rental restrictions into `app_rental_restrictions`, migrates any legacy rental-config borrower copy into `app_member_directory_entries`, removes obsolete sync/shadow tables, strips duplicate signup-term body copies, and derives status from canonical tables/views. Each destructive step is guarded by counterpart verification and the migration runner transaction.
+Migrations **001–043** are present in the current Phase 34 source line, including:
 
-## Legacy compatibility
+- `038_phase34_footer_reset_recovery_inquiry_reset.sql`: footer and inquiry reset preservation.
+- `039_phase34_p0_scoped_json_restore_audit.sql`: selective JSON restore audit.
+- `040_phase34_p0_web_backup_verification_jobs.sql`: backup verification jobs.
+- `041_phase34_p0_single_db_scoped_restore_safety.sql`: atomic selective-restore preimages in the existing DB.
+- `042_phase34_w01_device_trust_security_audit.sql`: W01 policy audit.
+- `043_phase34_w02_device_trust_operation_recovery.sql`: W02 recovery operations and policy convergence.
 
-Historical migration files remain immutable, but the live schema after migration 029 must not retain the retired duplicate/shadow/sync stores. Compatibility identity fields such as `firebase_uid` and `app_user_firebase_links` remain because they still bridge historical identities to the Clerk/PostgreSQL account authority; they are not an external Firebase runtime authority.
+Never edit an already-applied migration. Staging reports migration 043 already applied. For any new schema change, add a new numbered migration and separately validate on Staging before seeking Production approval.
+
+## System-data backup and restore — current behavior
+
+Two operations **must not be confused**:
+
+1. **Full database backup/restore:** Existing Heroku PGBackups archives can be downloaded and checked with SHA-256, `pg_restore --list` and a read-only SQL-generation pass (`pg_restore --file NUL` on Windows). This is an **archive integrity check**, not proof that the database was restored successfully. The original isolated-database restore acceptance requirement **AC-S04 remains not executed and not accepted** under the no-new-DB policy.
+2. **Scoped application JSON restore:** `POST /api/admin/system-data/restore/preview` and `/execute` operate on four allowed scopes (`site`, `boards`, `assets`, `organization`) in `addMissing` or `overwrite` mode (neither deletes out-of-scope data). In `BACKUP_VERIFY_MODE=single-db`, the API uses migration 041's transaction-bound before-image journal and atomic PostgreSQL writes instead of requiring isolated restore proof for this **narrow JSON operation only**. The preview lasts **10-minute** server time (`previewIssuedAt`, `previewExpiresAt`), and execute rejects expired or mismatched previews before writes. Execution still requires owner access, confirmation, supported schema and state checks, and audit.
+
+**Full database reset** (`POST /api/admin/system-data/reset`) is not the same as scoped JSON restore. In single-db mode, `backup_verification_independent_restore_required` or the corresponding reset-proof guard **blocks destructive reset** without actual independent full-restore proof. A read-only logical verification must not unlock it. No new DB, storage, worker or paid add-on is authorized.
+
+Legacy materials describing a mandatory 60-minute independent restore proof for *every* JSON selective restore predate migration 041 and the W03 10-minute preview change. They must not override the current API contracts. The 60-minute proof model and the new 10-minute preview expiration are distinct concepts.
+
+## Staging backup verification boundary
+
+On 2026-10-21, the operator inspected completed backup `a004` (created 2026-10-21 03:03 KST, before migration 043). The downloaded `latest.dump` had 219,761 bytes, SHA-256 `D61639D489453D041E0FE6F6916519A6EE419E84348D499AF2B1ECD13570F837`, 205 TOC entries and passed `pg_restore --file NUL`. It **does not contain `app_device_trust_operations`**. Subsequent downloads of `a004` do not create a post-migration backup. A newly *created* completed PGBackups archive must be checked separately; never delete or overwrite user data to test backup health.
+
+See `docs/phase34-w05-firebase-retirement-operations-20261021.md` for operator commands and W05 evidence. W03 acceptance Z01–Z09 is awaiting formal sign-off; original AC-S04 must remain unaccepted until actually proved by an approved isolated restore.
 
 ## Validation
 
-Run:
-
 ```bash
 npm run verify:phase34
+npm run server:phase34:external-runtime:smoke
+npm run frontend:phase34:external-runtime:smoke
+npm run frontend:phase34:w05-retirement:smoke
 ```
 
-The verification suite checks migrations, Clerk authentication, PostgreSQL domain flows, user/admin application contracts, external retired-provider runtime access, package integrity, data management, and current Phase 34 regressions.
-
-## Clerk Device Trust administrator control
-
-The administrator **Account Security Settings** page can read and change the live Clerk Device Trust setting for the shared Clerk instance. This controls whether both user and administrator password sign-ins can be challenged for new-device verification.
-
-Device Trust uses the existing **CLERK_SECRET_KEY** with the Clerk Backend API to set the per-user `bypass_client_trust` attribute. No separate Platform API credentials are required. Keep the Clerk Dashboard Device Trust setting enabled; the application policy determines the per-account bypass. The policy `device-trust-policy` and its `device-trust-sync-state` are retained during ordinary site-settings resets. Only the owner administrator may change or reconcile these policies.
-
-If Clerk rejects an account update, the API attempts compensation and stores recovery status. The administrator Account Security page shows unresolved partial synchronization and an owner-only **기존 계정에 다시 적용** action. Never represent partial success as a completed security policy update.
-
-## Verified destructive reset prerequisite
-
-The web UI's JSON download is a selective application-data extract, **not** an entire PostgreSQL database backup. All destructive system-data resets now require a **single-use, one-hour full backup restore proof** recorded by `server/scripts/verify-full-backup-restore.mjs` after a `pg_dump` and a successful `pg_restore` into an empty, isolated disposable PostgreSQL database. The script compares all public table inventories and row counts. See `docs/phase34-p0-security-runbook-20261019.md` for safe operating steps. Do not run restoration against staging or production databases.
-
-Migration 038 restores footer common content and inquiry-reset policies. Existing migrations must not be edited.
-
-Migration 036 adds secure-attachment file-size metadata and atomic successful-download counters without exposing external target URLs. Existing attachment counts start at zero; file size is populated by safe metadata probing for new/changed URLs or by the first successful proxied download. Attachment display names are optional for new/changed external URLs: when omitted, the secure metadata probe uses the upstream Content-Disposition filename when available and otherwise falls back to the final HTTPS URL path filename.
-
-Migration 037 makes notice-board view counts unique per browser profile. The browser keeps a random opaque viewer ID locally; the backend stores only its SHA-256 hash per notice and increments `view_count` only when that `(post_id, viewer_hash)` pair is first inserted. Existing historical `view_count` values are preserved as the pre-migration baseline.
-
-## Phase 34 P0 JSON selective restore (2026-10-19)
-
-- New migration: `039_phase34_p0_scoped_json_restore_audit.sql` (preserves earlier migrations 001–038).
-- Owner-only endpoints: `POST /api/admin/system-data/restore/preview`, `POST /api/admin/system-data/restore/execute`.
-- Maximum POST body: 8 MiB. Supported backup: `mk-rental-postgresql-backup-v1` (Migration 038 baseline and matching recorded migration hashes).
-- Supported safe scopes: `site`, `boards`, `assets`, `organization`. Modes: `addMissing`, `overwrite` (no deletion). Member accounts, rentals, inquiries, Clerk identities, account security and external file originals are **not restored** by JSON.
-- JSON exports now use one `REPEATABLE READ READ ONLY` PostgreSQL snapshot instead of separate pool query snapshots.
-- Every execute requires: owner server authority, an exact confirmation phrase, an unchanged server-side preview, and a 60-minute single-use proof of **full PostgreSQL dump successfully restored in a disposable database**. Unsupported/redacted data, changed DB contents, schema mismatches and constraint violations fail closed.
-- New audit table stores actor, mode, scopes, digest, counts, timestamp and sanitized error codes; never JSON backup bodies or credentials.
-- Integration tests: `npm run server:phase34:scoped-restore:smoke` and `npm run frontend:phase34:scoped-restore:smoke`; both are included in `npm run verify:phase34`.
-- Step-by-step Staging/Production runbook: `docs/phase34-p0-integrated-scoped-restore-runbook-20261019.md`.
-- Emergency restore into a newly created **empty** PostgreSQL target from an existing verified custom-format dump: `node server/scripts/restore-full-db-to-empty-target.mjs`. Required environment: `EMPTY_RESTORE_DATABASE_URL`, `BACKUP_FILE`, `EXPECTED_DUMP_SHA256`, `CONFIRM_EMPTY_DATABASE_RESTORE=YES`. Never changes any application's `DATABASE_URL`.
+This checks Clerk/PostgreSQL application flows, retired external Firebase SDK/API references, 001–043 migration contracts, W01/W02/W03 regression cases and the current W05 documentation. A green local test is **not** evidence of a Production release or a live isolated full-database restore.

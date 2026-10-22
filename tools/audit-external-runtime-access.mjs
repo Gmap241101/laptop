@@ -24,7 +24,7 @@ const walk = (dir) => {
 
 const files = [...walk(SRC_ROOT), ...walk(SERVER_ROOT)];
 const forbidden = [
-  { label: 'Firebase SDK import', regex: /(?:from\s+|import\s*\()(['"])firebase(?:\/[^'"]*)?\1/g },
+  { label: 'Firebase SDK import', regex: /\b(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)(['"`])(?:firebase|@firebase)(?:\/[^'"`]+)?\1/gi },
   { label: 'Firestore REST endpoint', regex: /firestore\.googleapis\.com/gi },
   { label: 'Firebase Identity Toolkit endpoint', regex: /identitytoolkit\.googleapis\.com/gi },
   { label: 'Firebase Secure Token endpoint', regex: /securetoken\.googleapis\.com/gi },
