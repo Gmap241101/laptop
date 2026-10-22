@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { enqueueUserMail, memberMailValues } from '../mail/mail-user-event-bridge.mjs';
 
 const stableValue = (value) => {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -670,6 +671,9 @@ export const createMemberAuthorityRepository = (pool) => {
           }
         }
 
+        await enqueueUserMail({ client,eventKey:'signup_approved',eventId:`member-approved:${mutationId}`,
+          recipientEmail:targetRow.email,values:memberMailValues('signup_approved',targetRow,{
+            signupReviewedAt:new Date().toISOString()})});
         return Object.freeze({ mutationId, sourceHash, profile: Object.freeze(nextProfile), transferCounts: Object.freeze(transferCounts), previousAccountUids: Object.freeze(previousUids) });
       });
     },
@@ -767,6 +771,15 @@ export const createMemberAuthorityRepository = (pool) => {
           );
         }
         await client.query(`UPDATE app_member_profile_events SET firestore_mirror_state=$2, completed_at=NOW() WHERE id=$1::uuid`, [mutationId, finalMirrorState]);
+        const oldStatus=String(beforeProfile?.status||'');
+        const mailKey=oldStatus==='pending' && nextStatus==='active' ? 'signup_approved' :
+          oldStatus==='blocked' && nextStatus==='active' ? 'account_unrestricted' :
+          ['active','profileRequired'].includes(oldStatus) && nextStatus==='blocked' ? 'account_restricted' : null;
+        if(mailKey) await enqueueUserMail({client,eventKey:mailKey,eventId:`member-status:${mutationId}`,
+          recipientEmail:nextProfile?.email || beforeProfile?.email,
+          values:memberMailValues(mailKey,nextProfile,{
+            signupReviewedAt:new Date().toISOString(), restrictedAt: mailKey==='account_restricted'?new Date().toISOString():'',
+            unrestrictedAt:mailKey==='account_unrestricted'?new Date().toISOString():''})});
         return { mutationId, sourceHash };
       });
     },

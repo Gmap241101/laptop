@@ -1,3 +1,5 @@
+import { enqueueUserMail, memberMailValues } from '../mail/mail-user-event-bridge.mjs';
+
 const trim = (value) => String(value ?? '').trim();
 const repositoryError = (code, message, status = 409) => {
   const error = new Error(message);
@@ -241,7 +243,7 @@ export const createUserClerkAuthRepository = (pool) => {
       try {
         await client.query('BEGIN');
         const memberResult = await client.query(
-          `SELECT firebase_uid, app_user_id, status, identity_key, previous_account_uids
+          `SELECT firebase_uid, app_user_id, status, identity_key, previous_account_uids,email,name,team
              FROM app_member_accounts
             WHERE firebase_uid=$1
             FOR UPDATE`,
@@ -303,6 +305,8 @@ export const createUserClerkAuthRepository = (pool) => {
             WHERE firebase_uid=$1`,
           [uid],
         );
+        await enqueueUserMail({client,eventKey:'membership_withdrawn',eventId:`withdrawal:${uid}`,
+          recipientEmail:member.email,values:memberMailValues('membership_withdrawn',member,{withdrawnAt:new Date().toISOString()})});
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -335,7 +339,7 @@ export const createUserClerkAuthRepository = (pool) => {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`member-purge:${uid}`]);
         const memberResult = await client.query(
-          `SELECT firebase_uid, app_user_id, status
+          `SELECT firebase_uid, app_user_id, status, email, name, team
              FROM app_member_accounts
             WHERE firebase_uid=$1
             FOR UPDATE`,
@@ -452,6 +456,24 @@ export const createUserClerkAuthRepository = (pool) => {
         const orphan = orphanChecks.rows[0] || {};
         if (Object.values(orphan).some((value) => Number(value || 0) > 0)) {
           throw repositoryError('member_purge_orphan_reference', `Permanent member deletion left orphan references after ${operation}.`, 500);
+        }
+        if (statusRequired==='pending' && operation==='signup-reject') {
+          // Clerk user deletion precedes this database purge. Do NOT roll back the
+          // purge when optional email queuing fails, or the Clerk/PG identities diverge.
+          // Savepoint preserves the required business transaction on SQL errors.
+          await client.query('SAVEPOINT p104_rejection_mail');
+          try {
+            await enqueueUserMail({client,eventKey:'signup_rejected',eventId:`signup-reject:${uid}`,
+              recipientEmail:member.email, values:memberMailValues('signup_rejected',member,{
+                signupReviewedAt:new Date().toISOString(),signupDecisionAt:new Date().toISOString()})});
+            await client.query('RELEASE SAVEPOINT p104_rejection_mail');
+          } catch (mailFailure) {
+            await client.query('ROLLBACK TO SAVEPOINT p104_rejection_mail');
+            await client.query('RELEASE SAVEPOINT p104_rejection_mail');
+            console.warn('[mail] signup rejection notification was not queued', {
+              code: typeof mailFailure?.code==='string' ? mailFailure.code : 'mail_enqueue_failed',
+            });
+          }
         }
         await client.query('COMMIT');
         return Object.freeze({ deleted: true, deletedCounts: Object.freeze(deletedCounts) });

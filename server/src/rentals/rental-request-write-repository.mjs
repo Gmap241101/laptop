@@ -1,3 +1,5 @@
+import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+
 const normalizeText = (value) => String(value ?? '').trim();
 const BLOCKING_STATUSES = new Set(['신청중', '대여중', '보류']);
 
@@ -238,6 +240,8 @@ export const createRentalRequestWriteRepository = (pool) => {
           firestoreMirroredAt: null,
         });
 
+        await enqueueUserMail({ client, eventKey:'rental_submitted', eventId:`request:${requestId}`,
+          recipientEmail:requesterEmail, values:rentalMailValues('rental_submitted',preparedRequest) });
         await client.query('COMMIT');
         return Object.freeze({ request: preparedRequest, reused: false });
       } catch (error) {

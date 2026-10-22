@@ -1,3 +1,5 @@
+import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+
 const trim = (value) => String(value ?? '').trim();
 const asJson = (value, fallback) => value == null ? fallback : value;
 const dateText = (value) => {
@@ -542,11 +544,11 @@ export const createAdminRentalRequestRepository = (pool) => {
             [relatedId, Boolean(fields.overduePenaltyPending), trim(fields.overduePenaltyBatchId)],
           );
         }
-        await client.query(
+        const reviewEvent = await client.query(
           `INSERT INTO app_rental_request_events (
              rental_request_id,event_type,actor_app_user_id,actor_firebase_uid,event_payload,source_mode
            ) SELECT id,'user-action-reviewed',NULL,$2,$3::jsonb,'postgresql-authoritative-admin-user-action'
-               FROM app_rental_requests WHERE request_id=$1`,
+               FROM app_rental_requests WHERE request_id=$1 RETURNING id`,
           [requestId, auditActor.uid, JSON.stringify({
             action: 'user-action-reviewed', previousStatus: current.status, nextStatus: canonicalNext.status,
             previousMemo: current.adminMemo || '', nextMemo: canonicalNext.adminMemo || '',
@@ -554,6 +556,28 @@ export const createAdminRentalRequestRepository = (pool) => {
             approved: Boolean(approved), ...eventPayload,
           })],
         );
+        // Only actual extension reviews, never generic request edits, trigger extension mail.
+        const extensionReview = current.userActionRequest?.type === 'extend';
+        if (approved && current.userActionRequest?.type === 'cancel' && canonicalNext.status === '사용자취소') {
+          await enqueueUserMail({client,eventKey:'rental_cancelled',eventId:`review-cancel:${requestId}:${reviewEvent.rows[0]?.id}`,
+            recipientEmail:current.requesterEmail,
+            values:rentalMailValues('rental_cancelled',current,{rentalCancelledAt:new Date().toISOString()})});
+        }
+        if (approved && current.userActionRequest?.type === 'return' && canonicalNext.status === '반납완료') {
+          await enqueueUserMail({client,eventKey:'rental_returned',eventId:`review-return:${requestId}:${reviewEvent.rows[0]?.id}`,
+            recipientEmail:current.requesterEmail,
+            values:rentalMailValues('rental_returned',current,{rentalReturnedAt:new Date().toISOString()})});
+        }
+        if (extensionReview) {
+          const key = approved ? 'extension_approved' : 'extension_rejected';
+          await enqueueUserMail({ client, eventKey:key,
+            eventId:`review:${requestId}:${reviewEvent.rows[0]?.id}:${approved}`,
+            recipientEmail:current.requesterEmail,
+            values:rentalMailValues(key,current,{ previousRentalDueAt:current.dueDate,
+              newRentalDueAt:canonicalNext.dueDate,extensionRequestedAt:String(current.userActionRequest?.requestedAt||''),
+              extensionDecisionAt:new Date().toISOString(),
+              extensionRejectionReason:trim(eventPayload?.reason || '') }) });
+        }
         await client.query('COMMIT');
         return mapRow((await pool.query(
           `SELECT ${SELECT} FROM app_rental_requests request
@@ -664,11 +688,11 @@ export const createAdminRentalRequestRepository = (pool) => {
             [relatedId, Boolean(fields.overduePenaltyPending), String(fields.overduePenaltyBatchId || '')],
           );
         }
-        await client.query(
+        const statusEvent = await client.query(
           `INSERT INTO app_rental_request_events (
              rental_request_id, event_type, actor_app_user_id, actor_firebase_uid, event_payload, source_mode
            ) SELECT id, $2, NULL, $3, $4::jsonb, 'postgresql-authoritative-admin'
-               FROM app_rental_requests WHERE request_id = $1`,
+               FROM app_rental_requests WHERE request_id = $1 RETURNING id`,
           [requestId, eventType, auditActor.uid, JSON.stringify({
             action: eventType,
             previousStatus: current.status,
@@ -681,6 +705,21 @@ export const createAdminRentalRequestRepository = (pool) => {
             ...eventPayload,
           })],
         );
+        const statusMailEvent = nextStatus === '대여중' && ['신청중','보류','불허'].includes(current.status) ? 'rental_approved' :
+          nextStatus === '불허' && ['신청중','보류'].includes(current.status) ? 'rental_rejected' :
+          nextStatus === '반납완료' && current.status === '대여중' ? 'rental_returned' :
+          nextStatus === '사용자취소' && ['신청중','보류'].includes(current.status) ? 'rental_cancelled' : null;
+        if (statusMailEvent) {
+          const identity = `status:${requestId}:${statusEvent.rows[0]?.id}`;
+          await enqueueUserMail({ client, eventKey:statusMailEvent, eventId:identity,
+            recipientEmail:current.requesterEmail,
+            values:rentalMailValues(statusMailEvent,nextRequest,{
+              rentalApprovedAt:nextStatus==='대여중'?new Date().toISOString():'',
+              rentalRejectedAt:nextStatus==='불허'?new Date().toISOString():'',
+              rentalReturnedAt:nextStatus==='반납완료'? String(nextRequest.returnedAt || new Date().toISOString()):'',
+              rentalCancelledAt:nextStatus==='사용자취소'?new Date().toISOString():'',
+            }) });
+        }
         await client.query('COMMIT');
         return mapRow((await pool.query(
           `SELECT ${SELECT}

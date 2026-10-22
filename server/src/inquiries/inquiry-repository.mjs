@@ -1,3 +1,5 @@
+import { enqueueUserMail, inquiryMailValues } from '../mail/mail-user-event-bridge.mjs';
+
 const trim = (value) => String(value ?? '').trim();
 const lower = (value) => trim(value).toLowerCase();
 
@@ -1288,8 +1290,11 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const inquiry = await client.query(`SELECT inquiry_id FROM app_inquiries WHERE public_id=$1 AND deleted_at IS NULL FOR UPDATE`, [trim(publicId)]);
+        const inquiry = await client.query(`SELECT inquiry_id,public_id,author_name,author_email,author_team,
+          title,created_at FROM app_inquiries WHERE public_id=$1 AND deleted_at IS NULL FOR UPDATE`, [trim(publicId)]);
         if (!inquiry.rows[0]) throw repositoryError('inquiry_not_found', 'Inquiry was not found.', 404);
+        const previousAnswers = await client.query(`SELECT count(*)::int AS count FROM app_inquiry_answers
+          WHERE inquiry_id=$1 AND deleted_at IS NULL`,[inquiry.rows[0].inquiry_id]);
         await client.query(
           `INSERT INTO app_inquiry_answers
              (answer_id,inquiry_id,body_html,body_text,admin_identity_id,admin_display_name,created_at,updated_at)
@@ -1300,6 +1305,10 @@ export const createInquiryRepository = (pool, { attachmentRepository = null } = 
         const stored = await client.query(`SELECT body_html FROM app_inquiry_answers WHERE answer_id=$1 AND deleted_at IS NULL`, [trim(answerId)]);
         assertStoredRichTextHtml({ expectedHtml: bodyHtml, actualHtml: stored.rows[0]?.body_html, code: 'inquiry_answer_storage_roundtrip_mismatch' });
         await client.query(`UPDATE app_inquiries SET updated_at=NOW() WHERE inquiry_id=$1`, [inquiry.rows[0].inquiry_id]);
+        const mailKey=Number(previousAnswers.rows[0]?.count||0)>0?'inquiry_followup_answer':'inquiry_first_answer';
+        await enqueueUserMail({client,eventKey:mailKey,eventId:`answer:${answerId}`,
+          recipientEmail:inquiry.rows[0].author_email,values:inquiryMailValues(mailKey,inquiry.rows[0],{
+            answerCreatedAt:new Date().toISOString()})});
         await client.query('COMMIT');
         return this.getAdminInquiry(publicId);
       } catch (error) {

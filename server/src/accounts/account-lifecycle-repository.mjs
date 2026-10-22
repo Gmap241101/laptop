@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { enqueueUserMail, memberMailValues } from '../mail/mail-user-event-bridge.mjs';
+import { createHash, randomUUID } from 'node:crypto';
 
 const mapState = (row) => row ? Object.freeze({
   termId: row.term_id || '',
@@ -183,7 +184,7 @@ export const createAccountLifecycleRepository = (pool) => {
 
     async createSignupAccount({ firebaseUid, email, maskedEmail, name, team, phone, status, identityKey, recoveryKey,
       directoryMemberId = '', directoryVerifiedVersion = 0, directoryOverrideByAdmin = false, previousAccountUids = [], rejoinedAccount = false,
-      termsConsentRevision = 0, termsConsentPolicyVersion = 0, decisions = [] }) {
+      termsConsentRevision = 0, termsConsentPolicyVersion = 0, decisions = [], signupOrigin = 'user' }) {
       return withTransaction(async (client) => {
         await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`phase32-signup:${identityKey}`]);
         const uidConflict = await client.query(
@@ -288,6 +289,12 @@ export const createAccountLifecycleRepository = (pool) => {
              FROM app_member_accounts WHERE firebase_uid=$1`,
           [firebaseUid],
         );
+        if (result.rows[0] && signupOrigin==='user') {
+          await enqueueUserMail({client,eventKey:'signup_submitted',eventId:`signup:${firebaseUid}`,
+            recipientEmail:email,values:memberMailValues('signup_submitted',{name,team},{signupRequestedAt:new Date().toISOString()})});
+          if(status==='active') await enqueueUserMail({client,eventKey:'signup_approved',eventId:`signup-auto-approved:${firebaseUid}`,
+            recipientEmail:email,values:memberMailValues('signup_approved',{name,team},{signupReviewedAt:new Date().toISOString()})});
+        }
         return result.rows[0] || null;
       });
     },
@@ -298,7 +305,7 @@ export const createAccountLifecycleRepository = (pool) => {
       if (!uid) return false;
       return withTransaction(async (client) => {
         const account = await client.query(
-          `SELECT firebase_uid, app_user_id, lifecycle_authority_mode
+          `SELECT firebase_uid, app_user_id, lifecycle_authority_mode, email
              FROM app_member_accounts
             WHERE firebase_uid=$1
             FOR UPDATE`,
@@ -315,6 +322,13 @@ export const createAccountLifecycleRepository = (pool) => {
           `DELETE FROM app_member_accounts WHERE firebase_uid=$1 AND app_user_id IS NULL RETURNING firebase_uid`,
           [uid],
         );
+        // Compensate queued notifications when Clerk provisioning/linking fails.
+        // Never touch already-accepted/sent records; dispatcher is still hard-disabled.
+        const email=String(row.email||'').trim().toLowerCase();
+        for(const [key,id] of [['signup_submitted',`signup:${uid}`],['signup_approved',`signup-auto-approved:${uid}`]]) {
+          const dedupe=createHash('sha256').update(`${key}\0${id}\0${email}`,'utf8').digest('hex');
+          await client.query(`DELETE FROM app_mail_outbox WHERE dedupe_key=$1 AND state='queued'`,[dedupe]);
+        }
         return deleted.rowCount > 0;
       });
     },

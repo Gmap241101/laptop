@@ -237,6 +237,7 @@ export const createAccountLifecycleService = ({ repository, siteContentRepositor
         previousAccountUids: retiredUids,
         rejoinedAccount,
         termsConsentRevision: 0,
+        signupOrigin: 'admin',
         // -1 marks an administrator-created account that has never personally accepted
         // the current signup terms. The frontend treats this as a forced first-login
         // consent marker and saveConsents() replaces it with the real policy revision.

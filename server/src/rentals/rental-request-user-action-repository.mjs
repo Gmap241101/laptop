@@ -1,3 +1,6 @@
+import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+
+const asDateForMail = (v) => v instanceof Date ? v.toISOString().slice(0,10) : String(v||'').slice(0,10);
 const asJson = (value, fallback) => value == null ? fallback : value;
 const mapRow = (row) => row ? Object.freeze({
   internalId: String(row.id),
@@ -169,6 +172,9 @@ export const createRentalRequestUserActionRepository = (pool) => {
         }
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [current.laptopId]);
         await client.query('DELETE FROM app_rental_requests WHERE request_id=$1 AND app_user_id=$2', [requestId, appUserId]);
+        await enqueueUserMail({ client, eventKey:'rental_cancelled', eventId:`cancel:${requestId}`,
+          recipientEmail:current.requesterEmail,
+          values:rentalMailValues('rental_cancelled',current,{rentalCancelledAt:new Date().toISOString()}) });
         await client.query('COMMIT');
         return Object.freeze({ deleted: true, request: current, firebaseUid });
       } catch (error) {
@@ -238,6 +244,11 @@ export const createRentalRequestUserActionRepository = (pool) => {
              FROM app_rental_requests WHERE request_id=$1`,
           [requestId, appUserId, firebaseUid, JSON.stringify(eventPayload({ action: 'user-extension-auto-approved', current, next, firebaseUid, detail: '대여 연장 자동 승인', extra: { userActionRequest: actionRequest } }))],
         );
+        await enqueueUserMail({ client, eventKey:'extension_approved',
+          eventId:`extension-auto:${requestId}:${extensionCount}`,
+          recipientEmail:current.requesterEmail,
+          values:rentalMailValues('extension_approved',current,{previousRentalDueAt:asDateForMail(current.dueDate),
+            newRentalDueAt:asDateForMail(dueDate),extensionDecisionAt:new Date().toISOString()}) });
         await client.query('COMMIT');
         return fetchRequest(requestId);
       } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
