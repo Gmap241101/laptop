@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { findRetiredSourceEntries } from '../lib/retired-source-paths.mjs';
 
-assert.equal(existsSync('server/src/firestore'), false, 'server legacy database client directory must be removed');
-assert.equal(existsSync('server/src/firebase'), false, 'server legacy auth verifier directory must be removed');
+assert.deepEqual(findRetiredSourceEntries('server/src/firestore'), [], 'server legacy database client files must be removed');
+assert.deepEqual(findRetiredSourceEntries('server/src/firebase'), [], 'server legacy auth verifier files must be removed');
 const index = readFileSync('server/src/index.mjs', 'utf8');
 const app = readFileSync('server/src/app.mjs', 'utf8');
 const env = readFileSync('server/src/config/env.mjs', 'utf8');

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { findRetiredSourceEntries } from '../lib/retired-source-paths.mjs';
 
 const walk = (dir) => {
   const out = [];
@@ -34,8 +35,11 @@ for (const required of [
 ]) {
   if (!existsSync(required)) throw new Error(`Required PostgreSQL runtime module missing: ${required}`);
 }
-if (existsSync('server/src/firebase') || existsSync('server/src/firestore')) {
-  throw new Error('Firebase/Firestore server runtime directories must not exist after hard retirement.');
+for (const path of ['server/src/firebase', 'server/src/firestore']) {
+  const retiredFiles = findRetiredSourceEntries(path);
+  if (retiredFiles.length > 0) {
+    throw new Error(`Firebase/Firestore retired runtime files must not exist: ${retiredFiles.join(', ')}`);
+  }
 }
 const app = readFileSync('server/src/app.mjs', 'utf8');
 for (const route of [

@@ -1,9 +1,9 @@
 # Phase 34 W05 — Firebase runtime retirement / current operating policy
 
-- Date: 2026-10-21
+- First created: 2026-10-21; revised for 2026-10-22 W03 acceptance and W05 empty-directory false-positive
 - Candidate baseline: W03 Staging frontend source `a078e4e484e47cadd3cd543a26a171fc5d0ca8fb` (operator-provided build and push evidence), current Full ZIP `rental-system-phase34-w03-single-db-safety-preview-ttl-20261021_deployment_package.zip`
 - Scope: **W05 test and documentation normalization only**. No frontend or backend runtime behavior change, no database migration or external deployment.
-- W03: preview TTL staging verification PASS; **AC-S04 still missing**. Do not treat W05 as approval of AC-S04 or W03's proposed changed acceptance policy.
+- W03: non-destructive Z01–Z09 acceptance **approved by operator 2026-10-22** and W03 changed-scope task closed; original independent-restore AC-S04 remains **not performed / not accepted**. This W05 update does not waive AC-S04.
 
 ## 1. Verified design boundaries
 
@@ -35,29 +35,19 @@ Production promotion requires explicit separate operator approval and must use `
 
 **Never create a new** DB, dyno/worker, cloud storage, paid add-on, or upgrade any plan as part of W05. Never expose Clerk secrets, database URLs or user dumps in reports.
 
-## 4. Pending W03 backup check (not part of W05 PASS)
+## 4. W03 postmigration archive evidence (closed; no repeat download needed)
 
-Last observed completed archive is `a004` (`2026-10-20 18:03:09 UTC` = `2026-10-21 03:03 KST`), SHA `D61639D489453D041E0FE6F6916519A6EE419E84348D499AF2B1ECD13570F837`. It predates migration 043 and does not include `app_device_trust_operations`. Repeat `a004` downloads (including `latest.dump.1`) do not satisfy a postmigration backup check. Next backup ID and success cannot be assumed.
+Historical pre-migration archive `a004` (`2026-10-21 03:03 KST`), SHA-256 `D61639D489453D041E0FE6F6916519A6EE419E84348D499AF2B1ECD13570F837`, did not contain Migration 043's `app_device_trust_operations`.
 
-**Operator only after a new completed backup exists:**
+The operator then checked completed **a005** (`2026-10-22 03:01:40 KST`, 229,307 downloaded bytes), SHA-256 `5BCAB64B38821BA81C7226CD504417A98B76906EAA2BBF060A978DB7179951AD`. `pg_restore --list` included `TABLE public app_device_trust_operations`, and read-only `pg_restore --file NUL` exited 0. **Z01/Z02 passed** for the a005 postmigration backup. This archive read check **is not proof of a real database restore**.
 
-```powershell
-heroku pg:backups:schedules -a notebook-rental-api-staging-01
-heroku pg:backups -a notebook-rental-api-staging-01
-```
+W03 changed non-destructive acceptance Z01–Z09 was approved; the original AC-S04 independent recovery remains unperformed/unaccepted and destructive full reset remains blocked.
 
-When a distinct backup ID appears and is `Completed`, use the read-only local verification script below. It stores the downloaded file outside the Git working tree and makes no DB changes.
-
-```powershell
-cd E:\project\rental-system\test_new
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\ops\verify-phase34-w03-postmigration-backup.ps1 -BackupId "ACTUAL_NEW_BACKUP_ID"
-```
-
-`ACTUAL_NEW_BACKUP_ID` is a placeholder; replace with the actual new Heroku ID. The script intentionally refuses historic IDs `a004`, `b003`, `a002`, `b001` and requires `app_device_trust_operations` in its TOC. This checks a schema backup, **not** AC-S04 recovery. Never share the dump itself.
+The script `tools/ops/verify-phase34-w03-postmigration-backup.ps1` remains available for future new archive verification, not as a new compulsory W05 operator task.
 
 ## 5. Scope and status
 
 - W01/W02: prior Staging acceptance PASS.
-- W03: 1st Staging pass and existing `a004` archive integrity PASS; new post-043 backup check PENDING; original AC-S04 unaccepted; changed AC-W03-Z01–Z09 pending user approval.
-- W05: source/Mock regression and README harmonization candidate; requires Windows Vite build and Staging 8-area regression before final operational acceptance. User approval still required before any Production promotion.
+- W03: revised non-destructive Z01–Z09 criteria accepted and closed on 2026-10-22; `a005` backup integrity and post-043 table checks PASS; original AC-S04 remains unperformed/unaccepted.
+- W05: initial Vite build and Staging push `1c41a7b` PASS; local regression encountered an obsolete empty-folder-existence assertion. Its 2026-10-22 hotfix recognizes genuinely empty Windows leftover directories but rejects all retired files. Operator validation and Staging 8-area regression are still required for final operational acceptance. User approval still required before any Production promotion.
 - P1-01~P1-08 email notification scope preserved unchanged.

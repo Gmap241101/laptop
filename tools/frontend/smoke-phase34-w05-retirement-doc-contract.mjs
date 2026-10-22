@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { findRetiredSourceEntries } from '../lib/retired-source-paths.mjs';
 
 const read = (path) => readFileSync(path, 'utf8');
 const pkg = JSON.parse(read('package.json'));
@@ -15,7 +17,30 @@ const pages = read('.github/workflows/pages-production.yml');
 const ignored = read('.gitignore');
 
 const forbidden = ['src/firebase.js', 'server/src/firestore', 'server/src/firebase'];
-for (const p of forbidden) assert.equal(existsSync(p), false, `Retired source must stay absent: ${p}`);
+for (const p of forbidden) {
+  if (p.endsWith('.js')) {
+    assert.equal(existsSync(p), false, `Retired entrypoint must stay absent: ${p}`);
+  } else {
+    assert.deepEqual(findRetiredSourceEntries(p), [], `Retired source files must stay absent: ${p}`);
+  }
+}
+
+// Regression: an empty leftover Windows directory is benign, but any nested
+// retired file must still fail the retirement check.
+const fixtureRoot = mkdtempSync(join(tmpdir(), 'w05-retired-folders-'));
+try {
+  assert.deepEqual(findRetiredSourceEntries(join(fixtureRoot, 'absent')), []);
+  const retired = join(fixtureRoot, 'server', 'src', 'firestore');
+  mkdirSync(join(retired, 'nested'), { recursive: true });
+  assert.deepEqual(findRetiredSourceEntries(retired), []);
+  const forbiddenFile = join(retired, 'nested', 'legacy.mjs');
+  writeFileSync(forbiddenFile, 'export const legacy = true;\n');
+  assert.deepEqual(findRetiredSourceEntries(retired), [forbiddenFile]);
+  rmSync(forbiddenFile);
+  assert.deepEqual(findRetiredSourceEntries(retired), []);
+} finally {
+  rmSync(fixtureRoot, { force: true, recursive: true });
+}
 assert.equal(pkg.dependencies?.firebase, undefined);
 assert.equal(pkg.devDependencies?.firebase, undefined);
 assert.ok(!lock.includes('node_modules/firebase'), 'firebase package must not re-enter lockfile');
