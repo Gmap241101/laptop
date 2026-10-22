@@ -29,7 +29,7 @@ Migrations **001–045** are present in the current Phase 34 source line, includ
 - `044_phase34_p1_02_mail_outbox.sql`: P1-02 durable outbox and daily quota metrics.
 - `045_phase34_p1_03_mail_delivery_safety.sql`: P1-03 conservative attempt ledger and uncertainty quarantine.
 
-Never edit an already-applied migration. Staging confirms migration 044 is applied; 045 is not yet deployed. For any new schema change, add a new numbered migration and separately validate on Staging before seeking Production approval.
+Never edit an already-applied migration. Staging confirms migrations 044 and 045 are applied; later migrations are not authorized. For any new schema change, add a new numbered migration and separately validate on Staging before seeking Production approval.
 
 ## System-data backup and restore — current behavior
 
@@ -65,7 +65,7 @@ This checks Clerk/PostgreSQL application flows, retired external Firebase SDK/AP
 `app_mail_delivery_quota` inside the existing PostgreSQL database. Mail
 notification settings remain in `app_system_configuration`. The repository
 module `mail/mail-outbox-repository.mjs` can enqueue only through a
-business-owned SQL transaction client; currently no business API calls it.
+business-owned SQL transaction client; P1-04/05 business repositories call it within existing PostgreSQL transactions.
 No sending worker, scheduling, HTTP endpoint or live email delivery is enabled.
 
 ### Phase 34 P1-03 simulated dispatcher (Migration 045)
@@ -79,3 +79,17 @@ cannot emit live mail. Only explicit HTTP 429 denials are automatically retried.
 Actual sender-domain/DNS and provider credentials remain unconfigured. P1-04/05
 will integrate the 19 business transitions, and P1-06/08 require separate approvals
 before any non-Mock sending implementation or Production deployment.
+
+### Phase 34 P1-04 / P1-05 email business events
+
+P1-04 links 15 direct user events to existing PostgreSQL transactions; the
+2 date-based user reminders remain candidate-only and are not scheduled.
+P1-05 adds `mail-admin-event-bridge.mjs` and integrates `admin_signup_pending`
+(only pending user registrations) and `admin_rental_pending` (new requests) into
+the same PostgreSQL transaction, targeting active Clerk-linked unlocked owner/admin
+registry accounts. Both types default OFF. Real sending remains unconditionally
+locked; no database migrations after 045, no worker, no independent database.
+
+The earlier descriptions above of migrations 045 "not yet deployed" and no
+business Outbox API callers reflect earlier P1-02/P1-03 snapshots. The operator
+confirmed 045 applied and P1-04 Staging release v283 on 2026-10-22.

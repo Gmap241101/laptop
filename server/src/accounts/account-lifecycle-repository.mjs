@@ -1,4 +1,5 @@
 import { enqueueUserMail, memberMailValues } from '../mail/mail-user-event-bridge.mjs';
+import { enqueueAdminPendingMail, adminSignupMailValues, cancelQueuedAdminSignupMail } from '../mail/mail-admin-event-bridge.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 
 const mapState = (row) => row ? Object.freeze({
@@ -290,8 +291,11 @@ export const createAccountLifecycleRepository = (pool) => {
           [firebaseUid],
         );
         if (result.rows[0] && signupOrigin==='user') {
+          const signupRequestedAt=new Date().toISOString();
           await enqueueUserMail({client,eventKey:'signup_submitted',eventId:`signup:${firebaseUid}`,
-            recipientEmail:email,values:memberMailValues('signup_submitted',{name,team},{signupRequestedAt:new Date().toISOString()})});
+            recipientEmail:email,values:memberMailValues('signup_submitted',{name,team},{signupRequestedAt})});
+          if (status==='pending') await enqueueAdminPendingMail({client,eventKey:'admin_signup_pending',eventId:`signup:${firebaseUid}`,
+            values:adminSignupMailValues({name,team},signupRequestedAt)});
           if(status==='active') await enqueueUserMail({client,eventKey:'signup_approved',eventId:`signup-auto-approved:${firebaseUid}`,
             recipientEmail:email,values:memberMailValues('signup_approved',{name,team},{signupReviewedAt:new Date().toISOString()})});
         }
@@ -325,6 +329,7 @@ export const createAccountLifecycleRepository = (pool) => {
         // Compensate queued notifications when Clerk provisioning/linking fails.
         // Never touch already-accepted/sent records; dispatcher is still hard-disabled.
         const email=String(row.email||'').trim().toLowerCase();
+        await cancelQueuedAdminSignupMail({client,firebaseUid:uid});
         for(const [key,id] of [['signup_submitted',`signup:${uid}`],['signup_approved',`signup-auto-approved:${uid}`]]) {
           const dedupe=createHash('sha256').update(`${key}\0${id}\0${email}`,'utf8').digest('hex');
           await client.query(`DELETE FROM app_mail_outbox WHERE dedupe_key=$1 AND state='queued'`,[dedupe]);

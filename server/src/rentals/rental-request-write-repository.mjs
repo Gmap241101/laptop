@@ -1,4 +1,5 @@
 import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+import { enqueueAdminPendingMail, adminRentalMailValues } from '../mail/mail-admin-event-bridge.mjs';
 
 const normalizeText = (value) => String(value ?? '').trim();
 const BLOCKING_STATUSES = new Set(['신청중', '대여중', '보류']);
@@ -242,6 +243,8 @@ export const createRentalRequestWriteRepository = (pool) => {
 
         await enqueueUserMail({ client, eventKey:'rental_submitted', eventId:`request:${requestId}`,
           recipientEmail:requesterEmail, values:rentalMailValues('rental_submitted',preparedRequest) });
+        await enqueueAdminPendingMail({client,eventKey:'admin_rental_pending',eventId:`request:${requestId}`,
+          values:adminRentalMailValues(preparedRequest)});
         await client.query('COMMIT');
         return Object.freeze({ request: preparedRequest, reused: false });
       } catch (error) {
