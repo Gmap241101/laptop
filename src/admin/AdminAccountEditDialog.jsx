@@ -60,6 +60,20 @@ export default function AdminAccountEditDialog({
             <Input label="전화번호" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
           </div>
 
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-slate-800">이메일 알림 수신</div>
+              <div className="mt-1 text-xs text-slate-500">가입 승인 및 대여 신청 관리자 알림을 받습니다.</div>
+            </div>
+            <button type="button" role="switch" aria-label="이메일 알림 수신"
+              aria-checked={form.mailNotificationsEnabled === true}
+              disabled={(authenticatedAdminAccount?.adminRole || 'admin') !== 'owner'}
+              onClick={() => setForm({ ...form, mailNotificationsEnabled: !form.mailNotificationsEnabled })}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${form.mailNotificationsEnabled ? 'bg-[var(--mk-orange)]' : 'bg-slate-300'}`}>
+              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${form.mailNotificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
           {isClerkLinked ? (
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-[11px] leading-5 text-slate-500">

@@ -7,7 +7,7 @@ export const ADMIN_CUSTOM_OPTION_VALUE = '__ADMIN_CUSTOM_INPUT__';
 export const ADMIN_ACCOUNT_PAGE_SIZE = 10;
 
 export const createDefaultAdminAccountForm = () => ({ adminLoginId: '', password: '', organizationName: '', customOrganizationName: '', userName: '', customUserName: '', email: '', phone: '', adminRole: 'admin' });
-export const createDefaultAdminAccountEditForm = () => ({ adminLoginId: '', organizationName: '', userName: '', email: '', phone: '', adminRole: 'admin' });
+export const createDefaultAdminAccountEditForm = () => ({ adminLoginId: '', organizationName: '', userName: '', email: '', phone: '', adminRole: 'admin', mailNotificationsEnabled: true });
 
 export const useAdminAccountManagementState = ({ adminTab }) => {
   const [adminAccountForm, setAdminAccountForm] = useState(createDefaultAdminAccountForm);
@@ -83,12 +83,12 @@ export default function useAdminAccountManagementController({
     } catch (error) { console.error('Admin account create error:', error); triggerToast(adminErrorMessage(error), 'error'); return null; }
   };
 
-  const startEditAdminAccount = (account) => { setEditingAdminAccountId(account.id); setAdminAccountEditForm({ adminLoginId: account.adminLoginId || '', organizationName: account.organizationName || '', userName: account.userName || '', email: account.authEmail || account.email || '', phone: account.phone || '', adminRole: account.adminRole || 'admin' }); };
+  const startEditAdminAccount = (account) => { setEditingAdminAccountId(account.id); setAdminAccountEditForm({ adminLoginId: account.adminLoginId || '', organizationName: account.organizationName || '', userName: account.userName || '', email: account.authEmail || account.email || '', phone: account.phone || '', adminRole: account.adminRole || 'admin', mailNotificationsEnabled: account.mailNotificationsEnabled !== false }); };
   const cancelEditAdminAccount = () => { setEditingAdminAccountId(''); setAdminAccountEditForm(createDefaultAdminAccountEditForm()); };
 
   const saveAdminAccountEdit = async (account) => {
     try {
-      const payload = await clerkStagingClient.updateAdminAccountPostgresql(account.id, { adminLoginId: adminAccountEditForm.adminLoginId.trim(), organizationName: adminAccountEditForm.organizationName.trim(), userName: adminAccountEditForm.userName.trim(), phone: adminAccountEditForm.phone.trim(), adminRole: adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin' });
+      const payload = await clerkStagingClient.updateAdminAccountPostgresql(account.id, { adminLoginId: adminAccountEditForm.adminLoginId.trim(), organizationName: adminAccountEditForm.organizationName.trim(), userName: adminAccountEditForm.userName.trim(), phone: adminAccountEditForm.phone.trim(), adminRole: adminAccountEditForm.adminRole === 'owner' ? 'owner' : 'admin', mailNotificationsEnabled: adminAccountEditForm.mailNotificationsEnabled === true });
       const updated = payload?.adminAccountMutation?.account;
       setAdminAccounts((prev) => (prev || []).map((item) => item.id === account.id ? updated : item));
       if (currentAuthAdminAccount?.id === account.id) setCurrentAuthAdminAccount(updated);

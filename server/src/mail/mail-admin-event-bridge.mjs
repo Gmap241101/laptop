@@ -15,7 +15,7 @@ export const ADMIN_PENDING_EVENT_KEYS = Object.freeze(['admin_signup_pending','a
 export async function listEligibleAdminMailRecipients(client) {
   if (typeof client?.query !== 'function') throw new TypeError('mail_client_required');
   const result = await client.query(`SELECT auth_email FROM app_admin_identity_registry
-    WHERE status='active' AND admin_role IN ('owner','admin')
+    WHERE status='active' AND mail_notifications_enabled=TRUE AND admin_role IN ('owner','admin')
       AND clerk_link_state='linked' AND NULLIF(clerk_user_id,'') IS NOT NULL
       AND (lock_until IS NULL OR lock_until <= NOW())
     ORDER BY CASE WHEN admin_role='owner' THEN 0 ELSE 1 END, lower(auth_email)

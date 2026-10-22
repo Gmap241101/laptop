@@ -54,9 +54,9 @@ export async function listScheduledUserMailCandidates({client, eventKey, referen
        r.requested_at_text,r.start_date::text,r.due_date::text,i.asset_category,i.asset_no
      FROM app_rental_requests r LEFT JOIN app_rental_request_items i ON i.rental_request_id=r.id
      WHERE r.status='대여중' AND ${condition}
-     ORDER BY r.due_date,r.id LIMIT $2`,[referenceDate,limit]);
+     ORDER BY r.due_date,r.id LIMIT $2 FOR SHARE OF r`,[referenceDate,limit]);
   return rows.rows.map((r)=>Object.freeze({eventKey,eventId:`${r.request_id}:${asDate(r.due_date)}:${eventKey==='rental_overdue'?referenceDate:'pre'}`,
-    recipientEmail:r.requester_email,values:rentalMailValues(eventKey,{
+    recipientEmail:r.requester_email,sourceRequestId:r.request_id,sourceDueDate:asDate(r.due_date),values:rentalMailValues(eventKey,{
       id:r.request_id,requesterName:r.requester_name,requesterTeam:r.requester_team,
       requestedAt:r.requested_at_text,startDate:r.start_date,dueDate:r.due_date,
       assetCategory:r.asset_category,assetNo:r.asset_no,

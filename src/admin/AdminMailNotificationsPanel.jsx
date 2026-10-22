@@ -23,6 +23,24 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [selected,setSelected] = useState('');
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
+  const [queue,setQueue] = useState(null);
+  const [queueBusy,setQueueBusy] = useState(false);
+  const [queueMessage,setQueueMessage] = useState('');
+  const [queueOpen,setQueueOpen] = useState(false);
+  const reloadQueue=async()=>{
+    setQueueBusy(true);setQueueMessage('');
+    try{setQueue(await clerkStagingClient.getAdminMailQueue());}
+    catch{setQueueMessage('발송 내역을 불러오지 못했습니다.');}
+    finally{setQueueBusy(false);}
+  };
+  const cancelQueued=async(id)=>{
+    if(!window.confirm('선택한 대기 메일을 취소하시겠습니까?'))return;
+    setQueueBusy(true);setQueueMessage('');
+    try {await clerkStagingClient.cancelAdminQueuedMail(id);
+      setQueueMessage('발송이 취소되었습니다.');setQueue(await clerkStagingClient.getAdminMailQueue());}
+    catch(e){setQueueMessage(e?.status===409?'이미 처리되어 취소할 수 없습니다.':'메일 취소에 실패했습니다.');}
+    finally{setQueueBusy(false);}
+  };
   const owner = ctx.authenticatedAdminAccount?.adminRole === 'owner';
   const load = async () => {
     setBusy(true); setMessage('');
@@ -56,6 +74,35 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h3 className="text-sm font-bold text-slate-900">발송 내역 및 대기 메일</h3>
+          <p className="mt-1 text-xs text-slate-500">대기 중인 알림을 확인하고 취소할 수 있습니다.</p></div>
+        <div className="flex gap-2">
+          {queueOpen&&<button type="button" disabled={queueBusy} onClick={()=>void reloadQueue()} className="rounded-lg border px-3 py-2 text-xs">새로고침</button>}
+          <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>{
+            if(queueOpen){setQueueOpen(false);}else{setQueueOpen(true);void reloadQueue();}
+          }}>{queueOpen?'닫기':'내역 보기'}</button>
+        </div>
+      </div>
+      {queueOpen&&<div className="mt-4 space-y-3">
+        {queueMessage&&<p role="status" className="text-xs text-slate-700">{queueMessage}</p>}
+        {queue&&<div className="flex flex-wrap gap-2 text-xs text-slate-600">
+          {Object.entries(queue.counts||{}).map(([state,count])=><span key={state} className="rounded-full bg-slate-100 px-2 py-1">{state}: {count}</span>)}
+        </div>}
+        <div className="max-h-[360px] overflow-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[660px] text-left text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="p-2">유형</th><th className="p-2">수신자</th><th className="p-2">상태</th><th className="p-2">등록일시</th><th className="p-2">관리</th></tr></thead>
+            <tbody>{(queue?.rows||[]).map(r=><tr key={r.id} className="border-t border-slate-100">
+              <td className="p-2">{r.eventTitle}</td><td className="p-2">{r.recipientMasked}</td>
+              <td className="p-2">{r.state}</td><td className="p-2">{r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'-'}</td>
+              <td className="p-2">{['queued','retry'].includes(r.state)?<button type="button" disabled={queueBusy} onClick={()=>void cancelQueued(r.id)} className="rounded-md border border-rose-200 px-2 py-1 font-medium text-rose-700 disabled:opacity-50">취소</button>:'-'}</td>
+            </tr>)}</tbody>
+          </table>
+          {queue&&!queue.rows?.length&&<p className="p-4 text-center text-xs text-slate-500">등록된 발송 내역이 없습니다.</p>}
+        </div>
+      </div>}
+    </div>
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-xl font-black text-slate-900">이메일 알림 관리</h2><p className="mt-1 text-sm text-slate-500">발송 유형별 설정과 메일 내용을 관리합니다.</p></div>
       <button type="button" disabled={busy} onClick={load} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold">새로고침</button>

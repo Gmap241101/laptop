@@ -114,11 +114,21 @@ export const createAdminClerkAuthService = ({ repository, clerkClient, systemCon
         const owners = (await repository.listActive()).filter((item) => item.adminRole === 'owner');
         if (owners.length <= 1) throw serviceError('last_owner_required', 'The last owner administrator cannot be demoted.', 409);
       }
+      if (input?.mailNotificationsEnabled !== undefined && typeof input.mailNotificationsEnabled !== 'boolean') {
+        throw serviceError('admin_mail_preference_invalid', 'Mail recipient preference must be a boolean.', 400);
+      }
+      const mailNotificationsEnabled = input?.mailNotificationsEnabled === undefined
+        ? target.mailNotificationsEnabled !== false : input.mailNotificationsEnabled;
+      if (mailNotificationsEnabled !== (target.mailNotificationsEnabled !== false)) assertOwner(actor);
       const adminLoginId = trim(input?.adminLoginId || target.adminLoginId);
       const duplicate = (await repository.listActive()).find((item) => item.legacyAdminKey !== target.legacyAdminKey && lower(item.adminLoginId) === lower(adminLoginId));
       if (duplicate) throw serviceError('admin_login_id_duplicate', 'Administrator ID already exists.', 409);
-      const admin = await repository.update({ legacyAdminKey: target.legacyAdminKey, adminLoginId, organizationName: trim(input?.organizationName || target.organizationName), userName: trim(input?.userName || target.userName), phone: trim(input?.phone ?? target.phone), adminRole: nextRole });
-      if (target.clerkUserId) await clerkClient.updateUserMetadata(target.clerkUserId, { publicMetadata: publicMetadata(admin), privateMetadata: privateMetadata(admin) });
+      const admin = await repository.update({ legacyAdminKey: target.legacyAdminKey, adminLoginId, organizationName: trim(input?.organizationName || target.organizationName), userName: trim(input?.userName || target.userName), phone: trim(input?.phone ?? target.phone), adminRole: nextRole, mailNotificationsEnabled, actorClerkUserId });
+      // The mail recipient flag is PostgreSQL-only. Do not turn a preference edit
+      // into an unnecessary external Clerk write that could fail after DB commit.
+      if (target.clerkUserId && (adminLoginId !== target.adminLoginId || nextRole !== target.adminRole)) {
+        await clerkClient.updateUserMetadata(target.clerkUserId, { publicMetadata: publicMetadata(admin), privateMetadata: privateMetadata(admin) });
+      }
       return Object.freeze({ source: 'clerk-postgresql', account: serialize(admin) });
     },
     async changePassword({ actorClerkUserId, targetKey, newPassword }) {

@@ -45,6 +45,7 @@ export const normalizeAdminAccounts = (adminAccounts) => {
       userName: account.userName || '',
       email: account.email || '',
       phone: account.phone || '',
+      mailNotificationsEnabled: account.mailNotificationsEnabled !== false,
       adminRole: ['owner', 'admin'].includes(account.adminRole)
         ? account.adminRole
         : 'owner',

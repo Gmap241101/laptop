@@ -67,6 +67,32 @@ export const createMailDeliveryRepository = (pool) => {
             WHERE id=$1`, [mail.id]);
           return Object.freeze({ state:'event_disabled' });
         }
+        if (mail.event_key === 'admin_signup_pending' || mail.event_key === 'admin_rental_pending') {
+          const recipient = await client.query(`SELECT 1 FROM app_admin_identity_registry
+            WHERE lower(auth_email)=lower($1) AND mail_notifications_enabled=TRUE
+              AND status='active' AND admin_role IN ('owner','admin')
+              AND clerk_link_state='linked' AND NULLIF(clerk_user_id,'') IS NOT NULL
+              AND (lock_until IS NULL OR lock_until<=NOW()) LIMIT 1 FOR SHARE`,[mail.recipient_email]);
+          if (!recipient.rows.length) {
+            await client.query(`UPDATE app_mail_outbox SET state='cancelled',
+              last_error_code='mail_admin_recipient_disabled',updated_at=NOW() WHERE id=$1`,[mail.id]);
+            return Object.freeze({state:'recipient_disabled'});
+          }
+        }
+        if (mail.event_key === 'rental_due_reminder' || mail.event_key === 'rental_overdue') {
+          const valid = await client.query(`SELECT 1 FROM app_mail_outbox o
+            JOIN app_rental_requests r ON r.request_id=o.source_request_id
+            WHERE o.id=$1 AND o.scheduled_for_date=(NOW() AT TIME ZONE 'Asia/Seoul')::date
+              AND o.source_due_date=r.due_date AND r.status='대여중'
+              AND (o.event_key='rental_due_reminder' AND r.due_date=(NOW() AT TIME ZONE 'Asia/Seoul')::date + 1
+                OR o.event_key='rental_overdue' AND r.due_date < (NOW() AT TIME ZONE 'Asia/Seoul')::date)
+            LIMIT 1 FOR SHARE OF r`,[mail.id]);
+          if (!valid.rows.length) {
+            await client.query(`UPDATE app_mail_outbox SET state='cancelled',
+              last_error_code='mail_scheduled_rental_changed',updated_at=NOW() WHERE id=$1`,[mail.id]);
+            return Object.freeze({state:'scheduled_invalid'});
+          }
+        }
         if (number(mail.attempt_count) >= number(mail.max_attempts)) {
           await client.query(`UPDATE app_mail_outbox SET state='failed',last_error_code='mail_attempts_exhausted',updated_at=NOW()
             WHERE id=$1`, [mail.id]);

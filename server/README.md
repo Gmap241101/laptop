@@ -93,3 +93,17 @@ locked; no database migrations after 045, no worker, no independent database.
 The earlier descriptions above of migrations 045 "not yet deployed" and no
 business Outbox API callers reflect earlier P1-02/P1-03 snapshots. The operator
 confirmed 045 applied and P1-04 Staging release v283 on 2026-10-22.
+
+### Phase 34 P1-06 administrator email preference and queue operations
+
+Migration `046_phase34_p1_06_admin_mail_preference.sql` adds account-specific
+`mail_notifications_enabled` (existing accounts default TRUE), audit actions and
+scheduled rental context to the existing database. The administrator account edit
+modal exposes an owner-controlled switch. Opting out atomically cancels that
+administrator's pending approval/request notices; the dispatcher independently
+checks recipient status before claiming. The mail notifications admin page exposes
+owner-only queue history and cancellation endpoints; no resend or delete API exists.
+The date-based scheduled user reminder enqueue service runs only when
+`P106_SCHEDULED_ENQUEUE_ENABLED=true` is explicitly configured; default is OFF.
+Even with this flag enabled, **real email delivery remains hard-locked**. Do not
+set this flag or any real sender credentials until Staging acceptance is complete.

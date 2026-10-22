@@ -1424,6 +1424,22 @@ export const requestAdminMailNotificationUpdate = async ({ clerk, apiBaseUrl, fe
   return payload.mailNotificationSettings;
 };
 
+export const requestAdminMailQueue = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-queue',method:'GET'});
+  if(!response.ok || payload?.mailQueue?.authority!=='postgresql') {
+    const error=new Error('메일 발송 내역을 불러올 수 없습니다.');error.code=payload?.error||'mail_queue_read_failed';error.status=response.status;throw error;
+  }
+  return payload.mailQueue;
+};
+export const requestAdminMailQueueCancel = async ({clerk,apiBaseUrl,fetchImpl,id}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:`/api/admin/mail-queue/${encodeURIComponent(id)}/cancel`,method:'POST'});
+  if(!response.ok || payload?.mailQueueCancel?.cancelled!==true) {
+    const error=new Error('메일 대기열을 취소할 수 없습니다.');error.code=payload?.error||'mail_queue_cancel_failed';error.status=response.status;throw error;
+  }
+  return payload.mailQueueCancel;
+};
+
 export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
   const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
   if (admin) {
@@ -2602,6 +2618,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminMailNotificationEvent(key, input) {
       const clerk = await initialize();
       return requestAdminMailNotificationUpdate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, input });
+    },
+    async getAdminMailQueue() {
+      const clerk=await initialize();
+      return requestAdminMailQueue({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async cancelAdminQueuedMail(id) {
+      const clerk=await initialize();
+      return requestAdminMailQueueCancel({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,id});
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();
