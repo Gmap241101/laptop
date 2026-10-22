@@ -107,3 +107,16 @@ The date-based scheduled user reminder enqueue service runs only when
 `P106_SCHEDULED_ENQUEUE_ENABLED=true` is explicitly configured; default is OFF.
 Even with this flag enabled, **real email delivery remains hard-locked**. Do not
 set this flag or any real sender credentials until Staging acceptance is complete.
+
+### Phase 34 P1-06.1 safe retry and schedule preview
+
+After P1-06 Staging release v287, the owner-only admin UI additionally supports a
+read-only Seoul-date count of rentals due tomorrow and currently overdue. This
+preview never writes to Outbox or sends email. A retry action is supported only
+when the provider explicitly returned 429 on **every** recorded attempt, the row
+is `failed`, and there is no ambiguous/accepted attempt or provider receipt.
+Owner approval is recorded in the existing `app_mail_queue_actions` audit table;
+Migration 047 expands the action constraint to `cancel,retry`. No automatic retry
+of uncertain delivery exists. `P103_REAL_DELIVERY_LOCKED` stays true, and the
+scheduled enqueue loop is OFF unless separately approved. Run
+`npm run server:phase34:p1-06-safe-operations:smoke` to verify the policy.

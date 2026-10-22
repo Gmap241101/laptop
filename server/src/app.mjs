@@ -226,7 +226,8 @@ export const createRequestHandler = ({
     async migrateCurrent() { const error = new Error('Admin migration is retired.'); error.code = 'admin_migration_retired'; error.status = 410; throw error; },
     async provisionTarget() { const error = new Error('Admin legacy provisioning is retired.'); error.code = 'admin_provision_retired'; error.status = 410; throw error; },
   },
-  mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
+  mailSchedulePreview = { async preview() { throw Object.assign(new Error('mail_schedule_unavailable'),{status:503,code:'mail_schedule_unavailable'}); } },
+  mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
     async saveEvent() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2315,7 +2316,19 @@ export const createRequestHandler = ({
       }
       return;
     }
-    // P1-06 operational queue, owner only. No send or retry endpoint exists.
+    // Read-only owner preview. Never registers or sends mail.
+    if (request.method==='GET' && url.pathname==='/api/admin/mail-schedule/preview') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      try { const preview=await mailSchedulePreview.preview();
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailSchedulePreview:preview},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_schedule_preview_failed'},headers);}
+      return;
+    }
+    // P1-06 operational queue, owner only. Real sending stays disabled.
     if (request.method === 'GET' && url.pathname === '/api/admin/mail-queue') {
       const authority = await authenticateAdminAuthority(request,response,headers,requestId);
       if (!authority) return;
@@ -2339,6 +2352,18 @@ export const createRequestHandler = ({
         const result=await mailQueueOperations.cancel({id:mailQueueCancelMatch[1],actorClerkUserId:authority.auth.userId});
         writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailQueueCancel:result},headers);
       }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_queue_cancel_failed'},headers);}
+      return;
+    }
+    const mailQueueRetryMatch=request.method==='POST' ? url.pathname.match(/^\/api\/admin\/mail-queue\/([0-9]+)\/retry$/) : null;
+    if(mailQueueRetryMatch) {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      try {const result=await mailQueueOperations.retry({id:mailQueueRetryMatch[1],actorClerkUserId:authority.auth.userId});
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailQueueRetry:result},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_queue_retry_failed'},headers);}
       return;
     }
     // P1 mail configuration is an admin-only control plane. It NEVER dispatches mail.

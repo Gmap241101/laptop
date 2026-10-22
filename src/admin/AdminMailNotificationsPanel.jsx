@@ -5,6 +5,7 @@ const escapeText = (value) => String(value || '').replace(/[&<>"']/g, (c) => ({'
 const toEditorBody = ({ body, bodyFormat }) => bodyFormat === 'html' ? body : String(body || '').split(/\r?\n/).map((line) => `<p>${escapeText(line) || '&nbsp;'}</p>`).join('');
 const fromEvent = (event) => ({ enabled:event.enabled, subject:event.subject, body:toEditorBody(event), bodyFormat:'html' });
 const changed = (original, draft) => original?.enabled !== draft?.enabled || original?.subject !== draft?.subject || toEditorBody(original) !== draft?.body;
+const mailStateLabels = {queued:'발송 대기',retry:'재시도 대기',processing:'처리 중',sent:'발송 완료',failed:'발송 실패',cancelled:'취소',uncertain:'확인 필요'};
 const variableLabels = {
   name:'성명', siteUrl:'사이트 주소', teamName:'부서(팀)',
   signupRequestedAt:'가입 신청 일시', signupReviewedAt:'가입 심사 일시', signupDecisionAt:'가입 결과 일시', withdrawnAt:'탈퇴 완료 일시',
@@ -27,6 +28,23 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [queueBusy,setQueueBusy] = useState(false);
   const [queueMessage,setQueueMessage] = useState('');
   const [queueOpen,setQueueOpen] = useState(false);
+  const [preview,setPreview] = useState(null);
+  const [previewBusy,setPreviewBusy] = useState(false);
+  const [previewMessage,setPreviewMessage] = useState('');
+  const reloadPreview=async()=>{
+    setPreviewBusy(true);setPreviewMessage('');
+    try{setPreview(await clerkStagingClient.getAdminMailSchedulePreview());}
+    catch{setPreviewMessage('반납 알림 대상을 확인하지 못했습니다.');}
+    finally{setPreviewBusy(false);}
+  };
+  const retryMail=async(id)=>{
+    if(!window.confirm('발송이 거절된 메일을 다시 대기 상태로 전환하시겠습니까?'))return;
+    setQueueBusy(true);setQueueMessage('');
+    try{await clerkStagingClient.retryAdminMail(id);
+      setQueueMessage('재처리 대기 상태로 변경했습니다.');setQueue(await clerkStagingClient.getAdminMailQueue());}
+    catch{setQueueMessage('이 메일은 안전하게 재처리할 수 없습니다.');}
+    finally{setQueueBusy(false);}
+  };
   const reloadQueue=async()=>{
     setQueueBusy(true);setQueueMessage('');
     try{setQueue(await clerkStagingClient.getAdminMailQueue());}
@@ -74,6 +92,21 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">반납 알림 대상 확인</h3>
+        <button type="button" onClick={()=>void reloadPreview()} disabled={previewBusy} className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">대상 확인</button>
+      </div>
+      {previewMessage&&<p role="status" className="text-xs text-slate-700">{previewMessage}</p>}
+      {preview&&<div className="flex flex-wrap gap-3 text-xs text-slate-700">
+        <span>기준일: {preview.referenceDate}</span>
+        <span>내일 반납 예정: {preview.dueTomorrow}건</span>
+        <span>연체: {preview.overdue}건</span>
+        <span>사전 안내 {preview.dueEnabled?'사용':'미사용'}</span>
+        <span>연체 안내 {preview.overdueEnabled?'사용':'미사용'}</span>
+      </div>}
+      <p className="text-xs text-slate-500">대상 확인만 수행하며 이메일을 발송하거나 등록하지 않습니다.</p>
+    </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h3 className="text-sm font-bold text-slate-900">발송 내역 및 대기 메일</h3>
@@ -88,15 +121,15 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       {queueOpen&&<div className="mt-4 space-y-3">
         {queueMessage&&<p role="status" className="text-xs text-slate-700">{queueMessage}</p>}
         {queue&&<div className="flex flex-wrap gap-2 text-xs text-slate-600">
-          {Object.entries(queue.counts||{}).map(([state,count])=><span key={state} className="rounded-full bg-slate-100 px-2 py-1">{state}: {count}</span>)}
+          {Object.entries(queue.counts||{}).map(([state,count])=><span key={state} className="rounded-full bg-slate-100 px-2 py-1">{mailStateLabels[state]||state}: {count}</span>)}
         </div>}
         <div className="max-h-[360px] overflow-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[660px] text-left text-xs">
             <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="p-2">유형</th><th className="p-2">수신자</th><th className="p-2">상태</th><th className="p-2">등록일시</th><th className="p-2">관리</th></tr></thead>
             <tbody>{(queue?.rows||[]).map(r=><tr key={r.id} className="border-t border-slate-100">
               <td className="p-2">{r.eventTitle}</td><td className="p-2">{r.recipientMasked}</td>
-              <td className="p-2">{r.state}</td><td className="p-2">{r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'-'}</td>
-              <td className="p-2">{['queued','retry'].includes(r.state)?<button type="button" disabled={queueBusy} onClick={()=>void cancelQueued(r.id)} className="rounded-md border border-rose-200 px-2 py-1 font-medium text-rose-700 disabled:opacity-50">취소</button>:'-'}</td>
+              <td className="p-2">{mailStateLabels[r.state]||r.state}</td><td className="p-2">{r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'-'}</td>
+              <td className="p-2">{['queued','retry'].includes(r.state)?<button type="button" disabled={queueBusy} onClick={()=>void cancelQueued(r.id)} className="rounded-md border border-rose-200 px-2 py-1 font-medium text-rose-700 disabled:opacity-50">취소</button>:r.retryEligible?<button type="button" disabled={queueBusy} onClick={()=>void retryMail(r.id)} className="rounded-md border border-slate-300 px-2 py-1 font-medium disabled:opacity-50">재처리</button>:'-'}</td>
             </tr>)}</tbody>
           </table>
           {queue&&!queue.rows?.length&&<p className="p-4 text-center text-xs text-slate-500">등록된 발송 내역이 없습니다.</p>}

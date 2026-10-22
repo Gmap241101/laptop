@@ -51,7 +51,7 @@ eq(changed.mailNotificationsEnabled,false,'registry returns false');
 await assert.rejects(()=>adminRepo.update({legacyAdminKey:'x',mailNotificationsEnabled:'false'}),/mail_admin_preference_boolean_required/);checks++;
 let queueCalls=[];
 const pool={async query(sql,args){queueCalls.push({sql,args});
-  if(sql.includes('ORDER BY created_at'))return {rows:[{id:'1',event_key:'admin_rental_pending',recipient_email:'owner@example.com',state:'queued',attempt_count:0,created_at:'2026-10-22T00:00:00Z'}]};
+  if(sql.includes('ORDER BY o.created_at'))return {rows:[{id:'1',event_key:'admin_rental_pending',recipient_email:'owner@example.com',state:'queued',attempt_count:0,created_at:'2026-10-22T00:00:00Z'}]};
   if(sql.includes('GROUP BY state'))return {rows:[{state:'queued',total:1}]};
   if(sql.includes('WITH target AS'))return {rows:[{id:'1'}]};
   return {rows:[]};

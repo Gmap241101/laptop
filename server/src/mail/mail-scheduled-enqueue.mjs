@@ -43,6 +43,28 @@ export function createP106ScheduledEnqueue(pool, {now=()=>new Date()}={}) {
 }
 // Feature gate is FALSE by default in every environment. Enabling it later does
 // NOT unlock actual sending. Runtime starts only if explicitly configured.
+
+// Read-only, privacy-preserving operator preview. Does not register a single email.
+export function createP106ScheduledPreview(pool,{now=()=>new Date()}={}) {
+  if(typeof pool?.query!=='function')throw new TypeError('mail_schedule_postgres_pool_required');
+  return Object.freeze({async preview() {
+    const referenceDate=getSeoulBusinessDate(now());
+    const [candidates,settings]=await Promise.all([
+      pool.query(`SELECT
+        COUNT(*) FILTER (WHERE r.due_date=($1::date+INTERVAL '1 day')::date)::integer AS due_tomorrow,
+        COUNT(*) FILTER (WHERE r.due_date<$1::date)::integer AS overdue
+        FROM app_rental_requests r WHERE r.status='대여중'`,[referenceDate]),
+      pool.query("SELECT payload FROM app_system_configuration WHERE config_key='mail-notification-settings'"),
+    ]);
+    const events=settings.rows[0]?.payload?.events || {};
+    return Object.freeze({authority:'postgresql',readOnly:true,referenceDate,
+      dueTomorrow:Number(candidates.rows[0]?.due_tomorrow||0),
+      overdue:Number(candidates.rows[0]?.overdue||0),
+      dueEnabled:events.rental_due_reminder?.enabled===true,
+      overdueEnabled:events.rental_overdue?.enabled===true});
+  }});
+}
+
 export function startP106ScheduledLoop({runner,enabled=false,intervalMs=3600000,schedule=setInterval,cancel=clearInterval}={}) {
   if(typeof runner?.tick!=='function')throw new TypeError('mail_schedule_runner_required');
   if(!Number.isInteger(intervalMs)||intervalMs<60000)throw new RangeError('mail_schedule_interval_invalid');

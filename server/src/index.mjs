@@ -46,7 +46,7 @@ import { createSystemConfigRepository } from './settings/system-config-repositor
 import { createSystemConfigService } from './settings/system-config-service.mjs';
 import { createMailNotificationSettingsService } from './mail/mail-notification-settings-service.mjs';
 import { createMailQueueOperations } from './mail/mail-queue-operations.mjs';
-import { createP106ScheduledEnqueue, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
+import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
 import { createSystemDataService } from './settings/system-data-service.mjs';
 import { createBackupVerificationJobs } from './settings/backup-verification-jobs.mjs';
@@ -88,6 +88,7 @@ const systemConfigRepository = createSystemConfigRepository(pool);
 const systemConfigService = createSystemConfigService({ repository: systemConfigRepository });
 const mailNotificationSettingsService = createMailNotificationSettingsService(pool);
 const mailQueueOperations = createMailQueueOperations(pool);
+const mailSchedulePreview = createP106ScheduledPreview(pool);
 // Explicitly OFF until later Staging acceptance. Real provider sending remains locked.
 const scheduledMailLoop = startP106ScheduledLoop({
   runner:createP106ScheduledEnqueue(pool),
@@ -216,6 +217,7 @@ const server = createServer(
     systemConfigService,
     mailNotificationSettingsService,
     mailQueueOperations,
+    mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,
     backupVerificationJobs,

@@ -1440,6 +1440,18 @@ export const requestAdminMailQueueCancel = async ({clerk,apiBaseUrl,fetchImpl,id
   return payload.mailQueueCancel;
 };
 
+export const requestAdminMailSchedulePreview = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-schedule/preview',method:'GET'});
+  if(!response.ok || payload?.mailSchedulePreview?.readOnly!==true){const error=new Error('반납 알림 대상을 확인하지 못했습니다.');error.code=payload?.error||'mail_schedule_preview_failed';error.status=response.status;throw error;}
+  return payload.mailSchedulePreview;
+};
+export const requestAdminMailQueueRetry = async ({clerk,apiBaseUrl,fetchImpl,id}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:`/api/admin/mail-queue/${encodeURIComponent(id)}/retry`,method:'POST'});
+  if(!response.ok || payload?.mailQueueRetry?.requeued!==true){const error=new Error('재처리할 수 없는 메일입니다.');error.code=payload?.error||'mail_queue_retry_failed';error.status=response.status;throw error;}
+  return payload.mailQueueRetry;
+};
+
 export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
   const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
   if (admin) {
@@ -2626,6 +2638,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async cancelAdminQueuedMail(id) {
       const clerk=await initialize();
       return requestAdminMailQueueCancel({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,id});
+    },
+    async getAdminMailSchedulePreview() {
+      const clerk=await initialize();
+      return requestAdminMailSchedulePreview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async retryAdminMail(id) {
+      const clerk=await initialize();
+      return requestAdminMailQueueRetry({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,id});
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();
