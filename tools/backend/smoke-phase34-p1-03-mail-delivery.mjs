@@ -1,0 +1,91 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createMailDeliveryRepository } from '../../server/src/mail/mail-delivery-repository.mjs';
+import { P103_REAL_DELIVERY_LOCKED, p103BackoffSeconds, createP103Dispatcher, createP103WebDynoLoop } from '../../server/src/mail/mail-dynoweb-dispatcher.mjs';
+let checks=0;
+const check=(condition,label)=>{assert.ok(condition,label);checks++;};
+const schema=readFileSync('server/migrations/045_phase34_p1_03_mail_delivery_safety.sql','utf8');
+for(const marker of ['app_mail_delivery_attempts','claim_token TEXT NOT NULL UNIQUE',"'uncertain'",'reserved_at TIMESTAMPTZ','provider_name TEXT','mail_outbox_id BIGINT']) check(schema.includes(marker),marker);
+const repositorySource=readFileSync('server/src/mail/mail-delivery-repository.mjs','utf8');
+for(const marker of ['pg_advisory_xact_lock','FOR UPDATE SKIP LOCKED','INTERVAL \'24 hours\'','INTERVAL \'30 days\'','UPDATE app_mail_delivery_quota','mail_lease_expired_uncertain','ROLLBACK','state=\'processing\'']) check(repositorySource.includes(marker),marker);
+check(P103_REAL_DELIVERY_LOCKED===true,'hardcoded live gate');
+check(!readFileSync('server/src/index.mjs','utf8').includes('createP103WebDynoLoop('),'not started in Heroku server');
+check(!readFileSync('server/src/index.mjs','utf8').includes('createP103Dispatcher('),'not live wired');
+check(!readFileSync('server/src/app.mjs','utf8').includes('/api/admin/mail-dispatch'),'no public dispatch route');
+check(p103BackoffSeconds(1)===60 && p103BackoffSeconds(2)===120 && p103BackoffSeconds(9)===3600,'bounded exponential backoff');
+const fakeQuery=[];
+const fakePool={async connect(){return {async query(sql,params=[]){fakeQuery.push({sql,params});
+  if(sql.startsWith('SELECT payload FROM app_system_configuration'))return {rows:[{payload:{events:{signup_submitted:{enabled:true}}}}]};
+  if(sql.startsWith('SELECT id,event_key'))return {rows:[{id:5,event_key:'signup_submitted',recipient_email:'test@example.com',subject:'hello',body_text:'body',body_html:'<p>body</p>',attempt_count:0,max_attempts:5}]};
+  if(sql.startsWith('SELECT\n          COUNT(*) FILTER'))return {rows:[{day_count:0,month_count:0}]};
+  if(sql.startsWith('UPDATE app_mail_outbox SET state=$3'))return {rows:[{id:5}],rowCount:1};
+  if(sql.includes('RETURNING a.claim_token'))return {rows:[],rowCount:0};
+  return {rows:[],rowCount:1};
+},release(){fakeQuery.push({sql:'RELEASE'})}}}};
+const db=createMailDeliveryRepository(fakePool);
+const recovered=await db.quarantineExpired();
+check(recovered.quarantined===0,'expired lease recovery applied transaction');
+const claim=await db.claim({provider:'brevo',dailyLimit:300,monthlyLimit:9300});
+check(claim.state==='claimed' && claim.mail.id===5 && claim.mail.attempt===1,'SQL claim');
+check(fakeQuery.some(x=>x.sql.includes('INSERT INTO app_mail_delivery_attempts')),'attempt reserved');
+check(fakeQuery.some(x=>x.sql.includes('app_mail_delivery_quota(reserved_count'))===false,'quota insert uses explicit day key');
+check(fakeQuery.some(x=>x.sql.includes('INSERT INTO app_mail_delivery_quota')),'daily metrics reserved');
+check(fakeQuery.some(x=>x.sql==='COMMIT'),'commit');
+const accepted=await db.conclude({claim,outcome:'accepted',providerMessageId:'mock-message-01'});
+check(accepted.state==='sent','accepted recording');
+check(fakeQuery.some(x=>x.sql.includes('SET sent_count=sent_count+1')),'sent metrics counted');
+const retry=await db.conclude({claim,outcome:'retry',errorCode:'provider_rate_limited'});
+check(retry.state==='retry','explicit 429 retry');
+const ambiguous=await db.conclude({claim,outcome:'uncertain',errorCode:'provider_outcome_uncertain'});
+check(ambiguous.state==='uncertain','ambiguous quarantined');
+await assert.rejects(()=>db.claim({provider:'brevo',dailyLimit:301,monthlyLimit:9300}),{code:'mail_claim_config_invalid'});checks++;
+await assert.rejects(()=>db.claim({provider:'brevo',dailyLimit:300,monthlyLimit:9301}),{code:'mail_claim_config_invalid'});checks++;
+await assert.rejects(()=>db.conclude({claim,outcome:'accepted',providerMessageId:'x'}),{code:'mail_provider_message_id_invalid'});checks++;
+await assert.rejects(()=>db.conclude({claim,outcome:'uncertain',errorCode:'api-key=SECRET'}),{code:'mail_error_code_invalid'});checks++;
+const quotaPool={async connect(){return {async query(sql){
+  if(sql.startsWith('SELECT payload FROM app_system_configuration'))return {rows:[{payload:{events:{signup_submitted:{enabled:true}}}}]};
+  if(sql.startsWith('SELECT id,event_key'))return {rows:[{id:1,event_key:'signup_submitted',attempt_count:0,max_attempts:5}]};
+  if(sql.startsWith('SELECT\n          COUNT(*) FILTER'))return {rows:[{day_count:300,month_count:300}]};
+  return {rows:[],rowCount:1};},release(){}}}};
+const full=await createMailDeliveryRepository(quotaPool).claim({provider:'brevo',dailyLimit:300,monthlyLimit:9300});
+check(full.state==='quota_exhausted','rolling 24h quota blocks 301st');
+const monthPool={async connect(){return {async query(sql){
+  if(sql.startsWith('SELECT payload FROM app_system_configuration'))return {rows:[{payload:{events:{signup_submitted:{enabled:true}}}}]};
+  if(sql.startsWith('SELECT id,event_key'))return {rows:[{id:1,event_key:'signup_submitted',attempt_count:0,max_attempts:5}]};
+  if(sql.startsWith('SELECT\n          COUNT(*) FILTER'))return {rows:[{day_count:0,month_count:9300}]};
+  return {rows:[],rowCount:1};},release(){}}}};
+check((await createMailDeliveryRepository(monthPool).claim({provider:'brevo',dailyLimit:300,monthlyLimit:9300})).state==='quota_exhausted','rolling 30d cap');
+const exhaustedPool={async connect(){return {async query(sql){
+  if(sql.startsWith('SELECT payload FROM app_system_configuration'))return {rows:[{payload:{events:{signup_submitted:{enabled:true}}}}]};
+  if(sql.startsWith('SELECT id,event_key'))return {rows:[{id:1,event_key:'signup_submitted',attempt_count:5,max_attempts:5}]};
+  return {rows:[],rowCount:1};},release(){}}}};
+check((await createMailDeliveryRepository(exhaustedPool).claim({provider:'brevo',dailyLimit:300,monthlyLimit:9300})).state==='attempts_exhausted','max attempts enforced');
+const disabledPool={async connect(){return {async query(sql){
+  if(sql.startsWith('SELECT id,event_key'))return {rows:[{id:1,event_key:'signup_submitted',attempt_count:0,max_attempts:5}]};
+  if(sql.startsWith('SELECT payload FROM app_system_configuration'))return {rows:[{payload:{events:{signup_submitted:{enabled:false}}}}]};
+  return {rows:[],rowCount:1};},release(){}}}};
+check((await createMailDeliveryRepository(disabledPool).claim({provider:'brevo',dailyLimit:300,monthlyLimit:9300})).state==='event_disabled',
+  'previously queued mail cancelled after admin toggle OFF');
+const history=[];
+const fakeRepo=(caseName,attempt=1,maxAttempts=5)=>({
+ async quarantineExpired(){history.push('recover');return {quarantined:0}},
+ async claim(){history.push('claim');return {state:'claimed',token:'00000000-0000-4000-8000-000000000001', mail:{id:1,to:'test@example.com',subject:'test',text:'message',html:'<p>message</p>',attempt,maxAttempts}}},
+ async conclude(args){history.push(args.outcome);return {state:args.outcome==='accepted'?'sent':args.outcome==='retry' && attempt<maxAttempts?'retry':args.outcome==='retry'?'failed':args.outcome==='rejected'?'failed':'uncertain'}}});
+const mock=(fn)=>({isMock:true,async send(...args){return fn(...args)}});
+check((await createP103Dispatcher({repository:fakeRepo(),mockSender:mock(()=>({messageId:'fake-123'}))}).tick()).state==='sent','mock accepts');
+check((await createP103Dispatcher({repository:fakeRepo(),mockSender:mock(()=>{throw {status:429};})}).tick()).state==='retry','429 only auto retry');
+check((await createP103Dispatcher({repository:fakeRepo(),mockSender:mock(()=>{throw {status:500};})}).tick()).state==='uncertain','5xx ambiguous no repeat');
+check((await createP103Dispatcher({repository:fakeRepo(),mockSender:mock(()=>{throw new Error('timeout');})}).tick()).state==='uncertain','timeout ambiguous');
+check((await createP103Dispatcher({repository:fakeRepo(),mockSender:mock(()=>{throw {status:400};})}).tick()).state==='failed','400 permanent');
+check((await createP103Dispatcher({repository:fakeRepo(undefined,5,5),mockSender:mock(()=>{throw {status:429};})}).tick()).state==='failed','bounded retries');
+assert.throws(()=>createP103Dispatcher({repository:fakeRepo(),mockSender:{async send(){}}}),/mock_sender_required/);checks++;
+let unblock;const pending = new Promise(r=>{unblock=r;});
+const busyDispatcher=createP103Dispatcher({repository:fakeRepo(),mockSender:mock(async()=>{await pending;return {messageId:'test-done'}})});
+const job=busyDispatcher.tick();
+check((await busyDispatcher.tick()).state==='busy','single process overlap blocked');
+unblock();await job;
+let scheduled, cancelled;const loop=createP103WebDynoLoop({dispatcher:{async tick(){return {}}},schedule(fn,ms){scheduled={fn,ms};return 9},cancel(handle){cancelled=handle}});
+check(loop.start() && !loop.start(),'single schedule');
+check(scheduled.ms===60000,'no tight polling');
+check(loop.stop() && cancelled===9 && !loop.stop(),'clear scheduled task');
+console.log(`[phase34-p1-03-mail-delivery] PASS (${checks} checks, mock only, production sends disabled)`);

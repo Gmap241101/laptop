@@ -18,7 +18,7 @@
 
 ## Database migrations
 
-Migrations **001–043** are present in the current Phase 34 source line, including:
+Migrations **001–045** are present in the current Phase 34 source line, including:
 
 - `038_phase34_footer_reset_recovery_inquiry_reset.sql`: footer and inquiry reset preservation.
 - `039_phase34_p0_scoped_json_restore_audit.sql`: selective JSON restore audit.
@@ -26,8 +26,10 @@ Migrations **001–043** are present in the current Phase 34 source line, includ
 - `041_phase34_p0_single_db_scoped_restore_safety.sql`: atomic selective-restore preimages in the existing DB.
 - `042_phase34_w01_device_trust_security_audit.sql`: W01 policy audit.
 - `043_phase34_w02_device_trust_operation_recovery.sql`: W02 recovery operations and policy convergence.
+- `044_phase34_p1_02_mail_outbox.sql`: P1-02 durable outbox and daily quota metrics.
+- `045_phase34_p1_03_mail_delivery_safety.sql`: P1-03 conservative attempt ledger and uncertainty quarantine.
 
-Never edit an already-applied migration. Staging reports migration 043 already applied. For any new schema change, add a new numbered migration and separately validate on Staging before seeking Production approval.
+Never edit an already-applied migration. Staging confirms migration 044 is applied; 045 is not yet deployed. For any new schema change, add a new numbered migration and separately validate on Staging before seeking Production approval.
 
 ## System-data backup and restore — current behavior
 
@@ -44,7 +46,7 @@ Legacy materials describing a mandatory 60-minute independent restore proof for 
 
 On 2026-10-21, the operator inspected completed backup `a004` (created 2026-10-21 03:03 KST, before migration 043). The downloaded `latest.dump` had 219,761 bytes, SHA-256 `D61639D489453D041E0FE6F6916519A6EE419E84348D499AF2B1ECD13570F837`, 205 TOC entries and passed `pg_restore --file NUL`. It **does not contain `app_device_trust_operations`**. Subsequent downloads of `a004` do not create a post-migration backup. A newly *created* completed PGBackups archive must be checked separately; never delete or overwrite user data to test backup health.
 
-See `docs/phase34-w05-firebase-retirement-operations-20261021.md` for operator commands and W05 evidence. W03 acceptance Z01–Z09 is awaiting formal sign-off; original AC-S04 must remain unaccepted until actually proved by an approved isolated restore.
+See `docs/phase34-w05-firebase-retirement-operations-20261021.md` for earlier W05 evidence. W03 changed acceptance Z01–Z09 was formally approved; original AC-S04 remains unexecuted and unaccepted.
 
 ## Validation
 
@@ -55,7 +57,7 @@ npm run frontend:phase34:external-runtime:smoke
 npm run frontend:phase34:w05-retirement:smoke
 ```
 
-This checks Clerk/PostgreSQL application flows, retired external Firebase SDK/API references, 001–043 migration contracts, W01/W02/W03 regression cases and the current W05 documentation. A green local test is **not** evidence of a Production release or a live isolated full-database restore.
+This checks Clerk/PostgreSQL application flows, retired external Firebase SDK/API references, 001–045 migration contracts, W01/W02/W03 regression cases and the current W05 documentation. A green local test is **not** evidence of a Production release or a live isolated full-database restore.
 
 ### Phase 34 P1-02 email outbox (Migration 044)
 
@@ -65,5 +67,15 @@ notification settings remain in `app_system_configuration`. The repository
 module `mail/mail-outbox-repository.mjs` can enqueue only through a
 business-owned SQL transaction client; currently no business API calls it.
 No sending worker, scheduling, HTTP endpoint or live email delivery is enabled.
-P1-03 adds the dispatcher/quota enforcement, and P1-04/05 integrate business
-state transitions. Sender-domain/DNS and actual provider remain unconfigured.
+
+### Phase 34 P1-03 simulated dispatcher (Migration 045)
+
+`045_phase34_p1_03_mail_delivery_safety.sql` records attempts in the same PostgreSQL database.
+`mail/mail-delivery-repository.mjs` atomically reserves conservative rolling 24-hour and
+30-day allowance, manages transaction-bound leases, and quarantines unknown outcomes.
+`mail/mail-dynoweb-dispatcher.mjs` exposes an in-process web dyno polling loop and a
+**Mock-only** dispatcher; neither is wired into `server/src/index.mjs` and therefore
+cannot emit live mail. Only explicit HTTP 429 denials are automatically retried.
+Actual sender-domain/DNS and provider credentials remain unconfigured. P1-04/05
+will integrate the 19 business transitions, and P1-06/08 require separate approvals
+before any non-Mock sending implementation or Production deployment.
