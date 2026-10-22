@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense } from 'react';
-import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush } from 'lucide-react';
+import { Activity, CalendarDays, ChevronDown, Database, Info, Menu, Paintbrush, Mail } from 'lucide-react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import DeviceTrustVerificationPanel from '../components/DeviceTrustVerificationPanel.jsx';
 import AdminPanelRuntimeErrorBoundary from './AdminPanelRuntimeErrorBoundary.jsx';
@@ -29,6 +29,7 @@ const AdminFooterPanel = memo(lazy(loadAdminFooterPanel));
 const AdminMemberAccountsPanel = memo(lazy(() => import('./AdminMemberAccountsPanel.jsx')));
 const AdminAccountsPanel = memo(lazy(() => import('./AdminAccountsPanel.jsx')));
 const AdminSettingsPanel = memo(lazy(() => import('./AdminSettingsPanel.jsx')));
+const AdminMailNotificationsPanel = memo(lazy(() => import('./AdminMailNotificationsPanel.jsx')));
 const AdminAccountSecurityPanel = memo(lazy(() => import('./AdminAccountSecurityPanel.jsx')));
 const AdminExtensionSettingsPanel = memo(lazy(() => import('./AdminExtensionSettingsPanel.jsx')));
 const AdminHolidayManagementPanel = memo(lazy(() => import('./AdminHolidayManagementPanel.jsx')));
@@ -102,6 +103,7 @@ const ADMIN_TAB_GROUP = {
   settings: 'system',
   serviceOperations: 'system',
   accountSecurity: 'system',
+  mailNotifications: 'system',
   dataManagement: 'system',
   systemInfo: 'system',
 };
@@ -282,6 +284,7 @@ function AdminWorkspace({ ctx, panelCtx }) {
       items: [
         ['serviceOperations', Activity, '서비스 운영'],
         ['accountSecurity', ShieldCheck, '계정 보안 설정'],
+        ['mailNotifications', Mail, '이메일 알림 관리'],
         ['dataManagement', Database, '데이터 관리'],
         ['systemInfo', Info, '시스템 정보·로그'],
       ],
@@ -703,6 +706,11 @@ function AdminWorkspace({ ctx, panelCtx }) {
                   {/* 계정 보안 설정 탭 */}
                   {adminTab === 'accountSecurity' && (
                     <AdminAccountSecurityPanel ctx={panelCtx} />
+                  )}
+
+                  {/* 이메일 알림 · 템플릿 관리 탭 */}
+                  {adminTab === 'mailNotifications' && (
+                    <AdminMailNotificationsPanel ctx={panelCtx} />
                   )}
 
                   {/* 데이터 관리 탭 */}

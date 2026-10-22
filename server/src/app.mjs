@@ -226,6 +226,10 @@ export const createRequestHandler = ({
     async migrateCurrent() { const error = new Error('Admin migration is retired.'); error.code = 'admin_migration_retired'; error.status = 410; throw error; },
     async provisionTarget() { const error = new Error('Admin legacy provisioning is retired.'); error.code = 'admin_provision_retired'; error.status = 410; throw error; },
   },
+  mailNotificationSettingsService = {
+    async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
+    async saveEvent() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
+  },
   systemConfigService = {
     async get() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
     async put() { const error = new Error('System configuration service is not configured.'); error.code = 'system_config_not_configured'; throw error; },
@@ -2307,6 +2311,41 @@ export const createRequestHandler = ({
         writeJson(response, 200, { ...basePayload, systemConfiguration: result }, headers);
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, error: error?.code || 'system_config_read_failed' }, headers);
+      }
+      return;
+    }
+    // P1 mail configuration is an admin-only control plane. It NEVER dispatches mail.
+    if (request.method === 'GET' && url.pathname === '/api/admin/mail-notifications') {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      if (authority.adminAuth?.admin?.adminRole !== 'owner') {
+        writeJson(response, 403, { ...basePayload, authenticated: true, error: 'admin_owner_required' }, headers); return;
+      }
+      try {
+        const settings = await mailNotificationSettingsService.list();
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, mailNotificationSettings: settings }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'mail_settings_read_failed' }, headers);
+      }
+      return;
+    }
+    const mailNotificationPatch = url.pathname.match(/^\/api\/admin\/mail-notifications\/([a-z_]+)$/);
+    if (request.method === 'PATCH' && mailNotificationPatch) {
+      const authority = await authenticateAdminAuthority(request, response, headers, requestId);
+      if (!authority) return;
+      if (authority.adminAuth?.admin?.adminRole !== 'owner') {
+        writeJson(response, 403, { ...basePayload, authenticated: true, error: 'admin_owner_required' }, headers); return;
+      }
+      let input;
+      try { input = await readJsonBody(request, { maxBytes: 10 * 1024 }); }
+      catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
+      try {
+        const settings = await mailNotificationSettingsService.saveEvent({
+          key: mailNotificationPatch[1], input, actorClerkUserId: authority.auth.userId,
+        });
+        writeJson(response, 200, { ...basePayload, authenticated: true, authorized: true, mailNotificationSettings: settings }, headers);
+      } catch (error) {
+        writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'mail_settings_save_failed' }, headers);
       }
       return;
     }

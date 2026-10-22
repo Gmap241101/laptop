@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-22T02:57:42.403Z",
+  "generatedAt": "2026-10-22T04:10:19.900Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 127,
-        "sourceBytes": 1495386,
+        "sourceBytes": 1495506,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -140,7 +140,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18083
+            "bytes": 18203
           },
           {
             "file": "src/features/content/siteContentCutover.js",
@@ -554,11 +554,11 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 96,
-        "sourceBytes": 1081419,
+        "sourceBytes": 1083806,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 132231
+            "bytes": 134085
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -590,7 +590,7 @@
           },
           {
             "file": "src/admin/AdminWorkspace.jsx",
-            "bytes": 29196
+            "bytes": 29609
           },
           {
             "file": "src/utils/richTextCore.js",
@@ -626,7 +626,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18083
+            "bytes": 18203
           },
           {
             "file": "src/admin/useAdminNavigationController.js",
@@ -943,12 +943,12 @@
         ]
       },
       "complete": {
-        "moduleCount": 167,
-        "sourceBytes": 2097712,
+        "moduleCount": 168,
+        "sourceBytes": 2106276,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 132231
+            "bytes": 134085
           },
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -1012,7 +1012,7 @@
           },
           {
             "file": "src/admin/AdminWorkspace.jsx",
-            "bytes": 29196
+            "bytes": 29609
           },
           {
             "file": "src/features/settings/useAdminDataMaintenanceController.js",
@@ -1092,7 +1092,7 @@
           },
           {
             "file": "src/context/appContextSlices.js",
-            "bytes": 18083
+            "bytes": 18203
           },
           {
             "file": "src/admin/useAdminNavigationController.js",
@@ -1277,6 +1277,10 @@
           {
             "file": "src/admin/AdminAccountCreateDialog.jsx",
             "bytes": 6463
+          },
+          {
+            "file": "src/admin/AdminMailNotificationsPanel.jsx",
+            "bytes": 6177
           },
           {
             "file": "src/utils/appUtils.js",
@@ -1627,6 +1631,7 @@
         "src/admin/AdminHolidayManagementPanel.jsx",
         "src/admin/AdminHomeManagementPanel.jsx",
         "src/admin/AdminInquiryPanel.jsx",
+        "src/admin/AdminMailNotificationsPanel.jsx",
         "src/admin/AdminMemberAccountsPanel.jsx",
         "src/admin/AdminNoticePanel.jsx",
         "src/admin/AdminOrganizationPanel.jsx",
@@ -1646,7 +1651,7 @@
   },
   "sharedComplete": {
     "moduleCount": 71,
-    "sourceBytes": 607381,
+    "sourceBytes": 607501,
     "files": [
       {
         "file": "src/components/RichTextEditor.jsx",
@@ -1682,7 +1687,7 @@
       },
       {
         "file": "src/context/appContextSlices.js",
-        "bytes": 18083
+        "bytes": 18203
       },
       {
         "file": "src/features/content/siteContentCutover.js",
@@ -2165,12 +2170,12 @@
     ]
   },
   "adminOnlyComplete": {
-    "moduleCount": 96,
-    "sourceBytes": 1490331,
+    "moduleCount": 97,
+    "sourceBytes": 1498775,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 132231
+        "bytes": 134085
       },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
@@ -2222,7 +2227,7 @@
       },
       {
         "file": "src/admin/AdminWorkspace.jsx",
-        "bytes": 29196
+        "bytes": 29609
       },
       {
         "file": "src/features/settings/useAdminDataMaintenanceController.js",
@@ -2409,6 +2414,10 @@
         "bytes": 6463
       },
       {
+        "file": "src/admin/AdminMailNotificationsPanel.jsx",
+        "bytes": 6177
+      },
+      {
         "file": "src/admin/AdminMemberDirectoryIdentityFields.jsx",
         "bytes": 5809
       },
@@ -2556,12 +2565,12 @@
   },
   "runtimeSourceReachability": {
     "all": {
-      "moduleCount": 222,
-      "sourceBytes": 2973063,
+      "moduleCount": 223,
+      "sourceBytes": 2981627,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 132231
+          "bytes": 134085
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -2680,12 +2689,12 @@
           "bytes": 29911
         },
         {
-          "file": "src/user/UserHomePanel.jsx",
-          "bytes": 29321
+          "file": "src/admin/AdminWorkspace.jsx",
+          "bytes": 29609
         },
         {
-          "file": "src/admin/AdminWorkspace.jsx",
-          "bytes": 29196
+          "file": "src/user/UserHomePanel.jsx",
+          "bytes": 29321
         },
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
@@ -2777,7 +2786,7 @@
         },
         {
           "file": "src/context/appContextSlices.js",
-          "bytes": 18083
+          "bytes": 18203
         },
         {
           "file": "src/admin/useAdminNavigationController.js",
@@ -3018,6 +3027,10 @@
         {
           "file": "src/admin/AdminAccountCreateDialog.jsx",
           "bytes": 6463
+        },
+        {
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 6177
         },
         {
           "file": "src/user/UserFooterPagePanel.jsx",
@@ -3450,12 +3463,12 @@
       ]
     },
     "reachable": {
-      "moduleCount": 223,
-      "sourceBytes": 2985717,
+      "moduleCount": 224,
+      "sourceBytes": 2994281,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 132231
+          "bytes": 134085
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -3574,12 +3587,12 @@
           "bytes": 29911
         },
         {
-          "file": "src/user/UserHomePanel.jsx",
-          "bytes": 29321
+          "file": "src/admin/AdminWorkspace.jsx",
+          "bytes": 29609
         },
         {
-          "file": "src/admin/AdminWorkspace.jsx",
-          "bytes": 29196
+          "file": "src/user/UserHomePanel.jsx",
+          "bytes": 29321
         },
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
@@ -3671,7 +3684,7 @@
         },
         {
           "file": "src/context/appContextSlices.js",
-          "bytes": 18083
+          "bytes": 18203
         },
         {
           "file": "src/admin/useAdminNavigationController.js",
@@ -3916,6 +3929,10 @@
         {
           "file": "src/admin/AdminAccountCreateDialog.jsx",
           "bytes": 6463
+        },
+        {
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 6177
         },
         {
           "file": "src/user/UserFooterPagePanel.jsx",

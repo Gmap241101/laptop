@@ -44,6 +44,7 @@ import { createSecureAttachmentRepository } from './attachments/attachment-repos
 import { createSecureAttachmentService } from './attachments/attachment-service.mjs';
 import { createSystemConfigRepository } from './settings/system-config-repository.mjs';
 import { createSystemConfigService } from './settings/system-config-service.mjs';
+import { createMailNotificationSettingsService } from './mail/mail-notification-settings-service.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
 import { createSystemDataService } from './settings/system-data-service.mjs';
 import { createBackupVerificationJobs } from './settings/backup-verification-jobs.mjs';
@@ -83,6 +84,7 @@ const userClerkAuthRepository = createUserClerkAuthRepository(pool);
 const siteContentRepository = createSiteContentRepository(pool);
 const systemConfigRepository = createSystemConfigRepository(pool);
 const systemConfigService = createSystemConfigService({ repository: systemConfigRepository });
+const mailNotificationSettingsService = createMailNotificationSettingsService(pool);
 const clerkDeviceTrustService = createClerkDeviceTrustService({
   clerkClient: config.clerkSecretKey ? clerkClient : null,
   systemConfigService,
@@ -203,6 +205,7 @@ const server = createServer(
     secureAttachmentService,
     memberAuthorityRepository,
     systemConfigService,
+    mailNotificationSettingsService,
     clerkDeviceTrustService,
     systemDataService,
     backupVerificationJobs,

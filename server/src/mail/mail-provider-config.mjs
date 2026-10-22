@@ -30,7 +30,7 @@ export const loadP101MailConfig = (env = process.env) => {
   }
   const enabled = asBoolean(env.MAIL_ENABLED, 'MAIL_ENABLED');
   const provider = (env.MAIL_PROVIDER || 'disabled').trim().toLowerCase();
-  if (!['disabled', 'resend'].includes(provider)) throw new Error('MAIL_PROVIDER must be disabled or resend.');
+  if (!['disabled', 'resend', 'brevo'].includes(provider)) throw new Error('MAIL_PROVIDER must be disabled, brevo, or resend.');
   const domainVerified = asBoolean(env.MAIL_DOMAIN_VERIFIED, 'MAIL_DOMAIN_VERIFIED');
   const sender = parseMailAddress(env.MAIL_FROM_ADDRESS);
   const senderName = (env.MAIL_FROM_NAME || '').trim();
@@ -43,15 +43,17 @@ export const loadP101MailConfig = (env = process.env) => {
     if (!address) throw new Error('MAIL_STAGING_ALLOWLIST contains an invalid recipient.');
     allowlist.add(address);
   }
-  const dailyLimit = asBoundedInteger(env.MAIL_FREE_DAILY_LIMIT, 'MAIL_FREE_DAILY_LIMIT', 100, 100);
-  const monthlyLimit = asBoundedInteger(env.MAIL_FREE_MONTHLY_LIMIT, 'MAIL_FREE_MONTHLY_LIMIT', 3000, 3000);
-  const apiKey = (env.RESEND_API_KEY || '').trim();
+  const dailyCeiling = provider === 'brevo' ? 300 : 100;
+  const monthlyCeiling = provider === 'brevo' ? 9300 : 3000;
+  const dailyLimit = asBoundedInteger(env.MAIL_FREE_DAILY_LIMIT, 'MAIL_FREE_DAILY_LIMIT', dailyCeiling, dailyCeiling);
+  const monthlyLimit = asBoundedInteger(env.MAIL_FREE_MONTHLY_LIMIT, 'MAIL_FREE_MONTHLY_LIMIT', monthlyCeiling, monthlyCeiling);
+  const apiKey = ((provider === 'brevo' ? env.BREVO_API_KEY : env.RESEND_API_KEY) || '').trim();
   const domainId = (env.RESEND_DOMAIN_ID || '').trim();
-  const configured = provider === 'resend' && Boolean(apiKey && sender && domainVerified);
+  const configured = ['brevo', 'resend'].includes(provider) && Boolean(apiKey && sender && domainVerified);
   const blockers = [];
   if (!enabled) blockers.push('mail_disabled');
   if (provider === 'disabled') blockers.push('provider_disabled');
-  if (provider === 'resend' && !apiKey) blockers.push('api_key_missing');
+  if (['brevo', 'resend'].includes(provider) && !apiKey) blockers.push('api_key_missing');
   if (!sender) blockers.push('sender_missing_or_invalid');
   if (!domainVerified) blockers.push('domain_not_verified');
   if (environment === 'staging' && allowlist.size === 0) blockers.push('staging_allowlist_missing');

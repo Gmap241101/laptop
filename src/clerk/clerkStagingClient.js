@@ -1404,6 +1404,26 @@ export const requestAdminClerkDeviceTrustWrite = async ({ clerk, apiBaseUrl, fet
   return payload;
 };
 
+// P1-01/02 mail control-plane endpoints: read and edit only, never send.
+export const requestAdminMailNotificationSettings = async ({ clerk, apiBaseUrl, fetchImpl }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl,
+    path: '/api/admin/mail-notifications', method: 'GET' });
+  if (!response.ok || payload?.mailNotificationSettings?.authority !== 'postgresql') {
+    const error = new Error('이메일 알림 설정을 불러올 수 없습니다.'); error.code=payload?.error||'mail_settings_unavailable'; error.status=response.status; throw error;
+  }
+  return payload.mailNotificationSettings;
+};
+export const requestAdminMailNotificationUpdate = async ({ clerk, apiBaseUrl, fetchImpl, key, input }) => {
+  const { response, payload } = await requestWithSession({ clerk, apiBaseUrl, fetchImpl,
+    path: `/api/admin/mail-notifications/${encodeURIComponent(key)}`, method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  if (!response.ok || payload?.mailNotificationSettings?.authority !== 'postgresql') {
+    const error = new Error(response.status === 409 ? '다른 관리자가 변경했습니다. 다시 불러와 주세요.' : '이메일 알림 설정을 저장할 수 없습니다.');
+    error.code=payload?.error||'mail_settings_save_failed'; error.status=response.status; throw error;
+  }
+  return payload.mailNotificationSettings;
+};
+
 export const requestSystemConfiguration = async ({ clerk = null, apiBaseUrl, fetchImpl, key, admin = false }) => {
   const path = admin ? `/api/admin/system-config/${encodeURIComponent(key)}` : `/api/system-config/${encodeURIComponent(key)}`;
   if (admin) {
@@ -2574,6 +2594,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminClerkDeviceTrust(enabled) {
       const clerk = await initialize();
       return requestAdminClerkDeviceTrustWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, enabled });
+    },
+    async getAdminMailNotificationSettings() {
+      const clerk = await initialize();
+      return requestAdminMailNotificationSettings({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl });
+    },
+    async saveAdminMailNotificationEvent(key, input) {
+      const clerk = await initialize();
+      return requestAdminMailNotificationUpdate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, input });
     },
     async getAdminSystemConfiguration(key) {
       const clerk = await initialize();
