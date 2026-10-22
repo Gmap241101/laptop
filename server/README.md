@@ -56,3 +56,14 @@ npm run frontend:phase34:w05-retirement:smoke
 ```
 
 This checks Clerk/PostgreSQL application flows, retired external Firebase SDK/API references, 001–043 migration contracts, W01/W02/W03 regression cases and the current W05 documentation. A green local test is **not** evidence of a Production release or a live isolated full-database restore.
+
+### Phase 34 P1-02 email outbox (Migration 044)
+
+`044_phase34_p1_02_mail_outbox.sql` adds `app_mail_outbox` and
+`app_mail_delivery_quota` inside the existing PostgreSQL database. Mail
+notification settings remain in `app_system_configuration`. The repository
+module `mail/mail-outbox-repository.mjs` can enqueue only through a
+business-owned SQL transaction client; currently no business API calls it.
+No sending worker, scheduling, HTTP endpoint or live email delivery is enabled.
+P1-03 adds the dispatcher/quota enforcement, and P1-04/05 integrate business
+state transitions. Sender-domain/DNS and actual provider remain unconfigured.

@@ -372,6 +372,7 @@ export function RichTextEditor({
   maxHeight = null,
   disabled = false,
   allowVideos = true,
+  allowImages = true,
 }) {
   const resolvedMaxHeight = maxHeight ?? minHeight;
   const editorRef = useRef(null);
@@ -1662,7 +1663,7 @@ export function RichTextEditor({
           <ToolbarButton title="오른쪽 정렬" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleAlignment('right')}><AlignRight size={15} /></ToolbarButton>
           <span className="mx-1 h-5 w-px bg-slate-200" />
           <ToolbarButton title="링크 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={insertLink}><LinkIcon size={15} /></ToolbarButton>
-          <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openImagePanel()}><ImagePlus size={15} /></ToolbarButton>
+          {allowImages && <ToolbarButton title="이미지 URL 삽입" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openImagePanel()}><ImagePlus size={15} /></ToolbarButton>}
           {allowVideos && (
             <>
               <ToolbarButton title="YouTube 동영상 삽입·수정" disabled={disabled || sourceMode} onMouseDown={(e) => e.preventDefault()} onClick={() => openYouTubePanel()}><Youtube size={16} /></ToolbarButton>

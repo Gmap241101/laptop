@@ -8,6 +8,7 @@ const eventView = (event, patch = {}) => ({
   enabled: patch.enabled === true,
   subject: typeof patch.subject === 'string' ? patch.subject : event.defaultSubject,
   body: typeof patch.body === 'string' ? patch.body : event.defaultBody,
+  bodyFormat: patch.bodyFormat === 'html' ? 'html' : 'text',
   variables: [...event.variables],
 });
 const present = (payload) => ({
@@ -39,10 +40,10 @@ export const createMailNotificationSettingsService = (pool) => {
         const next = {
           ...current,
           revision: revision + 1,
-          events: { ...current.events, [key]: { enabled: patch.enabled, subject: patch.subject, body: patch.body } },
+          events: { ...current.events, [key]: { enabled: patch.enabled, subject: patch.subject, body: patch.body, bodyFormat: patch.bodyFormat } },
           audit: [{ revision: revision + 1, eventKey: key, actor: String(actorClerkUserId || '').slice(0, 120),
             changedAt: new Date().toISOString(), enabledBefore: before.enabled, enabledAfter: patch.enabled,
-            templateChanged: before.subject !== patch.subject || before.body !== patch.body },
+            templateChanged: before.subject !== patch.subject || before.body !== patch.body || before.bodyFormat !== patch.bodyFormat },
             ...(Array.isArray(current.audit) ? current.audit : [])].slice(0, 200),
         };
         await client.query(`INSERT INTO app_system_configuration
