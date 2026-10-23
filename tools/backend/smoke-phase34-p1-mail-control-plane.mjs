@@ -83,7 +83,7 @@ const workspaceSource = readFileSync('src/admin/AdminWorkspace.jsx', 'utf8');
 const clientSource = readFileSync('src/clerk/clerkStagingClient.js', 'utf8');
 test(appSource.includes("url.pathname === '/api/admin/mail-notifications'"), 'mail policy GET is exposed');
 test(appSource.includes('mailNotificationSettingsService.saveEvent'), 'mail policy PATCH is exposed');
-test((appSource.slice(appSource.indexOf('// P1 mail configuration'), appSource.indexOf('const adminSystemConfigMatch')).match(/authority.adminAuth\?\.admin\?\.adminRole !== 'owner'/g) || []).length === 2, 'GET and PATCH enforce owner');
+test((appSource.slice(appSource.indexOf('// P1 mail configuration'), appSource.indexOf('    // P1-07: shared appearance')).match(/authority.adminAuth\?\.admin\?\.adminRole !== 'owner'/g) || []).length === 2, 'GET and PATCH enforce owner');
 test(adminPanelSource.includes('saveAdminMailNotificationEvent'), 'admin panel persists a single event');
 test(adminPanelSource.includes('expectedRevision: snapshot.revision'), 'admin panel supplies revision');
 test(workspaceSource.includes("adminTab === 'mailNotifications'"), 'admin menu mounts the editor');

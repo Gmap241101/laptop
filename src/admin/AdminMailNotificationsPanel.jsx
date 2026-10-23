@@ -22,6 +22,11 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [snapshot,setSnapshot] = useState(null);
   const [drafts,setDrafts] = useState({});
   const [selected,setSelected] = useState('');
+  const [designDraft,setDesignDraft] = useState(null);
+  const [designMessage,setDesignMessage] = useState('');
+  const [mailPreview,setMailPreview] = useState(null);
+  const [mailPreviewBusy,setMailPreviewBusy] = useState(false);
+  const [mailPreviewMessage,setMailPreviewMessage] = useState('');
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
   const [queue,setQueue] = useState(null);
@@ -65,6 +70,8 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     try {
       const data = await clerkStagingClient.getAdminMailNotificationSettings();
       setSnapshot(data);
+      setDesignDraft(data.design);
+      setMailPreview(null);
       setDrafts(Object.fromEntries(data.events.map((event) => [event.key,fromEvent(event)])));
       setSelected((key) => data.events.some((e) => e.key === key) ? key : data.events[0]?.key || '');
     } catch { setMessage('알림 설정을 불러오지 못했습니다.'); }
@@ -74,7 +81,25 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const current = useMemo(() => snapshot?.events?.find((event) => event.key === selected), [snapshot,selected]);
   const draft = drafts[selected] || null;
   const pending = Boolean(current && draft && changed(current,draft));
-  const setField = (field,value) => setDrafts((before) => ({ ...before,[selected]:{ ...before[selected],[field]:value } }));
+  const designPending = Boolean(snapshot?.design && designDraft &&
+    ['senderName','brandTitle','footerText'].some((field) => snapshot.design[field] !== designDraft[field]));
+  const saveDesign = async () => {
+    if(!designPending || busy)return;
+    setBusy(true);setDesignMessage('');setMailPreview(null);
+    try{
+      const data=await clerkStagingClient.saveAdminMailDesign({...designDraft,expectedRevision:snapshot.revision});
+      setSnapshot(data);setDesignDraft(data.design);setDesignMessage('저장되었습니다.');
+    }catch(error){setDesignMessage(error?.status===409?'다른 관리자가 먼저 변경했습니다. 새로고침 후 다시 저장하세요.':`디자인 설정을 저장하지 못했습니다. 입력 내용을 확인하세요. 오류 코드: ${error?.code || 'mail_design_save_failed'}`);}
+    finally{setBusy(false);}
+  };
+  const makeMailPreview = async () => {
+    if(!draft || !current || !designDraft || busy)return;
+    setMailPreviewBusy(true);setMailPreviewMessage('');setMailPreview(null);
+    try{const data=await clerkStagingClient.previewAdminMailTemplate({key:selected,template:draft,design:designDraft});setMailPreview(data);}
+    catch(error){setMailPreviewMessage('미리보기를 표시할 수 없습니다. 제목·본문과 변수를 확인하세요.');}
+    finally{setMailPreviewBusy(false);}
+  };
+  const setField = (field,value) => {setMailPreview(null);setDrafts((before) => ({ ...before,[selected]:{ ...before[selected],[field]:value } }));};
   const save = async () => {
     if (!current || !draft || !pending || busy) return;
     setBusy(true); setMessage('');
@@ -136,6 +161,30 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         </div>
       </div>}
     </div>
+    {snapshot && designDraft && <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+      <div><h3 className="text-sm font-bold text-slate-900">공통 이메일 디자인</h3>
+        <p className="mt-1 text-xs text-slate-500">모든 이메일 유형에 공통으로 적용됩니다. 예시 메일은 아래 미리보기에서 확인할 수 있습니다.</p></div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="space-y-1 text-xs font-semibold text-slate-700">발신자 표시명
+          <input className="w-full rounded-lg border border-slate-300 p-2.5 text-sm" maxLength={80} disabled={busy} value={designDraft.senderName}
+            onChange={(e)=>(setDesignDraft((old)=>({...old,senderName:e.target.value})),setMailPreview(null))}/>
+        </label>
+        <label className="space-y-1 text-xs font-semibold text-slate-700">메일 상단 제목
+          <input className="w-full rounded-lg border border-slate-300 p-2.5 text-sm" maxLength={80} disabled={busy} value={designDraft.brandTitle}
+            onChange={(e)=>(setDesignDraft((old)=>({...old,brandTitle:e.target.value})),setMailPreview(null))}/>
+        </label>
+      </div>
+      <label className="block space-y-1 text-xs font-semibold text-slate-700">메일 하단 안내 문구
+        <textarea className="w-full resize-y rounded-lg border border-slate-300 p-2.5 text-sm" rows={2} maxLength={360} disabled={busy} value={designDraft.footerText}
+          onChange={(e)=>(setDesignDraft((old)=>({...old,footerText:e.target.value})),setMailPreview(null))}/>
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="rounded-lg bg-[var(--mk-orange)] px-4 py-2 text-sm font-bold text-white disabled:opacity-40" disabled={busy || !designPending} onClick={()=>void saveDesign()}>공통 디자인 저장</button>
+        <button type="button" className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40" disabled={busy || !designPending} onClick={()=>setDesignDraft(snapshot.design)}>변경 취소</button>
+        {designMessage&&<span role="status" className="text-xs text-slate-700">{designMessage}</span>}
+      </div>
+      <p className="text-xs text-slate-500">실제 발신 주소와 인증은 별도 설정으로 관리됩니다. 실메일 발송은 비활성 상태입니다.</p>
+    </div>}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-xl font-black text-slate-900">이메일 알림 관리</h2><p className="mt-1 text-sm text-slate-500">발송 유형별 설정과 메일 내용을 관리합니다.</p></div>
       <button type="button" disabled={busy} onClick={load} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold">새로고침</button>
@@ -146,7 +195,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
       <div className="max-h-[650px] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
         {snapshot.events.map((event) => <button type="button" key={event.key}
-          onClick={() => { if (pending && !window.confirm('저장하지 않은 변경사항을 취소하고 이동하시겠습니까?')) return; setSelected(event.key);setMessage(''); }}
+          onClick={() => { if (pending && !window.confirm('저장하지 않은 변경사항을 취소하고 이동하시겠습니까?')) return; setSelected(event.key);setMailPreview(null);setMessage(''); }}
           className={`w-full rounded-lg px-3 py-3 text-left text-sm ${selected === event.key ? 'bg-orange-50 font-bold text-orange-800' : 'hover:bg-slate-50'}`}>
           <span className="block text-xs text-slate-500">{event.category} · {event.recipient === 'admin' ? '관리자' : '사용자'}</span>
           {event.title}<span className={`ml-2 text-xs ${drafts[event.key]?.enabled ? 'text-green-700' : 'text-slate-400'}`}>{drafts[event.key]?.enabled ? 'ON' : 'OFF'}</span>
@@ -179,6 +228,19 @@ export default function AdminMailNotificationsPanel({ ctx }) {
             minHeight={300} disabled={busy} allowVideos={false} allowImages={false}/>
         </Suspense>
         <p className="text-xs text-slate-500">메일에서는 이미지·동영상 등 외부 콘텐츠를 사용할 수 없습니다. 안전한 서식과 링크만 저장됩니다.</p>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="text-sm font-bold text-slate-900">메일 미리보기</h4>
+            <p className="text-xs text-slate-500">저장하지 않은 내용도 예시 데이터로 확인할 수 있습니다.</p></div>
+            <button type="button" disabled={busy || mailPreviewBusy} onClick={()=>void makeMailPreview()} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-bold text-orange-800 disabled:opacity-50">{mailPreviewBusy?'불러오는 중...':'미리보기'}</button>
+          </div>
+          {mailPreviewMessage&&<p role="status" className="text-xs text-rose-700">{mailPreviewMessage}</p>}
+          {mailPreview?.eventKey===selected&&<div className="space-y-2">
+            <p className="break-words text-xs"><strong>보내는 사람:</strong> {mailPreview.senderName}</p>
+            <p className="break-words text-xs"><strong>제목:</strong> {mailPreview.subject}</p>
+            <iframe title="이메일 미리보기" sandbox="" srcDoc={mailPreview.html} className="h-[440px] w-full rounded-lg border border-slate-200 bg-white"/>
+            <p className="text-xs text-slate-500">실제 고객 정보는 표시하지 않으며 이메일도 발송되지 않습니다.</p>
+          </div>}
+        </div>
         <div className="flex gap-2"><button type="button" onClick={save} disabled={!pending || busy} className="rounded-lg bg-[var(--mk-orange)] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">저장</button>
           <button type="button" disabled={busy || !pending} onClick={() => setDrafts((d) => ({ ...d,[selected]:fromEvent(current) }))} className="rounded-lg border px-5 py-2.5 text-sm">변경 취소</button></div>
       </div>}

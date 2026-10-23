@@ -51,7 +51,7 @@ export const createMailDeliveryRepository = (pool) => {
       return transaction(async (client) => {
         // One global transactional lock serializes quota reservations across all web dynos.
         await client.query("SELECT pg_advisory_xact_lock(hashtext('phase34-mail-quota-global-v1'))");
-        const ready = await client.query(`SELECT id,event_key,recipient_email,subject,body_text,body_html,
+        const ready = await client.query(`SELECT id,event_key,recipient_email,subject,body_text,body_html,sender_name,
             attempt_count,max_attempts FROM app_mail_outbox
           WHERE state IN ('queued','retry') AND available_at<=NOW()
           ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1`);
@@ -117,7 +117,7 @@ export const createMailDeliveryRepository = (pool) => {
           WHERE id=$1`,[mail.id,owner,token,leaseSeconds]);
         return Object.freeze({ state:'claimed', token, provider, mail:Object.freeze({
           id: mail.id, eventKey:mail.event_key, to:mail.recipient_email, subject:mail.subject,
-          text:mail.body_text, html:mail.body_html, attempt:number(mail.attempt_count)+1,
+          text:mail.body_text, html:mail.body_html, senderName:mail.sender_name, attempt:number(mail.attempt_count)+1,
           maxAttempts:number(mail.max_attempts),
         }) });
       });

@@ -2389,7 +2389,7 @@ export const createRequestHandler = ({
         writeJson(response, 403, { ...basePayload, authenticated: true, error: 'admin_owner_required' }, headers); return;
       }
       let input;
-      try { input = await readJsonBody(request, { maxBytes: 10 * 1024 }); }
+      try { input = await readJsonBody(request, { maxBytes: 60 * 1024 }); }
       catch (error) { writeJson(response, error.status || 400, { ...basePayload, authenticated: true, error: error.code || 'invalid_json_body' }, headers); return; }
       try {
         const settings = await mailNotificationSettingsService.saveEvent({
@@ -2399,6 +2399,35 @@ export const createRequestHandler = ({
       } catch (error) {
         writeJson(response, error?.status || 503, { ...basePayload, authenticated: true, error: error?.code || 'mail_settings_save_failed' }, headers);
       }
+      return;
+    }
+    // P1-07: shared appearance and sandboxed sample preview (zero network sends).
+    if (request.method === 'PATCH' && url.pathname === '/api/admin/mail-design') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      let input;
+      try{input=await readJsonBody(request,{maxBytes:2048});}
+      catch(e){writeJson(response,e.status||400,{...basePayload,authenticated:true,error:e.code||'invalid_json_body'},headers);return;}
+      try{const data=await mailNotificationSettingsService.saveDesign({input,actorClerkUserId:authority.auth.userId});
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailNotificationSettings:data},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_design_save_failed'},headers);}
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/mail-preview') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      let input;
+      try{input=await readJsonBody(request,{maxBytes:60*1024});}
+      catch(e){writeJson(response,e.status||400,{...basePayload,authenticated:true,error:e.code||'invalid_json_body'},headers);return;}
+      try{const data=mailNotificationSettingsService.preview(input);
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailPreview:data},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_preview_failed'},headers);}
       return;
     }
     const adminSystemConfigMatch = url.pathname.match(/^\/api\/admin\/system-config\/(admin-security|user-session-policy)$/);

@@ -1424,6 +1424,22 @@ export const requestAdminMailNotificationUpdate = async ({ clerk, apiBaseUrl, fe
   return payload.mailNotificationSettings;
 };
 
+export const requestAdminMailDesignUpdate = async ({clerk,apiBaseUrl,fetchImpl,input}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-design',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+  if(!response.ok || payload?.mailNotificationSettings?.authority!=='postgresql') {
+    const error=new Error('이메일 디자인을 저장할 수 없습니다.');error.code=payload?.error||'mail_design_save_failed';error.status=response.status;throw error;
+  }
+  return payload.mailNotificationSettings;
+};
+export const requestAdminMailTemplatePreview = async ({clerk,apiBaseUrl,fetchImpl,input}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-preview',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+  if(!response.ok || payload?.mailPreview?.sample!==true) {
+    const error=new Error('미리보기를 표시하지 못했습니다.');error.code=payload?.error||'mail_preview_failed';error.status=response.status;throw error;
+  }
+  return payload.mailPreview;
+};
 export const requestAdminMailQueue = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-queue',method:'GET'});
   if(!response.ok || payload?.mailQueue?.authority!=='postgresql') {
@@ -2630,6 +2646,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminMailNotificationEvent(key, input) {
       const clerk = await initialize();
       return requestAdminMailNotificationUpdate({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, key, input });
+    },
+    async saveAdminMailDesign(input) {
+      const clerk=await initialize();
+      return requestAdminMailDesignUpdate({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
+    },
+    async previewAdminMailTemplate(input) {
+      const clerk=await initialize();
+      return requestAdminMailTemplatePreview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
     },
     async getAdminMailQueue() {
       const clerk=await initialize();
