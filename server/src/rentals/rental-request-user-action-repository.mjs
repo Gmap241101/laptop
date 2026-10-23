@@ -1,4 +1,5 @@
 import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+import { cancelStaleScheduledMailInTransaction } from '../mail/mail-scheduled-safety.mjs';
 
 const asDateForMail = (v) => v instanceof Date ? v.toISOString().slice(0,10) : String(v||'').slice(0,10);
 const asJson = (value, fallback) => value == null ? fallback : value;
@@ -154,6 +155,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
              FROM app_rental_requests WHERE request_id=$1`,
           [requestId, appUserId, firebaseUid, JSON.stringify(eventPayload({ action: 'user-request-edited', current, next, firebaseUid, detail: '사용자 신청 정보 수정' }))],
         );
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return fetchRequest(requestId);
       } catch (error) {
@@ -175,6 +177,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
         await enqueueUserMail({ client, eventKey:'rental_cancelled', eventId:`cancel:${requestId}`,
           recipientEmail:current.requesterEmail,
           values:rentalMailValues('rental_cancelled',current,{rentalCancelledAt:new Date().toISOString()}) });
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return Object.freeze({ deleted: true, request: current, firebaseUid });
       } catch (error) {
@@ -249,6 +252,7 @@ export const createRentalRequestUserActionRepository = (pool) => {
           recipientEmail:current.requesterEmail,
           values:rentalMailValues('extension_approved',current,{previousRentalDueAt:asDateForMail(current.dueDate),
             newRentalDueAt:asDateForMail(dueDate),extensionDecisionAt:new Date().toISOString()}) });
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return fetchRequest(requestId);
       } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }

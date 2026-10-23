@@ -43,19 +43,19 @@ export async function enqueueUserMail({client,eventKey,eventId,recipientEmail,va
 
 // P1-04 time-based candidate query. Deliberately NOT called by web startup or API.
 // P1-05/06 operational policy must approve scheduler, daily cadence and reminder offsets.
-export async function listScheduledUserMailCandidates({client, eventKey, referenceDate, limit=50}) {
+export async function listScheduledUserMailCandidates({client, eventKey, referenceDate, limit=50, afterId=0}) {
   if (!['rental_due_reminder','rental_overdue'].includes(eventKey)) throw new TypeError('scheduled_user_event_required');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) throw new TypeError('reference_date_invalid');
-  if (!Number.isInteger(limit) || limit<1 || limit>100) throw new TypeError('mail_batch_limit_invalid');
+  if (!Number.isInteger(limit) || limit<1 || limit>100 || !Number.isSafeInteger(afterId) || afterId<0) throw new TypeError('mail_batch_limit_invalid');
   const condition = eventKey==='rental_due_reminder'
     ? "r.due_date = ($1::date + INTERVAL '1 day')::date"
     : 'r.due_date < $1::date';
-  const rows=await client.query(`SELECT r.request_id,r.requester_email,r.requester_name,r.requester_team,
+  const rows=await client.query(`SELECT r.id AS rental_row_id,r.request_id,r.requester_email,r.requester_name,r.requester_team,
        r.requested_at_text,r.start_date::text,r.due_date::text,i.asset_category,i.asset_no
      FROM app_rental_requests r LEFT JOIN app_rental_request_items i ON i.rental_request_id=r.id
-     WHERE r.status='대여중' AND ${condition}
-     ORDER BY r.due_date,r.id LIMIT $2 FOR SHARE OF r`,[referenceDate,limit]);
-  return rows.rows.map((r)=>Object.freeze({eventKey,eventId:`${r.request_id}:${asDate(r.due_date)}:${eventKey==='rental_overdue'?referenceDate:'pre'}`,
+     WHERE r.status='대여중' AND ${condition} AND r.id > $3::bigint
+     ORDER BY r.id LIMIT $2 FOR SHARE OF r`,[referenceDate,limit,afterId]);
+  return rows.rows.map((r)=>Object.freeze({rentalRowId:Number(r.rental_row_id||0),eventKey,eventId:`${r.request_id}:${asDate(r.due_date)}:${eventKey==='rental_overdue'?referenceDate:'pre'}`,
     recipientEmail:r.requester_email,sourceRequestId:r.request_id,sourceDueDate:asDate(r.due_date),values:rentalMailValues(eventKey,{
       id:r.request_id,requesterName:r.requester_name,requesterTeam:r.requester_team,
       requestedAt:r.requested_at_text,startDate:r.start_date,dueDate:r.due_date,

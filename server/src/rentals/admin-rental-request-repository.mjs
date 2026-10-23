@@ -1,4 +1,5 @@
 import { enqueueUserMail, rentalMailValues } from '../mail/mail-user-event-bridge.mjs';
+import { cancelStaleScheduledMailInTransaction } from '../mail/mail-scheduled-safety.mjs';
 
 const trim = (value) => String(value ?? '').trim();
 const asJson = (value, fallback) => value == null ? fallback : value;
@@ -384,6 +385,7 @@ export const createAdminRentalRequestRepository = (pool) => {
             detail: '관리자 신청 정보 수정',
           })],
         );
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return mapRow((await pool.query(
           `SELECT ${SELECT} FROM app_rental_requests request
@@ -578,6 +580,7 @@ export const createAdminRentalRequestRepository = (pool) => {
               extensionDecisionAt:new Date().toISOString(),
               extensionRejectionReason:trim(eventPayload?.reason || '') }) });
         }
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return mapRow((await pool.query(
           `SELECT ${SELECT} FROM app_rental_requests request
@@ -720,6 +723,7 @@ export const createAdminRentalRequestRepository = (pool) => {
               rentalCancelledAt:nextStatus==='사용자취소'?new Date().toISOString():'',
             }) });
         }
+        await cancelStaleScheduledMailInTransaction({client,requestId});
         await client.query('COMMIT');
         return mapRow((await pool.query(
           `SELECT ${SELECT}

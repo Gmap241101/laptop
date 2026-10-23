@@ -4,11 +4,12 @@ export const getSeoulBusinessDate = (now = new Date()) => new Intl.DateTimeForma
   timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(now);
 const KEYS = Object.freeze(['rental_due_reminder','rental_overdue']);
+const MAX_PAGES_PER_EVENT = 200; // bounded: 20,000 requests/event/run at limit 100
 export function createP106ScheduledEnqueue(pool, {now=()=>new Date()}={}) {
   if(typeof pool?.connect !== 'function') throw new TypeError('mail_schedule_postgres_pool_required');
   return Object.freeze({
     async tick({referenceDate=getSeoulBusinessDate(now()),limit=100}={}) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate) || (Number.isNaN(Date.parse(`${referenceDate}T00:00:00.000Z`)) || new Date(`${referenceDate}T00:00:00.000Z`).toISOString().slice(0,10)!==referenceDate) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
         throw new TypeError('mail_schedule_arguments_invalid');
       }
       const client=await pool.connect();
@@ -18,24 +19,35 @@ export function createP106ScheduledEnqueue(pool, {now=()=>new Date()}={}) {
         const lock=await client.query("SELECT pg_try_advisory_xact_lock(hashtext('phase34-p1-06-scheduled-mail')) AS locked");
         if (lock.rows[0]?.locked!==true) {await client.query('ROLLBACK');return {state:'busy',queued:0,duplicates:0};}
         const policy=await client.query("SELECT payload FROM app_system_configuration WHERE config_key='mail-notification-settings'");
-        let queued=0,duplicates=0,candidates=0,disabled=0;
+        let queued=0,duplicates=0,candidates=0,disabled=0,pages=0,truncated=false;
         for(const eventKey of KEYS) {
           if(policy.rows[0]?.payload?.events?.[eventKey]?.enabled!==true) {disabled++;continue;}
-          const entries=await listScheduledUserMailCandidates({client,eventKey,referenceDate,limit});
-          candidates+=entries.length;
-          for(const entry of entries) {
-            const result=await enqueueUserMail({client,eventKey,eventId:entry.eventId,
-              recipientEmail:entry.recipientEmail,values:entry.values});
-            if(result.queued && result.id) {
-              await client.query(`UPDATE app_mail_outbox SET source_request_id=$2,
-                source_due_date=$3::date,scheduled_for_date=$4::date WHERE id=$1 AND state='queued'`,
-              [result.id,entry.sourceRequestId,entry.sourceDueDate,referenceDate]);
-              queued++;
-            } else if(result.duplicate) duplicates++;
+          let afterId=0;
+          for(let page=0; page<MAX_PAGES_PER_EVENT; page++) {
+            const entries=await listScheduledUserMailCandidates({client,eventKey,referenceDate,limit,afterId});
+            pages++;
+            candidates+=entries.length;
+            for(const entry of entries) {
+              const result=await enqueueUserMail({client,eventKey,eventId:entry.eventId,
+                recipientEmail:entry.recipientEmail,values:entry.values});
+              if(result.queued && result.id) {
+                await client.query(`UPDATE app_mail_outbox SET source_request_id=$2,
+                  source_due_date=$3::date,scheduled_for_date=$4::date WHERE id=$1 AND state='queued'`,
+                [result.id,entry.sourceRequestId,entry.sourceDueDate,referenceDate]);
+                queued++;
+              } else if(result.duplicate) duplicates++;
+            }
+            if(entries.length < limit) break;
+            const nextId=Number(entries.at(-1)?.rentalRowId || 0);
+            if(!Number.isSafeInteger(nextId) || nextId<=afterId) {
+              throw new Error('mail_schedule_cursor_invalid');
+            }
+            afterId=nextId;
+            if(page===MAX_PAGES_PER_EVENT-1) truncated=true;
           }
         }
         await client.query('COMMIT');
-        return Object.freeze({state:'complete',queued,duplicates,candidates,disabled,referenceDate});
+        return Object.freeze({state:truncated?'partial':'complete',queued,duplicates,candidates,disabled,pages,truncated,referenceDate});
       } catch(e){await client.query('ROLLBACK').catch(()=>{});throw e;}
       finally {client.release();}
     },
