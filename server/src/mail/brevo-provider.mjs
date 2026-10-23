@@ -1,5 +1,6 @@
-import { parseMailAddress } from './mail-provider-config.mjs';
 import { MailProviderError } from './resend-provider.mjs';
+import { P103_REAL_DELIVERY_LOCKED } from './mail-dynoweb-dispatcher.mjs';
+import { executeBrevoTransaction } from './brevo-transaction-contract.mjs';
 
 const BREVO_API = 'https://api.brevo.com';
 const errorStatus = (status) => new MailProviderError(
@@ -31,15 +32,14 @@ export const createBrevoProvider = ({ config, fetchImpl = globalThis.fetch } = {
       const verified = info?.verified === true && info?.authenticated === true;
       const name = String(info?.domain_name || info?.domain || info?.name || '').toLowerCase();
       return Object.freeze({ verified: verified && name === domain, matchedSenderDomain: name === domain,
-        status: verified ? 'verified' : 'not_verified' });
+        status: verified && name === domain ? 'verified' : 'not_verified' });
     },
     async send(message) {
-      // P1-01 is not a live mail stage. The code below does not expose a sending path.
+      // Gate C implements the vendor contract without enabling any live sending.
+      // Do NOT remove these guards absent a distinct, explicitly approved Gate D.
       if (!config.liveSendingReady) throw new MailProviderError('outbox_and_quota_ledger_not_ready');
-      // Future implementation MUST add durable exactly-one-claim scheduling, strict quota,
-      // no implicit retry on ambiguous timeout, and provider-specific idempotency policy.
-      if (!parseMailAddress(message?.to)) throw new MailProviderError('recipient_invalid');
-      throw new MailProviderError('p1_03_dispatcher_not_implemented');
+      if (P103_REAL_DELIVERY_LOCKED) throw new MailProviderError('p103_real_delivery_locked');
+      return executeBrevoTransaction({config,message,fetchImpl});
     },
   });
 };

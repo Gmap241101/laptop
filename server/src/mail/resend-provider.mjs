@@ -1,4 +1,5 @@
 import { parseMailAddress } from './mail-provider-config.mjs';
+import { P103_REAL_DELIVERY_LOCKED } from './mail-dynoweb-dispatcher.mjs';
 
 const API_ORIGIN = 'https://api.resend.com';
 const TIMEOUT_MS = 8000;
@@ -63,6 +64,7 @@ export const createResendProvider = ({ config, fetchImpl = globalThis.fetch } = 
       // P1-01 intentionally cannot send real mail. P1-02/03 must add a durable, atomic
       // Outbox and quota ledger before an authorized production sending interface exists.
       if (!config.liveSendingReady) throw new MailProviderError('outbox_and_quota_ledger_not_ready');
+      if (P103_REAL_DELIVERY_LOCKED) throw new MailProviderError('p103_real_delivery_locked');
       // The following code is a secondary defensive boundary, not yet a production sender.
       if (!config.enabled || config.provider !== 'resend' || !config.domainVerified) {
         throw new MailProviderError('mail_not_enabled');
