@@ -29,6 +29,40 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [mailPreviewMessage,setMailPreviewMessage] = useState('');
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
+  const [mailPreflight,setMailPreflight] = useState(null);
+  const [mailPreflightBusy,setMailPreflightBusy] = useState(false);
+  const [mailPreflightMessage,setMailPreflightMessage] = useState('');
+  const [mailVerifyCode,setMailVerifyCode] = useState('');
+  const [mailVerifyStep,setMailVerifyStep] = useState('idle');
+  const reloadMailPreflight=async()=>{
+    setMailPreflightBusy(true);setMailPreflightMessage('');
+    try{setMailPreflight(await clerkStagingClient.getAdminMailPreflight());}
+    catch{setMailPreflightMessage('발송 준비 상태를 확인하지 못했습니다.');}
+    finally{setMailPreflightBusy(false);}
+  };
+  const beginMailReview=async()=>{
+    if(mailPreflightBusy)return;
+    setMailPreflightBusy(true);setMailPreflightMessage('');setMailVerifyCode('');
+    try{await clerkStagingClient.beginAdminMailReverification();setMailVerifyStep('sent');setMailPreflightMessage('이메일로 확인 코드를 보냈습니다.');}
+    catch{setMailPreflightMessage('본인 확인 코드를 보낼 수 없습니다. 다시 시도해 주세요.');}
+    finally{setMailPreflightBusy(false);}
+  };
+  const completeMailReview=async()=>{
+    if(mailPreflightBusy||!/^\d{6}$/.test(mailVerifyCode))return;
+    setMailPreflightBusy(true);setMailPreflightMessage('');
+    try{
+      await clerkStagingClient.completeAdminMailReverification(mailVerifyCode);
+      const saved=await clerkStagingClient.acknowledgeAdminMailPreflight();
+      setMailVerifyStep('idle');setMailVerifyCode('');
+      setMailPreflightMessage(`점검 확인이 기록되었습니다. (${saved.reviewId}번) 이메일 발송은 계속 중지되어 있습니다.`);
+      setMailPreflight(await clerkStagingClient.getAdminMailPreflight());
+    }catch(error){
+      setMailPreflightMessage(error?.code==='mail_preflight_reverification_already_used'
+        ? '이미 사용된 본인 확인입니다. 새 코드를 요청해 주세요.'
+        : '본인 확인 또는 점검 기록에 실패했습니다. 새 코드를 요청해 주세요.');
+      setMailVerifyStep('idle');setMailVerifyCode('');
+    }finally{setMailPreflightBusy(false);}
+  };
   const [queue,setQueue] = useState(null);
   const [queueBusy,setQueueBusy] = useState(false);
   const [queueMessage,setQueueMessage] = useState('');
@@ -117,6 +151,33 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">이메일 발송 전 점검</h3>
+        <button type="button" disabled={mailPreflightBusy} onClick={()=>void reloadMailPreflight()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">상태 확인</button>
+      </div>
+      <p className="text-xs text-slate-600">발송 준비 상태와 대기 메일을 확인합니다. 점검 확인을 기록해도 실제 이메일은 발송되지 않습니다.</p>
+      {mailPreflight&&<div className="space-y-2 text-xs text-slate-700">
+        <p>현재 발송: <strong>중지</strong> · 대기 {mailPreflight.counts?.queued||0}건 · 재시도 대기 {mailPreflight.counts?.retry||0}건 · 오래된 대기 {mailPreflight.agedCount||0}건</p>
+        {(mailPreflight.samples||[]).length>0&&<p>확인할 메일: {mailPreflight.samples.map(r=>`#${r.id} (${mailStateLabels[r.state]||r.state})`).join(', ')}</p>}
+        {mailPreflight.latestReview&&<p>마지막 점검 확인: {new Date(mailPreflight.latestReview.createdAt).toLocaleString('ko-KR')}</p>}
+        <p className="text-slate-500">대기 메일 취소는 아래 ‘발송 내역 및 대기 메일’에서 처리할 수 있습니다.</p>
+      </div>}
+      {mailPreflightMessage&&<p role="status" className="text-xs text-slate-700">{mailPreflightMessage}</p>}
+      {mailPreflight&&<div className="flex flex-wrap items-center justify-end gap-2">
+        {mailVerifyStep==='idle'?<button type="button" disabled={mailPreflightBusy} onClick={()=>void beginMailReview()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">본인 확인 후 점검 기록</button>
+        :<><input type="text" inputMode="numeric" autoComplete="one-time-code" value={mailVerifyCode} maxLength={6}
+            aria-label="이메일 확인 코드" placeholder="6자리 확인 코드" disabled={mailPreflightBusy}
+            onChange={e=>setMailVerifyCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+            className="w-40 rounded-lg border px-3 py-2 text-xs"/>
+          <button type="button" disabled={mailPreflightBusy||mailVerifyCode.length!==6} onClick={()=>void completeMailReview()}
+            className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">확인</button>
+          <button type="button" disabled={mailPreflightBusy} onClick={()=>{setMailVerifyStep('idle');setMailVerifyCode('');}}
+            className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button></>}
+      </div>}
+    </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">반납 알림 대상 확인</h3>

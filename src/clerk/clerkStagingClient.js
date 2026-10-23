@@ -1440,6 +1440,24 @@ export const requestAdminMailTemplatePreview = async ({clerk,apiBaseUrl,fetchImp
   }
   return payload.mailPreview;
 };
+export const requestAdminMailPreflight = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/preflight',method:'GET'});
+  if(!response.ok || payload?.mailPreflight?.liveSendingReady!==false){
+    const error=new Error('발송 준비 상태를 확인할 수 없습니다.');error.code=payload?.error||'mail_preflight_failed';error.status=response.status;throw error;
+  }
+  return payload.mailPreflight;
+};
+export const requestAdminMailPreflightReview = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const verifiedSessionToken=await waitForBackupReverificationClaims(()=>clerk.session.getToken({skipCache:true}));
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/preflight-review',method:'POST',verifiedSessionToken,
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({acknowledge:true})});
+  if(!response.ok || payload?.mailPreflightReview?.result!=='reviewed_locked'){
+    const error=new Error('발송 전 점검 기록을 저장할 수 없습니다.');error.code=payload?.error||'mail_preflight_review_failed';error.status=response.status;throw error;
+  }
+  return payload.mailPreflightReview;
+};
 export const requestAdminMailQueue = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-queue',method:'GET'});
   if(!response.ok || payload?.mailQueue?.authority!=='postgresql') {
@@ -2654,6 +2672,14 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async previewAdminMailTemplate(input) {
       const clerk=await initialize();
       return requestAdminMailTemplatePreview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
+    },
+    async getAdminMailPreflight() {
+      const clerk=await initialize();return requestAdminMailPreflight({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async beginAdminMailReverification() { return this.beginBackupReverification(); },
+    async completeAdminMailReverification(code) { return this.completeBackupReverification(code); },
+    async acknowledgeAdminMailPreflight() {
+      const clerk=await initialize();return requestAdminMailPreflightReview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
     },
     async getAdminMailQueue() {
       const clerk=await initialize();

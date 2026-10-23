@@ -227,6 +227,7 @@ export const createRequestHandler = ({
     async provisionTarget() { const error = new Error('Admin legacy provisioning is retired.'); error.code = 'admin_provision_retired'; error.status = 410; throw error; },
   },
   mailSchedulePreview = { async preview() { throw Object.assign(new Error('mail_schedule_unavailable'),{status:503,code:'mail_schedule_unavailable'}); } },
+  mailPreflightControl = { async preview() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); }, async acknowledge() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); } },
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2326,6 +2327,31 @@ export const createRequestHandler = ({
       try { const preview=await mailSchedulePreview.preview();
         writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailSchedulePreview:preview},headers);
       }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_schedule_preview_failed'},headers);}
+      return;
+    }
+    // D06-A/B: server-authenticated, owner-only read and immutable preflight
+    // review. Neither endpoint issues any send authorization or calls providers.
+    if (request.method === 'GET' && url.pathname === '/api/admin/mail-delivery/preflight') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner'){
+        writeJson(response,403,{...basePayload,authenticated:true,error:'mail_preflight_owner_required'},headers);return;
+      }
+      try {const data=await mailPreflightControl.preview({authority});
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailPreflight:data},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_preflight_failed'},headers);}
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/admin/mail-delivery/preflight-review') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner'){
+        writeJson(response,403,{...basePayload,authenticated:true,error:'mail_preflight_owner_required'},headers);return;
+      }
+      try {const input=await readJsonBody(request,{maxBytes:1024});
+        const result=await mailPreflightControl.acknowledge({authority,acknowledge:input?.acknowledge===true});
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailPreflightReview:result},headers);
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_preflight_review_failed'},headers);}
       return;
     }
     // P1-06 operational queue, owner only. Real sending stays disabled.
