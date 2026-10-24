@@ -941,14 +941,16 @@ export default function useUserSignupController({
           ? '회원가입 데이터는 저장됐지만 후속 인증 연결을 완료하지 못했습니다. 로그인 화면에서 다시 로그인해 주세요.'
           : getUserAuthErrorMessage(error);
 
-      triggerToast(
-        signupFeedback || (
+      // Identity conflicts are handled by the actionable signup modal.
+      // A second toast would obscure the modal and duplicate the same error.
+      if (!signupFeedback) {
+        triggerToast(
           firebaseAuthCleanupFailed && !firebaseRetirement.requested
             ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
-            : baseErrorMessage
-        ),
-        'error'
-      );
+            : baseErrorMessage,
+          'error'
+        );
+      }
       if (signupFeedback && error?.sessionCleanupFailed) {
         triggerToast('인증 세션을 종료하지 못했습니다. 관리자에게 문의해 주세요.', 'error');
       }

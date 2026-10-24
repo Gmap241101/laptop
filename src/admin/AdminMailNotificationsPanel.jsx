@@ -32,6 +32,36 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [mailPreflight,setMailPreflight] = useState(null);
   const [mailPreflightBusy,setMailPreflightBusy] = useState(false);
   const [mailPreflightMessage,setMailPreflightMessage] = useState('');
+  const [g5Code,setG5Code] = useState('');
+  const [g5Step,setG5Step] = useState('idle');
+  const [g5Busy,setG5Busy] = useState(false);
+  const [g5Message,setG5Message] = useState('');
+  const beginG5Verification=async()=>{
+    if(g5Busy)return;
+    setG5Busy(true);setG5Message('');setG5Code('');
+    try{
+      await clerkStagingClient.beginBackupReverification();
+      setG5Step('sent');
+      setG5Message('본인 확인 코드를 이메일로 보냈습니다.');
+    }catch{
+      setG5Message('본인 확인 코드를 발송하지 못했습니다. 다시 시도해 주세요.');
+    }finally{setG5Busy(false);}
+  };
+  const completeG5Verification=async()=>{
+    if(g5Busy || !/^\d{6}$/.test(g5Code))return;
+    setG5Busy(true);setG5Message('');
+    try{
+      await clerkStagingClient.completeBackupReverification(g5Code);
+      setG5Code('');setG5Step('idle');
+      await clerkStagingClient.getAdminG5OwnerCheck();
+      setG5Message('최고관리자 본인 확인이 완료되었습니다.');
+    }catch(error){
+      setG5Code('');setG5Step('idle');
+      setG5Message(error?.status===404
+        ? '현재 본인 확인 기능을 이용할 수 없습니다.'
+        : '본인 확인에 실패했습니다. 다시 인증해 주세요.');
+    }finally{setG5Busy(false);}
+  };
   const [mailVerifyCode,setMailVerifyCode] = useState('');
   const [mailVerifyStep,setMailVerifyStep] = useState('idle');
   const reloadMailPreflight=async()=>{
@@ -151,6 +181,24 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">최고관리자 본인 확인</h3>
+        <button type="button" disabled={g5Busy} onClick={()=>void beginG5Verification()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">인증코드 받기</button>
+      </div>
+      {g5Step==='sent'&&<div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="g5-owner-verification-code" className="text-xs text-slate-700">인증코드</label>
+        <input id="g5-owner-verification-code" type="text" inputMode="numeric" autoComplete="one-time-code"
+          value={g5Code} maxLength={6} disabled={g5Busy} onChange={(e)=>setG5Code(e.target.value.replace(/\D/g,'').slice(0,6))}
+          className="w-32 rounded-lg border border-slate-300 p-2 text-sm" />
+        <button type="button" disabled={g5Busy||g5Code.length!==6} onClick={()=>void completeG5Verification()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">확인</button>
+        <button type="button" disabled={g5Busy} onClick={()=>{setG5Step('idle');setG5Code('');setG5Message('');}}
+          className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button>
+      </div>}
+      {g5Message&&<p role="status" className="text-xs text-slate-700">{g5Message}</p>}
+    </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">이메일 발송 전 점검</h3>

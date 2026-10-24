@@ -26,12 +26,14 @@ for (const code of ['', 'member_directory_mismatch', 'member_email_already_regis
 check(signupSubmissionFeedback(null) === '', 'null error safe');
 check(SIGNUP_IDENTITY_CONFLICT_MESSAGE === '동일한 부서와 이름으로 등록된 회원이 있습니다. 기존 계정 여부를 확인하거나 관리자에게 문의해 주세요.', 'exact approved Korean UX copy');
 check(controller.includes('signupSubmissionError: signupFeedback'), 'signup error persisted inline');
-check(controller.includes('signupFeedback || ('), 'actual duplicate error gets toast priority');
+check(controller.includes('if (!signupFeedback) {'), 'duplicate modal excludes redundant toast');
 check(controller.includes('await clerkStagingClient.signOutWithoutNavigation()'), 'signup rejection must not navigate away');
 check(!controller.includes('await clerkStagingClient.signOut().catch(() => {});\n          throw signupError;'), 'redirecting failure cleanup removed');
-check(authPanel.includes('role="alert" aria-live="assertive"'), 'persistent visible alert has accessibility semantics');
-check(authPanel.includes('userAuthForm.signupSubmissionError'), 'inline alert bound to signup form');
-check(authPanel.includes('기존 계정으로 로그인하기'), 'next action available');
+check(authPanel.includes('role="alertdialog"'), 'modal has accessible alertdialog semantics');
+check(authPanel.includes('aria-modal="true"'), 'modal is marked modal');
+check(authPanel.includes('userAuthForm.signupSubmissionError'), 'signup conflict is bound to form state');
+check(!authPanel.includes('<div role="alert" aria-live="assertive"'), 'old inline signup error removed');
+check(authPanel.includes('기존 계정으로 로그인'), 'next action available via modal');
 check(authPanel.includes('!userAuthForm.signupSubmissionError ? ('), 'secondary email warning does not mask actual error');
 check(authPanel.includes("name: sanitizeMemberNameInput(value).slice(0, 30),\n                              signupSubmissionError: '',"), 'identity edit clears stale feedback');
 check(clerk.includes('async signOutWithoutNavigation()'), 'client provides native session-only logout');

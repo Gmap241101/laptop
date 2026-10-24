@@ -74,6 +74,11 @@ export default function UserAuthPanel({ ctx }) {
   const [signupEmailVerificationCode, setSignupEmailVerificationCode] = useState('');
   const [signupEmailVerificationLoading, setSignupEmailVerificationLoading] = useState(false);
   const [signupEmailVerificationRequested, setSignupEmailVerificationRequested] = useState(false);
+  // Closing the error dialog never navigates or discards entered signup data.
+  // A subsequent rejected submission can show the same error again.
+  const dismissSignupIdentityConflict = () => {
+    setUserAuthForm((previous) => ({ ...previous, signupSubmissionError: '' }));
+  };
   const normalizedSignupEmail = normalizeEmailAddress(userAuthForm.email);
   const signupEmailVerified = Boolean(
     isSignupMode &&
@@ -580,13 +585,6 @@ export default function UserAuthPanel({ ctx }) {
                                 : '인증받기'}
                           </Button>
                         </div>
-                        {userAuthForm.signupSubmissionError ? (
-                          <div role="alert" aria-live="assertive" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
-                            <p className="font-semibold">{userAuthForm.signupSubmissionError}</p>
-                            <p className="mt-1 text-xs">다른 계정의 정보라면 수정한 뒤 이메일 인증을 다시 진행해 주세요.</p>
-                            <button type="button" className="mt-2 text-xs font-semibold underline underline-offset-2" onClick={goToUserLogin}>기존 계정으로 로그인하기</button>
-                          </div>
-                        ) : null}
                         {signupEmailVerificationRequested && !signupEmailVerified && !signupEmailVerificationOpen && !userAuthForm.signupSubmissionError ? (
                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
                             이메일 인증을 완료해야 회원가입할 수 있습니다. ‘인증받기’를 눌러 6자리 인증코드를 확인해 주세요.
@@ -760,6 +758,48 @@ export default function UserAuthPanel({ ctx }) {
       </CardContent>
     </Card>
 
+    {isSignupMode && userAuthForm.signupSubmissionError ? (
+      <ModalPortal
+        className="fixed inset-0 z-[190] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="signup-identity-conflict-title"
+        aria-describedby="signup-identity-conflict-description"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            dismissSignupIdentityConflict();
+          }
+          if (event.key === 'Tab') {
+            const buttons = Array.from(event.currentTarget.querySelectorAll('button:not([disabled])'));
+            const first = buttons[0];
+            const last = buttons[buttons.length - 1];
+            if (!first || !last) return;
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first.focus();
+            }
+          }
+        }}
+      >
+        <section className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl">
+          <h3 id="signup-identity-conflict-title" className="text-base font-bold text-slate-900">회원가입 정보를 확인해 주세요</h3>
+          <p id="signup-identity-conflict-description" className="mt-3 text-sm leading-6 text-slate-700">
+            {userAuthForm.signupSubmissionError}
+          </p>
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => {
+              dismissSignupIdentityConflict();
+              goToUserLogin();
+            }}>기존 계정으로 로그인</Button>
+            <Button type="button" variant="primary" onClick={dismissSignupIdentityConflict} autoFocus>가입 정보 수정</Button>
+          </div>
+        </section>
+      </ModalPortal>
+    ) : null}
     {signupEmailVerificationOpen ? (
       <ModalPortal
         className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"

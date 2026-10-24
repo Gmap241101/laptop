@@ -1440,6 +1440,29 @@ export const requestAdminMailTemplatePreview = async ({clerk,apiBaseUrl,fetchImp
   }
   return payload.mailPreview;
 };
+// G5: use the existing Clerk session, including the freshly signed
+// reverification claims. No JWT is exposed to the UI or persisted.
+export const requestAdminG5OwnerCheck = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const verifiedSessionToken = await waitForBackupReverificationClaims(
+    () => clerk.session.getToken({skipCache:true})
+  );
+  const {response,payload} = await requestWithSession({
+    clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/g5-owner-check',
+    method:'GET',verifiedSessionToken,
+  });
+  if (!response.ok || payload?.g5OwnerCheck?.result !== 'PASS' ||
+      payload?.g5OwnerCheck?.readOnly !== true ||
+      payload?.g5OwnerCheck?.emailsSent !== 0 ||
+      payload?.g5OwnerCheck?.vendorCalls !== 0 ||
+      payload?.g5OwnerCheck?.canSend !== false) {
+    const error = new Error('Administrator verification failed.');
+    error.code = payload?.error || 'g5_owner_check_failed';
+    error.status = response.status;
+    throw error;
+  }
+  return {verified:true,readOnly:true};
+};
 export const requestAdminMailPreflight = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
     path:'/api/admin/mail-delivery/preflight',method:'GET'});
@@ -2672,6 +2695,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async previewAdminMailTemplate(input) {
       const clerk=await initialize();
       return requestAdminMailTemplatePreview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
+    },
+    async getAdminG5OwnerCheck() {
+      const clerk = await initialize();
+      return requestAdminG5OwnerCheck({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
     },
     async getAdminMailPreflight() {
       const clerk=await initialize();return requestAdminMailPreflight({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
