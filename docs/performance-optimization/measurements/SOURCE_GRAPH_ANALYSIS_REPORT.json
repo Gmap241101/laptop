@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-24T09:30:34.641Z",
+  "generatedAt": "2026-10-24T09:43:35.470Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -952,7 +952,7 @@
       },
       "complete": {
         "moduleCount": 168,
-        "sourceBytes": 2142519,
+        "sourceBytes": 2144587,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
@@ -1008,7 +1008,7 @@
           },
           {
             "file": "src/admin/AdminMailNotificationsPanel.jsx",
-            "bytes": 32552
+            "bytes": 34620
           },
           {
             "file": "src/features/requests/useAdminUserActionReviewController.js",
@@ -2187,7 +2187,7 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 97,
-    "sourceBytes": 1534979,
+    "sourceBytes": 1537047,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
@@ -2231,7 +2231,7 @@
       },
       {
         "file": "src/admin/AdminMailNotificationsPanel.jsx",
-        "bytes": 32552
+        "bytes": 34620
       },
       {
         "file": "src/features/requests/useAdminUserActionReviewController.js",
@@ -2582,7 +2582,7 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 225,
-      "sourceBytes": 3024650,
+      "sourceBytes": 3026718,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -2677,12 +2677,12 @@
           "bytes": 35567
         },
         {
-          "file": "src/user/UserRequestHistoryPanel.jsx",
-          "bytes": 33702
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 34620
         },
         {
-          "file": "src/admin/AdminMailNotificationsPanel.jsx",
-          "bytes": 32552
+          "file": "src/user/UserRequestHistoryPanel.jsx",
+          "bytes": 33702
         },
         {
           "file": "src/features/auth/useUserLoginController.js",
@@ -3488,7 +3488,7 @@
     },
     "reachable": {
       "moduleCount": 226,
-      "sourceBytes": 3037304,
+      "sourceBytes": 3039372,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
@@ -3583,12 +3583,12 @@
           "bytes": 35567
         },
         {
-          "file": "src/user/UserRequestHistoryPanel.jsx",
-          "bytes": 33702
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 34620
         },
         {
-          "file": "src/admin/AdminMailNotificationsPanel.jsx",
-          "bytes": 32552
+          "file": "src/user/UserRequestHistoryPanel.jsx",
+          "bytes": 33702
         },
         {
           "file": "src/features/auth/useUserLoginController.js",

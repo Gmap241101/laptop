@@ -25,7 +25,7 @@ let role='owner',status='active';
 const adminSvc={async authorizeCurrent({clerkUserId}){dbQueries++;
  return {authority:'clerk-postgresql-session',admin:{clerkUserId,adminRole:role,
  status,clerkLinkState:'linked',lockUntil:null}};}};
-const goodConfig={environment:'staging',provider:'brevo',enabled:true,
+const goodConfig={environment:'staging',provider:'brevo',enabled:false,
  sender:'noreply@mail.notebook.recruit.kro.kr',domainVerified:true,
  apiKey:'test-key-MUST-NEVER-LEAK',liveSendingReady:false,allowlist:new Set(['sandbox@example.test']),
  dailyLimit:10,monthlyLimit:200};
@@ -64,7 +64,9 @@ status='disabled';await reject(()=>gate.check(req()));status='active';
 const changed=x=>inspectG6SandboxReadiness({...goodConfig,...x});
 truth(changed({provider:'resend'}).blockers.includes('g6_brevo_provider_required'));
 truth(changed({environment:'production'}).blockers.includes('g6_staging_required'));
-truth(changed({enabled:false}).blockers.includes('g6_mail_config_disabled'));
+truth(changed({enabled:true}).blockers.includes('g6_live_mail_must_remain_disabled'));
+equal(changed({enabled:true}).syntheticPlanReady,false);
+equal(changed({enabled:false}).syntheticPlanReady,true);
 truth(changed({apiKey:''}).blockers.includes('g6_api_key_missing'));
 truth(changed({domainVerified:false}).blockers.includes('g6_domain_verification_claim_missing'));
 truth(changed({sender:'test@example.test'}).blockers.includes('g6_sender_not_configured'));
@@ -101,6 +103,9 @@ assert.throws(()=>createG6SandboxReadiness({config:{...jwtCfg,appEnv:'production
 equal(G6_SANDBOX_READINESS_PATH,'/api/admin/mail-delivery/g6-sandbox-readiness');
 equal(G6_VENDOR_NETWORK_LOCKED,true);equal(G6_LIVE_MAIL_LOCKED,true);
 truth(dbQueries>0);
+const ui=readFileSync('src/admin/AdminMailNotificationsPanel.jsx','utf8');
+truth(ui.includes('g6BlockerLabel(code)'));
+truth(!ui.includes('g6Readiness.blockers.join'));
 const idx=readFileSync('server/src/index.mjs','utf8');
 const app=readFileSync('server/src/app.mjs','utf8');
 truth(idx.includes("process.env.P108_G6_SANDBOX_READINESS_ENABLED === 'true'"));

@@ -6,6 +6,29 @@ const toEditorBody = ({ body, bodyFormat }) => bodyFormat === 'html' ? body : St
 const fromEvent = (event) => ({ enabled:event.enabled, subject:event.subject, body:toEditorBody(event), bodyFormat:'html' });
 const changed = (original, draft) => original?.enabled !== draft?.enabled || original?.subject !== draft?.subject || toEditorBody(original) !== draft?.body;
 const mailStateLabels = {queued:'발송 대기',retry:'재시도 대기',processing:'처리 중',sent:'발송 완료',failed:'발송 실패',cancelled:'취소',uncertain:'확인 필요'};
+// Server codes are retained only for diagnostic contracts. The admin UI must
+// display actionable messages rather than implementation-specific identifiers.
+const g6BlockerLabels = Object.freeze({
+  g6_allowlist_1_to_5_required:'Sandbox 시험용으로 승인된 수신자 1~5명을 서버에 등록해 주세요.',
+  g6_api_key_missing:'Brevo API 키가 아직 서버에 등록되지 않았습니다.',
+  g6_brevo_provider_required:'서버 메일 공급자를 Brevo로 설정해 주세요.',
+  g6_domain_verification_claim_missing:'Brevo 도메인 인증 상태를 확인한 뒤 서버에 반영해 주세요.',
+  g6_live_mail_must_remain_disabled:'실제 메일 발송은 비활성화 상태여야 합니다.',
+  g6_sender_not_configured:'Sandbox 발신 주소를 지정된 이메일 주소로 설정해 주세요.',
+  g6_staging_required:'이 사전점검은 Staging 환경에서만 사용할 수 있습니다.',
+  g6_live_send_config_must_be_off:'실제 메일 발송 잠금이 유지돼야 합니다.',
+  g6_source_delivery_locks_invalid:'발송 차단 설정을 점검해야 합니다.',
+  offline_trial_limits_invalid:'Sandbox 시험의 허용 한도 구성을 확인해 주세요.',
+  offline_recipient_not_approved:'허용 수신자 주소 형식을 확인해 주세요.',
+  offline_sender_review_required:'발신자 및 도메인 인증 정보를 확인해 주세요.',
+  offline_brevo_only:'Sandbox 공급자 설정을 확인해 주세요.',
+  offline_staging_only:'Staging 환경 설정을 확인해 주세요.',
+  offline_live_delivery_lock_required:'실제 발송 차단 설정을 확인해 주세요.',
+  offline_source_lock_invalid:'기존 발송 차단 상태를 확인해 주세요.',
+  mail_config_unavailable:'서버 메일 설정을 조회할 수 없습니다.',
+});
+const g6BlockerLabel = code => g6BlockerLabels[code] || 'Sandbox 사전점검 설정을 확인해 주세요.';
+
 const variableLabels = {
   name:'성명', siteUrl:'사이트 주소', teamName:'부서(팀)',
   signupRequestedAt:'가입 신청 일시', signupReviewedAt:'가입 심사 일시', signupDecisionAt:'가입 결과 일시', withdrawnAt:'탈퇴 완료 일시',
@@ -249,7 +272,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       {g6Readiness&&<div className="space-y-1 text-xs text-slate-700">
         <p>발신자 설정: {g6Readiness.senderConfigured?'확인':'미설정'} · API 인증정보: {g6Readiness.credentialPresent?'등록됨':'미등록'} · 허용 수신자: {g6Readiness.allowlistCount}개</p>
         <p>합성 Sandbox 요청 구성: {g6Readiness.syntheticPlanReady?'준비됨':'추가 설정 필요'}</p>
-        {g6Readiness.blockers?.length>0&&<p>확인 항목: {g6Readiness.blockers.join(', ')}</p>}
+        {g6Readiness.blockers?.length>0&&<div className="space-y-1"><p className="font-semibold">추가 확인 사항</p><ul className="list-disc pl-5 space-y-1">{g6Readiness.blockers.map((code,i)=><li key={`${code}-${i}`}>{g6BlockerLabel(code)}</li>)}</ul></div>}
         <p className="font-semibold text-slate-700">실제 공급자 호출 0건 · 실메일 발송 0건 · Sandbox 실행 승인 별도</p>
       </div>}
     </div>

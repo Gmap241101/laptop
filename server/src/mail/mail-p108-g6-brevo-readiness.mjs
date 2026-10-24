@@ -23,7 +23,9 @@ export function inspectG6SandboxReadiness(mailConfig) {
   if(!mailConfig || typeof mailConfig!=='object')blockers.push('mail_config_unavailable');
   if(mailConfig?.environment!=='staging')blockers.push('g6_staging_required');
   if(mailConfig?.provider!=='brevo')blockers.push('g6_brevo_provider_required');
-  if(mailConfig?.enabled!==true)blockers.push('g6_mail_config_disabled');
+  // Read-only G6 requires live application delivery to remain disabled.
+  // Treat MAIL_ENABLED=true as a blocker, not as a readiness prerequisite.
+  if(mailConfig?.enabled!==false)blockers.push('g6_live_mail_must_remain_disabled');
   if(mailConfig?.sender!==D06D_BREVO_SENDER)blockers.push('g6_sender_not_configured');
   if(mailConfig?.domainVerified!==true)blockers.push('g6_domain_verification_claim_missing');
   if(typeof mailConfig?.apiKey!=='string'||!mailConfig.apiKey.trim())blockers.push('g6_api_key_missing');
@@ -37,7 +39,10 @@ export function inspectG6SandboxReadiness(mailConfig) {
     const {apiKey: _ignored, ...withoutSecrets}=mailConfig||{};
     // G6 trial caps are local synthetic-plan ceilings, never changes to the
     // existing production/staging mail quota configuration.
-    const offlineConfig={...withoutSecrets,
+    // The D06-D2A *offline* contract expects enabled=true. This ephemeral
+    // test-only clone must never be written to process.env or a dispatcher.
+    // The real server mail configuration remains MAIL_ENABLED=false.
+    const offlineConfig={...withoutSecrets,enabled:true,
       dailyLimit:Number.isSafeInteger(mailConfig?.dailyLimit) && mailConfig.dailyLimit>0
         ? Math.min(mailConfig.dailyLimit,30) : mailConfig?.dailyLimit,
       monthlyLimit:Number.isSafeInteger(mailConfig?.monthlyLimit) && mailConfig.monthlyLimit>0
@@ -96,7 +101,8 @@ export async function simulateG6BrevoFixture({config,recipient,mockTransport}={}
   if(typeof mockTransport!=='function'||mockTransport.isMock!==true)
     throw refuse('g6_explicit_mock_transport_required');
   const {apiKey:_secret,...safeConfig}=config||{};
-  const plan=buildD06D2AOfflinePlan({config:safeConfig,recipient});
+  // Mock-only acceptance also uses a transient enabled=true policy fixture.
+  const plan=buildD06D2AOfflinePlan({config:{...safeConfig,enabled:true},recipient});
   validateD06D2ASandboxPayload(plan.body,recipient);
   let outcome;
   try{
