@@ -62,6 +62,35 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         : '본인 확인에 실패했습니다. 다시 인증해 주세요.');
     }finally{setG5Busy(false);}
   };
+  // G6 sandbox inspection is read-only and requires a fresh Clerk code.
+  const [g6Code,setG6Code] = useState('');
+  const [g6Step,setG6Step] = useState('idle');
+  const [g6Busy,setG6Busy] = useState(false);
+  const [g6Message,setG6Message] = useState('');
+  const [g6Readiness,setG6Readiness] = useState(null);
+  const beginG6Verification=async()=>{
+    if(g6Busy)return;
+    setG6Busy(true);setG6Message('');setG6Readiness(null);setG6Code('');
+    try{
+      await clerkStagingClient.beginBackupReverification();
+      setG6Step('sent');setG6Message('본인 확인 코드를 이메일로 보냈습니다.');
+    }catch{setG6Message('본인 확인 코드를 발송하지 못했습니다.');}
+    finally{setG6Busy(false);}
+  };
+  const completeG6Verification=async()=>{
+    if(g6Busy||!/^[0-9]{6}$/.test(g6Code))return;
+    setG6Busy(true);setG6Message('');setG6Readiness(null);
+    try{
+      await clerkStagingClient.completeBackupReverification(g6Code);
+      setG6Step('idle');setG6Code('');
+      const data=await clerkStagingClient.getAdminG6SandboxReadiness();
+      setG6Readiness(data);setG6Message('Sandbox 사전점검 결과를 확인했습니다. 실제 메일은 발송되지 않습니다.');
+    }catch(error){
+      setG6Step('idle');setG6Code('');
+      setG6Message(error?.status===404 ? '현재 Sandbox 사전점검 기능이 비활성화되어 있습니다.' :
+        '본인 확인 또는 사전점검에 실패했습니다. 새 코드를 요청해 주세요.');
+    }finally{setG6Busy(false);}
+  };
   const [mailVerifyCode,setMailVerifyCode] = useState('');
   const [mailVerifyStep,setMailVerifyStep] = useState('idle');
   const reloadMailPreflight=async()=>{
@@ -198,6 +227,31 @@ export default function AdminMailNotificationsPanel({ ctx }) {
           className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button>
       </div>}
       {g5Message&&<p role="status" className="text-xs text-slate-700">{g5Message}</p>}
+    </div>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">Brevo Sandbox 사전점검</h3>
+        <button type="button" disabled={g6Busy} onClick={()=>void beginG6Verification()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">본인 확인 후 점검</button>
+      </div>
+      <p className="text-xs text-slate-600">외부 메일 발송 없이 설정 상태만 확인합니다. 발송 권한은 활성화되지 않습니다.</p>
+      {g6Step==='sent'&&<div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="g6-sandbox-code" className="text-xs text-slate-700">인증코드</label>
+        <input id="g6-sandbox-code" type="text" inputMode="numeric" autoComplete="one-time-code"
+          value={g6Code} maxLength={6} disabled={g6Busy} onChange={e=>setG6Code(e.target.value.replace(/\D/g,'').slice(0,6))}
+          className="w-32 rounded-lg border border-slate-300 p-2 text-sm" />
+        <button type="button" disabled={g6Busy||g6Code.length!==6} onClick={()=>void completeG6Verification()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">점검</button>
+        <button type="button" disabled={g6Busy} onClick={()=>{setG6Step('idle');setG6Code('');setG6Message('');}}
+          className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button>
+      </div>}
+      {g6Message&&<p role="status" className="text-xs text-slate-700">{g6Message}</p>}
+      {g6Readiness&&<div className="space-y-1 text-xs text-slate-700">
+        <p>발신자 설정: {g6Readiness.senderConfigured?'확인':'미설정'} · API 인증정보: {g6Readiness.credentialPresent?'등록됨':'미등록'} · 허용 수신자: {g6Readiness.allowlistCount}개</p>
+        <p>합성 Sandbox 요청 구성: {g6Readiness.syntheticPlanReady?'준비됨':'추가 설정 필요'}</p>
+        {g6Readiness.blockers?.length>0&&<p>확인 항목: {g6Readiness.blockers.join(', ')}</p>}
+        <p className="font-semibold text-slate-700">실제 공급자 호출 0건 · 실메일 발송 0건 · Sandbox 실행 승인 별도</p>
+      </div>}
     </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

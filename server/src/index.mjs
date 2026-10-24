@@ -48,6 +48,8 @@ import { createMailNotificationSettingsService } from './mail/mail-notification-
 import { createMailQueueOperations } from './mail/mail-queue-operations.mjs';
 import { createMailPreflightControl } from './mail/mail-p108-preflight-control.mjs';
 import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-readonly-acceptance.mjs';
+import { createG6SandboxReadiness } from './mail/mail-p108-g6-brevo-readiness.mjs';
+import { loadP101MailConfig } from './mail/mail-provider-config.mjs';
 import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
 import { createSystemDataService } from './settings/system-data-service.mjs';
@@ -145,6 +147,11 @@ const adminClerkAuthService = createAdminClerkAuthService({
 const g5OwnerReadOnlyAcceptance = config.appEnv === 'staging' &&
   process.env.P108_G5_OWNER_READONLY_ENABLED === 'true'
     ? createG5OwnerReadOnlyAcceptance({config,adminClerkAuthService}) : null;
+// G6 owner-only read-only preview; independently opted-in, no Brevo API traffic.
+const g6SandboxReadiness = config.appEnv === 'staging' &&
+  process.env.P108_G6_SANDBOX_READINESS_ENABLED === 'true'
+    ? createG6SandboxReadiness({config,adminClerkAuthService,
+        getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
   firebaseLinkRepository,
@@ -227,6 +234,7 @@ const server = createServer(
     mailQueueOperations,
     mailPreflightControl,
     g5OwnerReadOnlyAcceptance,
+    g6SandboxReadiness,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,

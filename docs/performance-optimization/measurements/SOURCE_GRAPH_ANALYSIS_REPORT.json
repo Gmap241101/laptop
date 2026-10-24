@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-24T08:32:23.578Z",
+  "generatedAt": "2026-10-24T09:30:34.641Z",
   "entries": {
     "user": {
       "entry": "src/user-main.jsx",
@@ -32,7 +32,7 @@
       },
       "complete": {
         "moduleCount": 129,
-        "sourceBytes": 1502311,
+        "sourceBytes": 1502325,
         "files": [
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -64,7 +64,7 @@
           },
           {
             "file": "src/user/UserAuthPanel.jsx",
-            "bytes": 39335
+            "bytes": 39349
           },
           {
             "file": "src/features/requests/useRentalDataSubscriptionController.js",
@@ -562,11 +562,11 @@
       "entry": "src/admin-main.jsx",
       "initial": {
         "moduleCount": 96,
-        "sourceBytes": 1091337,
+        "sourceBytes": 1092443,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 141356
+            "bytes": 142462
           },
           {
             "file": "src/features/boards/useBoardContentSubscriptionController.js",
@@ -952,11 +952,11 @@
       },
       "complete": {
         "moduleCount": 168,
-        "sourceBytes": 2137596,
+        "sourceBytes": 2142519,
         "files": [
           {
             "file": "src/clerk/clerkStagingClient.js",
-            "bytes": 141356
+            "bytes": 142462
           },
           {
             "file": "src/components/RichTextEditor.jsx",
@@ -1007,6 +1007,10 @@
             "bytes": 35743
           },
           {
+            "file": "src/admin/AdminMailNotificationsPanel.jsx",
+            "bytes": 32552
+          },
+          {
             "file": "src/features/requests/useAdminUserActionReviewController.js",
             "bytes": 31505
           },
@@ -1025,10 +1029,6 @@
           {
             "file": "src/features/settings/useAdminDataMaintenanceController.js",
             "bytes": 28874
-          },
-          {
-            "file": "src/admin/AdminMailNotificationsPanel.jsx",
-            "bytes": 28735
           },
           {
             "file": "src/features/requests/useAdminRequestsController.js",
@@ -1949,7 +1949,7 @@
   },
   "userOnlyComplete": {
     "moduleCount": 58,
-    "sourceBytes": 894771,
+    "sourceBytes": 894785,
     "files": [
       {
         "file": "src/clerk/clerkUserClient.js",
@@ -1973,7 +1973,7 @@
       },
       {
         "file": "src/user/UserAuthPanel.jsx",
-        "bytes": 39335
+        "bytes": 39349
       },
       {
         "file": "src/user/UserRentalStatusPanel.jsx",
@@ -2187,11 +2187,11 @@
   },
   "adminOnlyComplete": {
     "moduleCount": 97,
-    "sourceBytes": 1530056,
+    "sourceBytes": 1534979,
     "files": [
       {
         "file": "src/clerk/clerkStagingClient.js",
-        "bytes": 141356
+        "bytes": 142462
       },
       {
         "file": "src/admin/AdminSettingsPanel.jsx",
@@ -2230,6 +2230,10 @@
         "bytes": 35743
       },
       {
+        "file": "src/admin/AdminMailNotificationsPanel.jsx",
+        "bytes": 32552
+      },
+      {
         "file": "src/features/requests/useAdminUserActionReviewController.js",
         "bytes": 31505
       },
@@ -2248,10 +2252,6 @@
       {
         "file": "src/features/settings/useAdminDataMaintenanceController.js",
         "bytes": 28874
-      },
-      {
-        "file": "src/admin/AdminMailNotificationsPanel.jsx",
-        "bytes": 28735
       },
       {
         "file": "src/features/requests/useAdminRequestsController.js",
@@ -2582,11 +2582,11 @@
   "runtimeSourceReachability": {
     "all": {
       "moduleCount": 225,
-      "sourceBytes": 3019713,
+      "sourceBytes": 3024650,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 141356
+          "bytes": 142462
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -2646,7 +2646,7 @@
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
-          "bytes": 39335
+          "bytes": 39349
         },
         {
           "file": "src/features/requests/useRentalDataSubscriptionController.js",
@@ -2679,6 +2679,10 @@
         {
           "file": "src/user/UserRequestHistoryPanel.jsx",
           "bytes": 33702
+        },
+        {
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 32552
         },
         {
           "file": "src/features/auth/useUserLoginController.js",
@@ -2715,10 +2719,6 @@
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
           "bytes": 28874
-        },
-        {
-          "file": "src/admin/AdminMailNotificationsPanel.jsx",
-          "bytes": 28735
         },
         {
           "file": "src/features/requests/useAdminRequestsController.js",
@@ -3488,11 +3488,11 @@
     },
     "reachable": {
       "moduleCount": 226,
-      "sourceBytes": 3032367,
+      "sourceBytes": 3037304,
       "files": [
         {
           "file": "src/clerk/clerkStagingClient.js",
-          "bytes": 141356
+          "bytes": 142462
         },
         {
           "file": "src/components/RichTextEditor.jsx",
@@ -3552,7 +3552,7 @@
         },
         {
           "file": "src/user/UserAuthPanel.jsx",
-          "bytes": 39335
+          "bytes": 39349
         },
         {
           "file": "src/features/requests/useRentalDataSubscriptionController.js",
@@ -3585,6 +3585,10 @@
         {
           "file": "src/user/UserRequestHistoryPanel.jsx",
           "bytes": 33702
+        },
+        {
+          "file": "src/admin/AdminMailNotificationsPanel.jsx",
+          "bytes": 32552
         },
         {
           "file": "src/features/auth/useUserLoginController.js",
@@ -3621,10 +3625,6 @@
         {
           "file": "src/features/settings/useAdminDataMaintenanceController.js",
           "bytes": 28874
-        },
-        {
-          "file": "src/admin/AdminMailNotificationsPanel.jsx",
-          "bytes": 28735
         },
         {
           "file": "src/features/requests/useAdminRequestsController.js",

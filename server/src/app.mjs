@@ -229,6 +229,7 @@ export const createRequestHandler = ({
   mailSchedulePreview = { async preview() { throw Object.assign(new Error('mail_schedule_unavailable'),{status:503,code:'mail_schedule_unavailable'}); } },
   mailPreflightControl = { async preview() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); }, async acknowledge() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); } },
   g5OwnerReadOnlyAcceptance = null,
+  g6SandboxReadiness = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2345,6 +2346,24 @@ export const createRequestHandler = ({
       } catch (error) {
         // Never return JWT claims, Clerk IDs or raw exception messages.
         writeJson(response,403,{...basePayload,error:'g5_owner_authorization_failed'},headers);
+      }
+      return;
+    }
+    // G6: separate Staging opt-in, owner+recent Clerk reauth, GET only.
+    // No Brevo calls, no POST, no DB write, no Outbox claim.
+    if (url.pathname === '/api/admin/mail-delivery/g6-sandbox-readiness') {
+      if (config.appEnv !== 'staging' || !g6SandboxReadiness) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'GET') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        const readiness=await g6SandboxReadiness.check(request);
+        writeJson(response,200,{...basePayload,g6SandboxReadiness:readiness},headers);
+      } catch {
+        // No leaked JWT, administrator identity, recipient or Brevo secrets.
+        writeJson(response,403,{...basePayload,error:'g6_owner_authorization_failed'},headers);
       }
       return;
     }

@@ -1463,6 +1463,22 @@ export const requestAdminG5OwnerCheck = async ({clerk,apiBaseUrl,fetchImpl}) => 
   }
   return {verified:true,readOnly:true};
 };
+// G6: inspect ONLY server-side Brevo sandbox readiness. No send action.
+export const requestAdminG6SandboxReadiness = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const verifiedSessionToken=await waitForBackupReverificationClaims(
+    ()=>clerk.session.getToken({skipCache:true})
+  );
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/g6-sandbox-readiness',method:'GET',verifiedSessionToken});
+  if(!response.ok || payload?.g6SandboxReadiness?.canInvokeBrevo!==false ||
+      payload?.g6SandboxReadiness?.canSendMail!==false ||
+      payload?.g6SandboxReadiness?.realVendorRequests!==0 ||
+      payload?.g6SandboxReadiness?.realEmailsSent!==0){
+    const error=new Error('G6 사전점검을 확인할 수 없습니다.');
+    error.status=response.status;error.code=payload?.error||'g6_readiness_failed';throw error;
+  }
+  return payload.g6SandboxReadiness;
+};
 export const requestAdminMailPreflight = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
     path:'/api/admin/mail-delivery/preflight',method:'GET'});
@@ -2699,6 +2715,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async getAdminG5OwnerCheck() {
       const clerk = await initialize();
       return requestAdminG5OwnerCheck({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async getAdminG6SandboxReadiness() {
+      const clerk=await initialize();
+      return requestAdminG6SandboxReadiness({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
     },
     async getAdminMailPreflight() {
       const clerk=await initialize();return requestAdminMailPreflight({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
