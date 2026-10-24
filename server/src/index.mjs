@@ -47,6 +47,7 @@ import { createSystemConfigService } from './settings/system-config-service.mjs'
 import { createMailNotificationSettingsService } from './mail/mail-notification-settings-service.mjs';
 import { createMailQueueOperations } from './mail/mail-queue-operations.mjs';
 import { createMailPreflightControl } from './mail/mail-p108-preflight-control.mjs';
+import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-readonly-acceptance.mjs';
 import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
 import { createSystemDataService } from './settings/system-data-service.mjs';
@@ -139,6 +140,11 @@ const adminClerkAuthService = createAdminClerkAuthService({
       clerkClient,
       systemConfigService,
     });
+// Only an explicit Staging opt-in exposes a read-only G5 owner check.
+// The default remains OFF; neither Production nor a vendor dispatch uses it.
+const g5OwnerReadOnlyAcceptance = config.appEnv === 'staging' &&
+  process.env.P108_G5_OWNER_READONLY_ENABLED === 'true'
+    ? createG5OwnerReadOnlyAcceptance({config,adminClerkAuthService}) : null;
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
   firebaseLinkRepository,
@@ -220,6 +226,7 @@ const server = createServer(
     mailNotificationSettingsService,
     mailQueueOperations,
     mailPreflightControl,
+    g5OwnerReadOnlyAcceptance,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,

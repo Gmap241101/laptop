@@ -228,6 +228,7 @@ export const createRequestHandler = ({
   },
   mailSchedulePreview = { async preview() { throw Object.assign(new Error('mail_schedule_unavailable'),{status:503,code:'mail_schedule_unavailable'}); } },
   mailPreflightControl = { async preview() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); }, async acknowledge() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); } },
+  g5OwnerReadOnlyAcceptance = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2327,6 +2328,24 @@ export const createRequestHandler = ({
       try { const preview=await mailSchedulePreview.preview();
         writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailSchedulePreview:preview},headers);
       }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_schedule_preview_failed'},headers);}
+      return;
+    }
+    // G5: optional Staging-only read-only owner acceptance. Default off/404.
+    // Does NOT grant G2 reservation, vendor transport, send, Outbox or migrations.
+    if (url.pathname === '/api/admin/mail-delivery/g5-owner-check') {
+      if (config.appEnv !== 'staging' || !g5OwnerReadOnlyAcceptance) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'GET') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        const result = await g5OwnerReadOnlyAcceptance.check(request);
+        writeJson(response,200,{...basePayload,g5OwnerCheck:result},headers);
+      } catch (error) {
+        // Never return JWT claims, Clerk IDs or raw exception messages.
+        writeJson(response,403,{...basePayload,error:'g5_owner_authorization_failed'},headers);
+      }
       return;
     }
     // D06-A/B: server-authenticated, owner-only read and immutable preflight

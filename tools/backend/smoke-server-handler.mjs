@@ -379,7 +379,7 @@ const inquiryService = {
   async deleteInquiryTerm({ termId }) { return { deleted:true, termId, logicalDelete:true }; },
 };
 
-const server = createServer(createRequestHandler({
+const handlerDependencies = {
   config,
   databaseCheck,
   authenticateRequest,
@@ -402,13 +402,50 @@ const server = createServer(createRequestHandler({
   siteContentService,
   boardService,
   inquiryService,
-}));
+};
+const server = createServer(createRequestHandler(handlerDependencies));
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 if (!address || typeof address === 'string') throw new Error('Unable to resolve smoke-test port.');
 const baseUrl = `http://127.0.0.1:${address.port}`;
 const authHeaders = { Authorization: 'Bearer smoke-token', Origin: allowedOrigin };
+// G5 must stay unavailable outside Staging even for an authenticated owner.
+const g5TestOnly = await fetch(`${baseUrl}/api/admin/mail-delivery/g5-owner-check`,
+  { headers:authHeaders });
+if(g5TestOnly.status!==404) throw new Error('G5 owner check must be disabled in non-Staging');
+// Real local HTTP routing exercise, Staging fixture only. No remote Staging,
+// database network, dispatch or provider is touched.
+let g5HttpChecks=0;
+const stagingFixture = {
+  async check(request) {
+    g5HttpChecks++;
+    if(request.headers.authorization!=='Bearer smoke-token') {
+      throw Object.assign(new Error('not_authorized'),{code:'not_authorized'});
+    }
+    return {result:'PASS',readOnly:true,canSend:false,vendorCalls:0,emailsSent:0};
+  }
+};
+const stagingServer=createServer(createRequestHandler({
+  ...handlerDependencies,config:{...config,appEnv:'staging'},
+  g5OwnerReadOnlyAcceptance:stagingFixture,
+}));
+await new Promise(resolve=>stagingServer.listen(0,'127.0.0.1',resolve));
+try {
+  const stagingUrl=`http://127.0.0.1:${stagingServer.address().port}/api/admin/mail-delivery/g5-owner-check`;
+  const positive=await fetch(stagingUrl,{headers:authHeaders});
+  if(positive.status!==200 || (await positive.json()).g5OwnerCheck?.canSend!==false)
+    throw new Error('G5 Staging-only HTTP check not read-only PASS');
+  if(positive.headers.get('cache-control')!=='no-store')
+    throw new Error('G5 response must be noncacheable');
+  const invalid=await fetch(stagingUrl,{headers:{Origin:allowedOrigin}});
+  if(invalid.status!==403 || (await invalid.json()).error!=='g5_owner_authorization_failed')
+    throw new Error('G5 authorization failures must be sanitized');
+  const write=await fetch(stagingUrl,{method:'POST',headers:authHeaders});
+  if(write.status!==405)throw new Error('G5 owner check must reject write methods');
+  if(g5HttpChecks!==2)throw new Error('G5 write method reached authority handler');
+} finally {await new Promise(resolve=>stagingServer.close(resolve));}
+
 
 try {
   const live = await fetch(`${baseUrl}/health/live`);

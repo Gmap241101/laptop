@@ -65,6 +65,7 @@ import {
 import {
   createDefaultUserAuthForm,
 } from './useUserLoginController.js';
+import { completePendingSignupWithClerk } from './pendingSignupCompletion.js';
 import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
 import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
@@ -351,14 +352,23 @@ export default function useUserSignupController({
           setFirebaseAuthUser(principal);
           setUserAuthenticatedSession(principal.uid, effectiveUserSessionPolicy);
         } else {
-          await clerkStagingClient.signOut().catch(() => {});
-          setFirebaseAuthUser(null);
-          clearUserAuthenticatedSession();
+          // Preserve the pending-approval result before Clerk can navigate.
+          // Its default sign-out destination is often /, which used to hide
+          // the completed registration page.
+          await completePendingSignupWithClerk({
+            clerkClient: clerkStagingClient,
+            clearUserAuthenticatedSession,
+            setFirebaseAuthUser,
+            resetUserAuthForm: () => setUserAuthForm(createDefaultUserAuthForm()),
+            showUserAccountStatus,
+            triggerToast,
+          });
+          return;
         }
 
         setUserAuthForm(createDefaultUserAuthForm());
         clearUserLoginReturnTarget();
-        showUserAccountStatus(createdAccountStatus === USER_PROFILE_STATUS.ACTIVE ? 'signupAutoApprovedComplete' : 'signupPendingComplete');
+        showUserAccountStatus('signupAutoApprovedComplete');
         return;
       }
 
