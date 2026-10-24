@@ -67,5 +67,5 @@ for(const taboo of ['fetch(', 'RESEND_API_KEY','BREVO_API_KEY','CREATE DATABASE'
 }
 const cli=spawnSync(process.execPath,['tools/backend/run-phase34-p1-08-d06d2b-g4-local.mjs','--plan'],{encoding:'utf8'});
 same(cli.status,0);same(JSON.parse(cli.stdout).actuallyTestedPostgres,false);
-const migrations=readdirSync('server/migrations');check(!migrations.some(x=>/^050/.test(x)),'no applied migration 050');
+const migrations=readdirSync('server/migrations');check(!migrations.some(x=>/^05[1-9]/.test(x)),'no unapproved migration 051+');
 console.log(`[Phase34 D06-D2B G4-LOCAL-SAFE] PASS (${checks} assertions; session-local only; no DB connection; Brevo and Resend retained)`);

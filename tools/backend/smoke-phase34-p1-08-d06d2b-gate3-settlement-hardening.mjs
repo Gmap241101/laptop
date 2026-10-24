@@ -149,7 +149,7 @@ const source=readFileSync('server/src/mail/mail-p108-d06d2b-gate2-locked-reserva
 for(const bad of ['fetch(', 'globalThis.fetch(', 'http.request(', 'https.request(', 'process.env', 'RESEND_API_KEY', 'BREVO_API_KEY'])ok(!source.includes(bad));
 ok(readFileSync('server/src/mail/mail-provider-config.mjs','utf8').includes("'resend', 'brevo'"));
 ok(readFileSync('server/src/mail/resend-provider.mjs','utf8').includes('Idempotency-Key'));
-ok(!readdirSync('server/migrations').some(n=>/^050[._-]/.test(n)));
+ok(!readdirSync('server/migrations').some(n=>/^05[1-9][._-]/.test(n)));
 for(const e of [...safe.state.logs,...baseline.state.logs]){
  const str=JSON.stringify(e.args);ok(!str.includes(recipient));ok(!str.includes(approvalId));
 }

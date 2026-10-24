@@ -127,5 +127,5 @@ for(const [file,pat] of [
 ]){
  check(`hard lock ${file}`,()=>assert.match(readFileSync(file,'utf8'),pat));
 }
-check('no new migration',()=>assert.equal(readdirSync('server/migrations').filter(x=>/^050_/.test(x)).length,0));
+check('no unapproved migration',()=>assert.equal(readdirSync('server/migrations').filter(x=>/^05[1-9]_/.test(x)).length,0));
 console.log(`[phase34-p1-08-d06d1-brevo-sandbox] PASS (${tests} assertions; synthetic sandbox mock; vendor calls 0; real mail 0; locks intact)`);

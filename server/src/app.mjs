@@ -230,6 +230,7 @@ export const createRequestHandler = ({
   mailPreflightControl = { async preview() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); }, async acknowledge() { throw Object.assign(new Error('mail_preflight_unavailable'),{status:503,code:'mail_preflight_unavailable'}); } },
   g5OwnerReadOnlyAcceptance = null,
   g6SandboxReadiness = null,
+  g6c050OwnerReadOnlyStatus = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2364,6 +2365,25 @@ export const createRequestHandler = ({
       } catch {
         // No leaked JWT, administrator identity, recipient or Brevo secrets.
         writeJson(response,403,{...basePayload,error:'g6_owner_authorization_failed'},headers);
+      }
+      return;
+    }
+    // G6-C: schema 050 status ONLY. Default 404 in Staging; always 404 elsewhere.
+    // The route has no POST, reservation, vendor dispatch, retry or Outbox writes.
+    if (url.pathname === '/api/admin/mail-delivery/g6c-ledger-status') {
+      if (config.appEnv !== 'staging' || !g6c050OwnerReadOnlyStatus) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'GET') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        const status=await g6c050OwnerReadOnlyStatus.check(request);
+        writeJson(response,200,{...basePayload,g6cLedgerStatus:status},headers);
+      } catch (error) {
+        const httpStatus=error?.status===503 ? 503 : 403;
+        writeJson(response,httpStatus,{...basePayload,
+          error:httpStatus===503 ? 'g6c_ledger_unavailable' : 'g6c_owner_authorization_failed'},headers);
       }
       return;
     }

@@ -1,0 +1,35 @@
+// Static defense-in-depth for the review-only migration proposal.
+// This does NOT prove actual PostgreSQL execution or permissions.
+import assert from 'node:assert/strict';
+import {readFileSync,readdirSync} from 'node:fs';
+const p='docs/phase34/050_mail_sandbox_review_schema_DRAFT_NOT_DEPLOY.sql';
+const source=readFileSync(p,'utf8');
+const dir=readdirSync('server/migrations');
+let checks=0;const required=(pattern,desc)=>{assert.match(source,pattern,desc);checks++};
+const forbidden=(pattern,desc)=>{assert.doesNotMatch(source,pattern,desc);checks++};
+required(/NOT AN APPLIED MIGRATION/i,'marked not deployed');
+required(/CREATE TABLE IF NOT EXISTS app_mail_sandbox_review_reservations/,'isolated review table');
+required(/CREATE TABLE IF NOT EXISTS app_mail_sandbox_review_audit/,'isolated audit table');
+required(/approval_digest CHAR\(64\) NOT NULL UNIQUE/,'approval id unique');
+required(/reauth_digest CHAR\(64\) NOT NULL UNIQUE/,'reauth unique');
+required(/CHECK \(provider = 'brevo'\)/,'brevo only');
+required(/DEFAULT 'held_locked'/,'default held locked');
+required(/review_held/,'review audit event');
+required(/BEFORE UPDATE OR DELETE ON app_mail_sandbox_review_audit/,'immutable audit');
+required(/BEFORE DELETE ON app_mail_sandbox_review_reservations/,'no reservation deletion');
+required(/BEFORE UPDATE ON app_mail_sandbox_review_reservations/,'terminal transition guard');
+required(/IF OLD\.state <> 'held_locked'/,'terminal guard rejects repeat state change');
+required(/DROP TRIGGER IF EXISTS/,'review existing trigger semantics');
+required(/BEGIN;/,'transactional schema');
+required(/COMMIT;/,'transactional schema committed only upon explicit application');
+forbidden(/\b(?:ALTER|UPDATE|DELETE)\s+(?:TABLE\s+|FROM\s+)?app_mail_outbox\b/i,'no outbox mutation');
+forbidden(/\b(?:ALTER|UPDATE|DELETE)\s+(?:TABLE\s+|FROM\s+)?app_mail_delivery_attempts\b/i,'no delivery ledger mutation');
+forbidden(/\bCREATE\s+(?:DATABASE|EXTENSION)\b/i,'no new database');
+forbidden(/\b(?:pg_notify|dblink|http_post)\s*\(/i,'no external transport');
+required(/app_mail_sandbox_outcome_consistency CHECK/, 'strict terminal tuple check');
+required(/IS TRUE\)/, 'postgresql NULL-aware CHECK');
+required(/provider_id_digest IS NULL/, 'held outcome forbids provider digest');
+required(/BEFORE TRUNCATE ON app_mail_sandbox_review_audit/, 'audit truncate guard');
+required(/BEFORE TRUNCATE ON app_mail_sandbox_review_reservations/, 'reservation truncate guard');
+assert.ok(dir.includes('050_phase34_p1_08_mail_sandbox_review_ledger.sql'),'approved 050 must be retained');checks++;
+console.log(`[G6-C SCHEMA STATIC GUARD] PASS ${checks} checks; no real DB, no migration, no provider request`);

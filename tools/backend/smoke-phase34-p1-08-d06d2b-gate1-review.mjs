@@ -116,6 +116,6 @@ for (const disallowed of ['fetch(', 'process.env', 'pool.query(', 'https.request
 }
 check('resend adapter remains',()=>assert.ok(readFileSync('server/src/mail/resend-provider.mjs','utf8').includes('Idempotency-Key')));
 check('Resend still in provider config',()=>assert.ok(readFileSync('server/src/mail/mail-provider-config.mjs','utf8').includes("'resend', 'brevo'")));
-check('no new migrations',()=>assert.equal(readdirSync('server/migrations').some(f=>/^05\d_/.test(f)),false));
+check('no unapproved migrations',()=>assert.equal(readdirSync('server/migrations').some(f=>/^05[1-9]_/.test(f)),false));
 check('new test npm script registered',()=>assert.ok(JSON.parse(readFileSync('package.json','utf8')).scripts['server:phase34:p1-08-d06d2b-gate1:smoke']));
 console.log(`[phase34-p1-08-d06d2b-gate1] PASS (${checks} assertions; offline evidence unverified; Brevo selected; Resend preserved; HTTP=0; email=0; DB=0)`);

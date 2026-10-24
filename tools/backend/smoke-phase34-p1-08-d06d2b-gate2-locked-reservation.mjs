@@ -160,7 +160,7 @@ for(const path of ['server/src/index.mjs','server/src/app.mjs','server/src/mail/
 const sql=readFileSync('docs/phase34/050_mail_sandbox_review_schema_DRAFT_NOT_DEPLOY.sql','utf8');
 for(const literal of ['UNIQUE','app_mail_sandbox_review_audit_immutable','app_mail_sandbox_review_terminal_guard',
  'CHECK','held_locked','uncertain_quarantine'])ck(sql.includes(literal),literal);
-ck(!readdirSync('server/migrations').some(f=>/^05\d_/.test(f)),'no applied migration');
+ck(!readdirSync('server/migrations').some(f=>/^05[1-9]_/.test(f)),'no unapproved 051+ migration');
 ck(readFileSync('server/src/mail/resend-provider.mjs','utf8').includes('Idempotency-Key'));
 ck(readFileSync('server/src/mail/mail-provider-config.mjs','utf8').includes("'resend', 'brevo'"));
 ck(JSON.parse(readFileSync('package.json','utf8')).scripts['server:phase34:p1-08-d06d2b-gate2:smoke']?.includes('gate2'));

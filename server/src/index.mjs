@@ -49,6 +49,7 @@ import { createMailQueueOperations } from './mail/mail-queue-operations.mjs';
 import { createMailPreflightControl } from './mail/mail-p108-preflight-control.mjs';
 import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-readonly-acceptance.mjs';
 import { createG6SandboxReadiness } from './mail/mail-p108-g6-brevo-readiness.mjs';
+import { createG6C050OwnerReadOnlyStatus } from './mail/mail-p108-g6c-postmigration-readonly.mjs';
 import { loadP101MailConfig } from './mail/mail-provider-config.mjs';
 import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
@@ -152,6 +153,12 @@ const g6SandboxReadiness = config.appEnv === 'staging' &&
   process.env.P108_G6_SANDBOX_READINESS_ENABLED === 'true'
     ? createG6SandboxReadiness({config,adminClerkAuthService,
         getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
+// After operator-applied schema 050: a separate default-OFF GET-only status check.
+// No approval, provider request, dispatch, Outbox mutation, or DB write.
+const g6c050OwnerReadOnlyStatus = config.appEnv === 'staging' &&
+  process.env.P108_G6C_050_READONLY_ENABLED === 'true'
+    ? createG6C050OwnerReadOnlyStatus({config,adminClerkAuthService,pool,
+        getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
   firebaseLinkRepository,
@@ -235,6 +242,7 @@ const server = createServer(
     mailPreflightControl,
     g5OwnerReadOnlyAcceptance,
     g6SandboxReadiness,
+    g6c050OwnerReadOnlyStatus,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,

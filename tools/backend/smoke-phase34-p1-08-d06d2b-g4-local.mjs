@@ -77,7 +77,7 @@ const runtimeFiles=['server/src/index.mjs','server/src/mail/resend-provider.mjs'
 for(const p of runtimeFiles)ok(!readFileSync(p,'utf8').includes('g4-local-pg-core'),'not_runtime_wired');
 ok(readFileSync('server/src/mail/resend-provider.mjs','utf8').includes('Idempotency-Key'),'resend_maintained');
 ok(readFileSync('server/src/mail/mail-provider-config.mjs','utf8').includes("'resend', 'brevo'"),'both_providers');
-ok(!readdirSync('server/migrations').some(s=>/^05\d_/.test(s)),'no_new_deployed_migration');
+ok(!readdirSync('server/migrations').some(s=>/^05[1-9]_/.test(s)),'no_unapproved_deployed_migration');
 const cli=spawnSync(process.execPath,['tools/backend/run-phase34-p1-08-d06d2b-g4-local.mjs','--plan'],{encoding:'utf8'});
 eq(cli.status,0);const plan=JSON.parse(cli.stdout);ok(!plan.actuallyTestedPostgres&&!plan.liveMailSendingReady,'plan_only');
 const forbiddenCli=spawnSync(process.execPath,['tools/backend/run-phase34-p1-08-d06d2b-g4-local.mjs','--execute-local','--allow-temporary-schema'],{

@@ -145,6 +145,6 @@ for(const [file,pattern] of [
  ['server/src/mail/mail-p108-d06d1-brevo-sandbox.mjs',/export const P108_D06D_REAL_DELIVERY_LOCKED = true/],
  ['server/src/mail/mail-provider-config.mjs',/liveSendingReady: false/],
 ]) check(`existing hard lock ${file}`,()=>assert.match(readFileSync(file,'utf8'),pattern));
-check('no migration 050',()=>assert.equal(readdirSync('server/migrations').some(x=>/^050_/.test(x)),false));
+check('no unapproved migration 051+',()=>assert.equal(readdirSync('server/migrations').some(x=>/^05[1-9]_/.test(x)),false));
 check('script wired',()=>assert.ok(JSON.parse(readFileSync('package.json','utf8')).scripts['server:phase34:p1-08-d06d2a:smoke']));
 console.log(`[phase34-p1-08-d06d2a-offline-gate] PASS (${assertions} assertions; vendor API calls=0; actual email=0; runtime/DB unchanged)`);

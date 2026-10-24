@@ -147,7 +147,7 @@ for(const [name,match] of [
 ]) {
   check(`compat source ${name}: ${match}`,()=>assert.match(readFileSync(name,'utf8'),match));
 }
-check('no migration 050+',()=>assert.equal(readdirSync('server/migrations').some(x=>/^0(?:5\d|[6-9]\d)_/.test(x)),false));
+check('no migration 051+',()=>assert.equal(readdirSync('server/migrations').some(x=>/^0(?:5[1-9]|[6-9]\d)_/.test(x)),false));
 const scripts=JSON.parse(readFileSync('package.json','utf8')).scripts;
 check('new smoke script configured',()=>assert.ok(scripts['server:phase34:p1-08-d06d2b-preserve:smoke']));
 check('Resend can still be selected in mail config CLI',()=>assert.ok(readFileSync('tools/ops/check-phase34-p1-08-d06c-offline.mjs','utf8').includes("resend")));
