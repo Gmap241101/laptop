@@ -231,6 +231,7 @@ export const createRequestHandler = ({
   g5OwnerReadOnlyAcceptance = null,
   g6SandboxReadiness = null,
   g6c050OwnerReadOnlyStatus = null,
+  g6c050HeldReservationApi = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2384,6 +2385,29 @@ export const createRequestHandler = ({
         const httpStatus=error?.status===503 ? 503 : 403;
         writeJson(response,httpStatus,{...basePayload,
           error:httpStatus===503 ? 'g6c_ledger_unavailable' : 'g6c_owner_authorization_failed'},headers);
+      }
+      return;
+    }
+    // G6-C: separate STAGING-only default-OFF held_locked POST.
+    // No send/retry/settlement/provider path. Confirmation is held-only.
+    if (url.pathname === '/api/admin/mail-delivery/g6c-held-reservations') {
+      if (config.appEnv !== 'staging' || !g6c050HeldReservationApi) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'POST') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        // Strict 512B maximum; recipient/secret/evidence are never body inputs.
+        const input=await readJsonBody(request,{maxBytes:512});
+        const reservation=await g6c050HeldReservationApi.reserve({httpRequest:request,body:input});
+        writeJson(response,201,{...basePayload,g6cHeldReservation:reservation},headers);
+      } catch (error) {
+        const status=[400,403,409,413,415,503].includes(error?.status)?error.status:503;
+        const code=status===409?'g6c_held_conflict':
+          status===400||status===413||status===415?'g6c_held_invalid_request':
+          status===403?'g6c_held_forbidden':'g6c_held_unavailable';
+        writeJson(response,status,{...basePayload,error:code},headers);
       }
       return;
     }

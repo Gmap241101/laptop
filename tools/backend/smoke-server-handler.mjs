@@ -429,6 +429,15 @@ const stagingFixture = {
 const stagingServer=createServer(createRequestHandler({
   ...handlerDependencies,config:{...config,appEnv:'staging'},
   g5OwnerReadOnlyAcceptance:stagingFixture,
+  g6c050HeldReservationApi:{
+    async reserve({httpRequest,body}){
+      if(httpRequest.headers.authorization!=='Bearer smoke-token')
+        throw Object.assign(Error('token invalid'),{status:403});
+      if(body?.approvalId!=='123e4567-e89b-42d3-a456-426614174000'||body?.confirmHeldOnly!==true)
+        throw Object.assign(Error('invalid request'),{status:400});
+      return {state:'held_locked',canSendMail:false,canInvokeBrevo:false,networkRequests:0};
+    },
+  },
 }));
 await new Promise(resolve=>stagingServer.listen(0,'127.0.0.1',resolve));
 try {
@@ -444,6 +453,28 @@ try {
   const write=await fetch(stagingUrl,{method:'POST',headers:authHeaders});
   if(write.status!==405)throw new Error('G5 owner check must reject write methods');
   if(g5HttpChecks!==2)throw new Error('G5 write method reached authority handler');
+  const heldUrl=`http://127.0.0.1:${stagingServer.address().port}/api/admin/mail-delivery/g6c-held-reservations`;
+  const heldInput=JSON.stringify({approvalId:'123e4567-e89b-42d3-a456-426614174000',confirmHeldOnly:true});
+  const heldHeaders={...authHeaders,'Content-Type':'application/json'};
+  const heldSuccess=await fetch(heldUrl,{method:'POST',headers:heldHeaders,body:heldInput});
+  if(heldSuccess.status!==201 || (await heldSuccess.json()).g6cHeldReservation?.canSendMail!==false)
+    throw Error('G6C held-only POST routing failure');
+  const heldGet=await fetch(heldUrl,{method:'GET',headers:heldHeaders});
+  if(heldGet.status!==405)throw Error('G6C held-only must reject GET');
+  const heldNoAuth=await fetch(heldUrl,{method:'POST',headers:{Origin:allowedOrigin,
+    'Content-Type':'application/json'},body:heldInput});
+  if(heldNoAuth.status!==403 || (await heldNoAuth.json()).error!=='g6c_held_forbidden')
+    throw Error('G6C held-only must reject unauthorized POST');
+  const heldBad=await fetch(heldUrl,{method:'POST',headers:heldHeaders,body:'{}'});
+  if(heldBad.status!==400 || (await heldBad.json()).error!=='g6c_held_invalid_request')
+    throw Error('G6C held-only must sanitize bad request');
+  const heldLarge=await fetch(heldUrl,{method:'POST',headers:heldHeaders,
+    body:JSON.stringify({noise:'X'.repeat(1500)})});
+  if(heldLarge.status!==413 || (await heldLarge.json()).error!=='g6c_held_invalid_request')
+    throw Error('G6C held-only must cap request size');
+  const liveProdPath=await fetch(`${baseUrl}/api/admin/mail-delivery/g6c-held-reservations`,
+    {method:'POST',headers:heldHeaders,body:heldInput});
+  if(liveProdPath.status!==404)throw Error('G6C held API must remain off outside Staging');
 } finally {await new Promise(resolve=>stagingServer.close(resolve));}
 
 

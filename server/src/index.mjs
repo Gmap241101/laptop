@@ -50,6 +50,7 @@ import { createMailPreflightControl } from './mail/mail-p108-preflight-control.m
 import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-readonly-acceptance.mjs';
 import { createG6SandboxReadiness } from './mail/mail-p108-g6-brevo-readiness.mjs';
 import { createG6C050OwnerReadOnlyStatus } from './mail/mail-p108-g6c-postmigration-readonly.mjs';
+import { createG6C050HeldReservationApi } from './mail/mail-p108-g6c050-held-reservation-api.mjs';
 import { loadP101MailConfig } from './mail/mail-provider-config.mjs';
 import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
@@ -159,6 +160,12 @@ const g6c050OwnerReadOnlyStatus = config.appEnv === 'staging' &&
   process.env.P108_G6C_050_READONLY_ENABLED === 'true'
     ? createG6C050OwnerReadOnlyStatus({config,adminClerkAuthService,pool,
         getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
+// Independent explicit opt-in for a HELD-ONLY write. This flag must remain
+// unset on Staging until operator-only acceptance; never allowed on Production.
+const g6c050HeldReservationApi = config.appEnv === 'staging' &&
+  process.env.P108_G6C_050_HELD_WRITE_ENABLED === 'true'
+    ? createG6C050HeldReservationApi({config,adminClerkAuthService,pool,
+        getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
   firebaseLinkRepository,
@@ -243,6 +250,7 @@ const server = createServer(
     g5OwnerReadOnlyAcceptance,
     g6SandboxReadiness,
     g6c050OwnerReadOnlyStatus,
+    g6c050HeldReservationApi,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,
