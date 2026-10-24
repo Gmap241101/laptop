@@ -2,12 +2,10 @@ import { lazy, memo, Suspense, useMemo, useState } from 'react';
 import DevRenderProfiler from '../performance/DevRenderProfiler.jsx';
 import { PROTECTED_USER_TABS } from '../routing/appRoutes.js';
 import UserHomePanel from './UserHomePanel.jsx';
+import UserAccountStatusPanel from './UserAccountStatusPanel.jsx';
 import useUserTermsCompliance from '../features/terms/useUserTermsCompliance.js';
 
 const UserAuthPanel = memo(lazy(() => import('./UserAuthPanel.jsx')));
-const UserAccountStatusPanel = memo(
-  lazy(() => import('./UserAccountStatusPanel.jsx'))
-);
 const UserBoardPanel = memo(lazy(() => import('./UserBoardPanel.jsx')));
 const UserInquiryPanel = memo(lazy(() => import('./UserInquiryPanel.jsx')));
 const UserMyPagePanel = memo(lazy(() => import('./UserMyPagePanel.jsx')));
@@ -185,7 +183,8 @@ function UserWorkspace({ ctx, panelCtx }) {
   if (userTab === 'accountStatus') {
     return renderProfiledPanel(
       'accountStatus',
-      <UserAccountStatusPanel ctx={panelCtx} />
+      <UserAccountStatusPanel ctx={panelCtx} />,
+      { lazyPanel: false }
     );
   }
 

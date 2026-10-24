@@ -86,7 +86,7 @@ const UserShell = ({
   );
   const [isMobileCommunityOpen, setIsMobileCommunityOpen] = React.useState(true);
   const [isRentalStatusMenuOpen, setIsRentalStatusMenuOpen] = React.useState(false);
-  const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;
+  const showDataLoadingOverlay = !['home', 'accountStatus'].includes(userTab) && !firebaseReady;
   const headerSubtitle = getHeaderSubtitle(normalizedSiteSettings);
 
   React.useEffect(() => {

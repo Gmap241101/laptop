@@ -593,7 +593,7 @@ export default function useUserMyPageAccountController({
           }
         }
 
-        await clerkStagingClient.signOut().catch(() => {});
+        await clerkStagingClient.signOutWithoutNavigation().catch(() => {});
         publishUserAccountLifecycleObservation({
           userAuthRequested: lifecycleConfig.userAuthRequested,
           userLifecycleRequested: true,

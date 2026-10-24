@@ -115,8 +115,8 @@ const getUserAuthErrorMessage = (error) => {
     return '등록된 부서·성명과 일치하지 않습니다. 입력 정보를 확인해 주세요.';
   }
 
-  if (errorCode === 'member/identity-already-claimed') {
-    return '이미 가입된 부서·성명입니다. 기존 계정으로 로그인하거나 관리자에게 문의해 주세요.';
+  if (errorCode === 'member/identity-already-claimed' || errorCode === 'member_identity_already_claimed') {
+    return '동일한 부서와 이름으로 등록된 회원이 있습니다. 기존 계정 여부를 확인하거나 관리자에게 문의해 주세요.';
   }
 
   if (errorCode === 'member/directory-not-ready') {

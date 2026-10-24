@@ -65,6 +65,7 @@ export const createDefaultUserAuthForm = () => ({
   clientTrustMigration: '',
   signupEmailVerified: false,
   signupVerifiedEmail: '',
+  signupSubmissionError: '',
 });
 
 export const useUserAuthState = () => {
@@ -311,7 +312,7 @@ export default function useUserLoginController({
       clearUserAuthenticatedSession('inactive-login-status', {
         clearTransition: true,
       });
-      await clerkStagingClient.signOut().catch(() => {});
+      await clerkStagingClient.signOutWithoutNavigation().catch(() => {});
       if (readUserFirebaseAuthRetirementConfig().requested) setFirebaseAuthUser(null);
       await signOut(firebaseAuth).catch((logoutError) => {
         console.error('Inactive login sign-out error:', logoutError);

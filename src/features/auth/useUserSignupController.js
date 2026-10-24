@@ -66,6 +66,7 @@ import {
   createDefaultUserAuthForm,
 } from './useUserLoginController.js';
 import { completePendingSignupWithClerk } from './pendingSignupCompletion.js';
+import { signupSubmissionFeedback } from './signupSubmissionFeedback.js';
 import { resolveEffectiveUserSessionPolicy } from './userSessionPolicyService.js';
 import { clerkUserClient as clerkStagingClient } from '../../clerk/clerkUserClient.js';
 import {
@@ -321,7 +322,14 @@ export default function useUserSignupController({
             },
           });
         } catch (signupError) {
-          await clerkStagingClient.signOut().catch(() => {});
+          // Recover the session without Clerk's default browser redirect.
+          // Never hide the actual server-side rejection with a home-page jump.
+          try {
+            await clerkStagingClient.signOutWithoutNavigation();
+          } catch (cleanupError) {
+            console.error('Signup Clerk non-navigating cleanup error:', cleanupError);
+            signupError.sessionCleanupFailed = true;
+          }
           throw signupError;
         }
 
@@ -881,10 +889,12 @@ export default function useUserSignupController({
       let signupRollbackFailed = false;
       let firebaseAuthCleanupFailed = false;
 
+      const signupFeedback = signupSubmissionFeedback(error);
       setUserAuthForm((prev) => ({
         ...prev,
         password: '',
         passwordConfirm: '',
+        signupSubmissionError: signupFeedback,
         ...(firebaseRetirement.requested
           ? { signupEmailVerified: false, signupVerifiedEmail: '' }
           : {}),
@@ -932,11 +942,16 @@ export default function useUserSignupController({
           : getUserAuthErrorMessage(error);
 
       triggerToast(
-        firebaseAuthCleanupFailed && !firebaseRetirement.requested
-          ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
-          : baseErrorMessage,
+        signupFeedback || (
+          firebaseAuthCleanupFailed && !firebaseRetirement.requested
+            ? `${baseErrorMessage} Firebase Auth 로그아웃에도 실패했습니다. 페이지를 새로고침한 뒤 로그인 상태를 확인해 주세요.`
+            : baseErrorMessage
+        ),
         'error'
       );
+      if (signupFeedback && error?.sessionCleanupFailed) {
+        triggerToast('인증 세션을 종료하지 못했습니다. 관리자에게 문의해 주세요.', 'error');
+      }
     } finally {
       setUserAuthLoading(false);
     }

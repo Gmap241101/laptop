@@ -92,6 +92,7 @@ export default function useAppNavigationController({
         replace = false,
         routeId = '',
         scrollBehavior = null,
+        immediate = false,
       } = {}
     ) => {
       const normalizedUserTab = String(nextUserTab || 'home').trim() || 'home';
@@ -114,17 +115,21 @@ export default function useAppNavigationController({
 
       updatePath('user', normalizedUserTab, normalizedRouteId);
       setIsCommunityMenuOpen(false);
-      startTransition(() => {
+      // Outcome screens must commit now; other tabs retain React's
+      // first-use lazy-loading transition for smooth ordinary navigation.
+      if (immediate) {
         setView('user');
         setUserTab(normalizedUserTab);
-        if (!preserveFooterSelection) {
-          setSelectedFooterPageId(normalizedRouteId);
-        }
-
-        if (!preserveNoticeSelection) {
-          setSelectedNoticePostId(normalizedNoticePostId);
-        }
-      });
+        if (!preserveFooterSelection) setSelectedFooterPageId(normalizedRouteId);
+        if (!preserveNoticeSelection) setSelectedNoticePostId(normalizedNoticePostId);
+      } else {
+        startTransition(() => {
+          setView('user');
+          setUserTab(normalizedUserTab);
+          if (!preserveFooterSelection) setSelectedFooterPageId(normalizedRouteId);
+          if (!preserveNoticeSelection) setSelectedNoticePostId(normalizedNoticePostId);
+        });
+      }
 
       if (typeof window !== 'undefined' && scrollBehavior) {
         window.scrollTo({
@@ -384,6 +389,7 @@ export default function useAppNavigationController({
         preserveFooterSelection: true,
         preserveNoticeSelection: true,
         replace: true,
+        immediate: true,
       });
     }, [navigateToUserTab, setUserAccountStatusView]
   );

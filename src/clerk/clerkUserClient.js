@@ -1149,6 +1149,12 @@ export const createClerkUserClient = ({ env, windowRef, documentRef, fetchImpl }
       }
       await clerk.signOut();
     },
+    async signOutWithoutNavigation() {
+      const clerk = await initialize();
+      clearUserSessionVerificationCache();
+      // The status page owns navigation. Clerk must never redirect to '/'.
+      await endActiveClerkSessionWithoutNavigation(clerk);
+    },
     async signInWithPassword(identifier, password) {
       const email = trim(identifier).toLowerCase();
       if (!email || typeof password !== 'string' || !password) {
@@ -1640,6 +1646,7 @@ export const clerkUserClient =
         initialize: async () => null,
         getSessionToken: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signOut: async () => {},
+        signOutWithoutNavigation: async () => {},
         signInWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         signInUserWithPassword: async () => { throw new Error('Clerk browser client is unavailable.'); },
         bootstrapUserSignup: async () => { throw new Error('Clerk browser client is unavailable.'); },

@@ -480,7 +480,7 @@ assert.match(adminNavigationSource, /window\.history\.pushState\(/, 'administrat
 assert.match(adminNavigationSource, /window\.addEventListener\('popstate', handlePopState\)/, 'administrator browser Back must restore the previous administrator menu through popstate');
 assert.match(adminNavigationSource, /replaceAdminHistoryEntry\(currentTab, \{ boundary: true \}\);[\s\S]*pushAdminHistoryEntry\(currentTab\)/, 'administrator history must install a same-surface boundary so Back cannot fall through directly to the user document');
 assert.match(adminNavigationSource, /historyMode: 'none'/, 'popstate restoration must not create another administrator history entry');
-assert.match(userShellSource, /const showDataLoadingOverlay = userTab !== 'home' && !firebaseReady;/, 'initial home rendering must not be blurred behind the rental-data readiness overlay');
+assert.match(userShellSource, /const showDataLoadingOverlay = !\['home', 'accountStatus'\]\.includes\(userTab\) && !firebaseReady;/, 'initial home and account-status rendering must not be blurred behind the rental-data readiness overlay');
 assert.match(userHomeSource, /loading=\{index === 0 \? 'eager' : 'lazy'\}/, 'only the first hero image should be eager; later hero images must be lazy');
 assert.match(userHomeSource, /fetchPriority=\{index === 0 \? 'high' : 'auto'\}/, 'the first hero image should receive high fetch priority');
 assert.match(userHomeSource, /domain: SITE_CONTENT_DOMAINS\.HOME,[\s\S]*?useCache: true/, 'user home must consume the early in-flight HOME request instead of forcing a duplicate uncached read');

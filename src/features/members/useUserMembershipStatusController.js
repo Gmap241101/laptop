@@ -485,7 +485,7 @@ export default function useUserMembershipStatusController({
         clearUserAuthenticatedSession('inactive-member-status', {
           clearTransition: true,
         });
-        await clerkStagingClient.signOut().catch((logoutError) => {
+        await clerkStagingClient.signOutWithoutNavigation().catch((logoutError) => {
           console.error('Inactive user Clerk logout error:', logoutError);
         });
         await signOut(firebaseAuth);

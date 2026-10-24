@@ -134,6 +134,7 @@ export default function UserAuthPanel({ ctx }) {
       email: value,
       signupEmailVerified: preservesVerification,
       signupVerifiedEmail: preservesVerification ? verifiedEmail : '',
+      signupSubmissionError: '',
     });
   };
 
@@ -153,6 +154,7 @@ export default function UserAuthPanel({ ctx }) {
         email: normalizedSignupEmail,
         signupEmailVerified: false,
         signupVerifiedEmail: '',
+        signupSubmissionError: '',
       });
       setSignupEmailVerificationCode('');
       setSignupEmailVerificationOpen(true);
@@ -578,7 +580,14 @@ export default function UserAuthPanel({ ctx }) {
                                 : '인증받기'}
                           </Button>
                         </div>
-                        {signupEmailVerificationRequested && !signupEmailVerified && !signupEmailVerificationOpen ? (
+                        {userAuthForm.signupSubmissionError ? (
+                          <div role="alert" aria-live="assertive" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+                            <p className="font-semibold">{userAuthForm.signupSubmissionError}</p>
+                            <p className="mt-1 text-xs">다른 계정의 정보라면 수정한 뒤 이메일 인증을 다시 진행해 주세요.</p>
+                            <button type="button" className="mt-2 text-xs font-semibold underline underline-offset-2" onClick={goToUserLogin}>기존 계정으로 로그인하기</button>
+                          </div>
+                        ) : null}
+                        {signupEmailVerificationRequested && !signupEmailVerified && !signupEmailVerificationOpen && !userAuthForm.signupSubmissionError ? (
                           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
                             이메일 인증을 완료해야 회원가입할 수 있습니다. ‘인증받기’를 눌러 6자리 인증코드를 확인해 주세요.
                           </div>
@@ -605,6 +614,7 @@ export default function UserAuthPanel({ ctx }) {
                             setUserAuthForm({
                               ...userAuthForm,
                               name: sanitizeMemberNameInput(value).slice(0, 30),
+                              signupSubmissionError: '',
                             })
                           }
                           placeholder="공백 없이 성명을 입력하세요"
@@ -617,7 +627,7 @@ export default function UserAuthPanel({ ctx }) {
                             <span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">부서 / 팀</span>
                             <select
                               value={userAuthForm.team}
-                              onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value })}
+                              onChange={(event) => setUserAuthForm({ ...userAuthForm, team: event.target.value, signupSubmissionError: '' })}
                               className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition mk-form-focus"
                             >
                               <option value="">부서 / 팀을 선택해 주세요</option>
@@ -630,7 +640,7 @@ export default function UserAuthPanel({ ctx }) {
                           <Input
                             label="부서 / 팀"
                             value={userAuthForm.team}
-                            onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value })}
+                            onChange={(value) => setUserAuthForm({ ...userAuthForm, team: value, signupSubmissionError: '' })}
                             placeholder="소속 부서 또는 팀명을 입력하세요"
                             maxLength={80}
                           />

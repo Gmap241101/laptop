@@ -39,10 +39,9 @@ const run = async ({ rejectSignout = false, preexistingStatus = 'loginRetired' }
   window.location.pathname = '/signup';
   cells.set(USER_LOGIN_RETURN_TARGET_SESSION_KEY, JSON.stringify({ userTab: 'rental' }));
   writeUserAccountStatusView({ type: preexistingStatus });
-  const client = { signOut: async (opts) => {
-    sequence.push(['signOut', opts.redirectUrl, readUserAccountStatusView().type, window.location.pathname]);
+  const client = { signOutWithoutNavigation: async () => {
+    sequence.push(['signOutWithoutNavigation', readUserAccountStatusView().type, window.location.pathname]);
     if (rejectSignout) throw new Error('synthetic signout rejection');
-    window.location.pathname = opts.redirectUrl; // simulate an immediate full page navigation
   }};
   await completePendingSignupWithClerk({
     clerkClient: client,
@@ -67,10 +66,9 @@ check(sequence[0][0] === 'principal' && sequence[0][1] === null, 'principal clea
 check(sequence[1][0] === 'clearSession', 'local session cleared before display');
 check(sequence[2][0] === 'resetForm', 'signup form cleared before display');
 check(sequence[3][0] === 'status' && sequence[3][1] === 'signupPendingComplete', 'pending status shown before Clerk signout');
-check(sequence[4][0] === 'signOut', 'Clerk signout takes place after status persistence');
-check(sequence[4][1] === '/account-status', 'explicit signout redirect is account-status');
-check(sequence[4][2] === 'signupPendingComplete', 'result persisted before Clerk navigation');
-check(sequence[4][3] === '/account-status', 'status route set before Clerk navigation');
+check(sequence[4][0] === 'signOutWithoutNavigation', 'Clerk session ends without navigation');
+check(sequence[4][1] === 'signupPendingComplete', 'result persisted before Clerk cleanup');
+check(sequence[4][2] === '/account-status', 'status route set before Clerk cleanup');
 check(navigation.every(([,path]) => path === '/account-status'), 'no home-navigation introduced');
 check(notices.length === 0, 'success path does not show signout failure');
 check(panel.includes('가입 신청이 완료되었습니다.'), 'pending panel exists');
@@ -80,12 +78,12 @@ await run({rejectSignout:true});
 check(readUserAccountStatusView().type === 'signupPendingComplete', 'signout failure must not erase completed signup');
 check(window.location.pathname === '/account-status', 'signout failure must keep status page');
 check(notices.length === 1 && notices[0][1] === 'error', 'signout failure must warn user');
-check(sequence.filter(([name])=>name === 'signOut').length === 1, 'signout failure never automatically retries');
+check(sequence.filter(([name])=>name === 'signOutWithoutNavigation').length === 1, 'signout failure never automatically retries');
 check(!cells.has(USER_LOGIN_RETURN_TARGET_SESSION_KEY), 'failure does not retain protected return target');
 
 await run({preexistingStatus:'withdrawalComplete'});
 check(readUserAccountStatusView().type === 'signupPendingComplete', 'old status overwritten with pending outcome');
-check(sequence[4][2] === 'signupPendingComplete', 'stale outcome cannot survive Clerk redirect');
+check(sequence[4][1] === 'signupPendingComplete', 'stale outcome cannot survive Clerk session termination');
 
 check(signup.includes("import { completePendingSignupWithClerk } from './pendingSignupCompletion.js';"), 'controller uses hardened completion');
 check(signup.includes("showUserAccountStatus('signupAutoApprovedComplete');"), 'automatic approval remains available');
