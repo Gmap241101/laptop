@@ -229,7 +229,8 @@
     "server:phase34:g6c-pg18-local:smoke": "node tools/backend/smoke-phase34-g6c-local-pg18-gate.mjs",
     "server:phase34:g6c-pg18-local:execute": "node tools/backend/run-phase34-g6c-local-pg18.mjs --execute-local --allow-temporary-schema",
     "server:phase34:g6c050-postmigration-readonly:smoke": "node tools/backend/smoke-phase34-p1-08-g6c050-postmigration-readonly.mjs",
-    "server:phase34:g6c050-held-http:smoke": "node tools/backend/smoke-phase34-p1-08-g6c050-held-http.mjs"
+    "server:phase34:g6c050-held-http:smoke": "node tools/backend/smoke-phase34-p1-08-g6c050-held-http.mjs",
+    "server:phase34:g6d051-one-shot:smoke": "node tools/backend/smoke-phase34-p1-08-g6d051-one-shot.mjs"
   },
   "dependencies": {
     "framer-motion": "^11.0.0",

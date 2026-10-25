@@ -51,6 +51,7 @@ import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-reado
 import { createG6SandboxReadiness } from './mail/mail-p108-g6-brevo-readiness.mjs';
 import { createG6C050OwnerReadOnlyStatus } from './mail/mail-p108-g6c-postmigration-readonly.mjs';
 import { createG6C050HeldReservationApi } from './mail/mail-p108-g6c050-held-reservation-api.mjs';
+import { createG6D051BrevoOneShot } from './mail/mail-p108-g6d051-brevo-one-shot.mjs';
 import { loadP101MailConfig } from './mail/mail-provider-config.mjs';
 import { createP106ScheduledEnqueue, createP106ScheduledPreview, startP106ScheduledLoop } from './mail/mail-scheduled-enqueue.mjs';
 import { createSystemDataRepository } from './settings/system-data-repository.mjs';
@@ -166,6 +167,18 @@ const g6c050HeldReservationApi = config.appEnv === 'staging' &&
   process.env.P108_G6C_050_HELD_WRITE_ENABLED === 'true'
     ? createG6C050HeldReservationApi({config,adminClerkAuthService,pool,
         getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
+// G6-D: separate opt-in, second-channel signed approval ticket and 10-minute
+// expiry. Default OFF. No route (404) until ALL operator gates are provided.
+// MAIL_ENABLED always remains false; Brevo is invoked only via the one-shot
+// DB claim committed before the sole sandbox request.
+const g6d051SandboxOneShot = config.appEnv === 'staging' &&
+  process.env.P108_G6D_051_NETWORK_ENABLED === 'true' &&
+  /^[a-f0-9]{64}$/.test(process.env.P108_G6D_051_APPROVAL_DIGEST || '') &&
+  /^\d{10}$/.test(process.env.P108_G6D_051_APPROVAL_EXPIRES_AT || '')
+    ? createG6D051BrevoOneShot({config,adminClerkAuthService,pool,
+        getServerMailConfig:()=>loadP101MailConfig(process.env),
+        approvalDigest:process.env.P108_G6D_051_APPROVAL_DIGEST,
+        approvalExpiresAt:Number(process.env.P108_G6D_051_APPROVAL_EXPIRES_AT)}) : null;
 const memberAuthorityService = createMemberAuthorityService({
   repository: memberAuthorityRepository,
   firebaseLinkRepository,
@@ -251,6 +264,7 @@ const server = createServer(
     g6SandboxReadiness,
     g6c050OwnerReadOnlyStatus,
     g6c050HeldReservationApi,
+    g6d051SandboxOneShot,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,

@@ -232,6 +232,7 @@ export const createRequestHandler = ({
   g6SandboxReadiness = null,
   g6c050OwnerReadOnlyStatus = null,
   g6c050HeldReservationApi = null,
+  g6d051SandboxOneShot = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2408,6 +2409,29 @@ export const createRequestHandler = ({
           status===400||status===413||status===415?'g6c_held_invalid_request':
           status===403?'g6c_held_forbidden':'g6c_held_unavailable';
         writeJson(response,status,{...basePayload,error:code},headers);
+      }
+      return;
+    }
+    // G6-D: independently enabled, 10m approval, signed owner and fresh reauth.
+    // A committed singleton claim is consumed BEFORE a single Brevo DROP call.
+    // Never route the request to the general mail dispatcher or retry queue.
+    if (url.pathname === '/api/admin/mail-delivery/g6d-brevo-sandbox-one-shot') {
+      if (config.appEnv !== 'staging' || !g6d051SandboxOneShot) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'POST') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        const input=await readJsonBody(request,{maxBytes:512});
+        const result=await g6d051SandboxOneShot.execute({httpRequest:request,body:input});
+        writeJson(response,200,{...basePayload,g6dSandboxOneShot:result},headers);
+      } catch(error) {
+        const status=[400,403,409,413,415,503].includes(error?.status)?error.status:503;
+        const code=status===409?'g6d_one_shot_already_consumed':
+          status===400||status===413||status===415?'g6d_invalid_request':
+          status===403?'g6d_forbidden':'g6d_unavailable_manual_review';
+        writeJson(response,status,{...basePayload,error:code,automaticRetryAllowed:false},headers);
       }
       return;
     }
