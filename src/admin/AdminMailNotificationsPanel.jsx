@@ -1,4 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
+import { AdminPageHeader } from '../components/CommonUI.jsx';
+import PaginationControls from '../components/PaginationControls.jsx';
+import ModalPortal from '../components/ModalPortal.jsx';
+import SixDigitVerificationCodeInput from '../components/SixDigitVerificationCodeInput.jsx';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 const RichTextEditor = lazy(() => import('../components/RichTextEditor.jsx').then((m) => ({ default: m.RichTextEditor })));
 const escapeText = (value) => String(value || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -42,6 +47,7 @@ const variableLabels = {
   rentalCancelledAt:'대여 취소 일시',
 };
 export default function AdminMailNotificationsPanel({ ctx }) {
+  const [activeTab,setActiveTab] = useState('preflight');
   const [snapshot,setSnapshot] = useState(null);
   const [drafts,setDrafts] = useState({});
   const [selected,setSelected] = useState('');
@@ -170,7 +176,12 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [queue,setQueue] = useState(null);
   const [queueBusy,setQueueBusy] = useState(false);
   const [queueMessage,setQueueMessage] = useState('');
-  const [queueOpen,setQueueOpen] = useState(false);
+  const [queuePage,setQueuePage] = useState(1);
+  const [queuePageSize,setQueuePageSize] = useState(10);
+  const [queueStatus,setQueueStatus] = useState('all');
+  const [queueSearch,setQueueSearch] = useState('');
+  const [queueSearchSettled,setQueueSearchSettled] = useState('');
+  const queueRequestSeq = useRef(0);
   const [preview,setPreview] = useState(null);
   const [previewBusy,setPreviewBusy] = useState(false);
   const [previewMessage,setPreviewMessage] = useState('');
@@ -180,25 +191,30 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     catch{setPreviewMessage('반납 알림 대상을 확인하지 못했습니다.');}
     finally{setPreviewBusy(false);}
   };
+  const reloadQueue=async({page=queuePage,pageSize=queuePageSize,status=queueStatus,search=queueSearchSettled}={})=>{
+    const requestId=++queueRequestSeq.current;
+    setQueueBusy(true);setQueueMessage('');
+    try{
+      const result=await clerkStagingClient.getAdminMailQueue({page,pageSize,status,search});
+      if(requestId!==queueRequestSeq.current)return;
+      setQueue(result);
+      if(page>result.totalPages)setQueuePage(result.totalPages);
+    }catch{if(requestId===queueRequestSeq.current)setQueueMessage('발송 내역을 불러오지 못했습니다.');}
+    finally{if(requestId===queueRequestSeq.current)setQueueBusy(false);}
+  };
   const retryMail=async(id)=>{
-    if(!window.confirm('발송이 거절된 메일을 다시 대기 상태로 전환하시겠습니까?'))return;
+    if(!window.confirm('안전하게 재처리할 수 있는 메일만 대기 상태로 전환합니다. 계속하시겠습니까?'))return;
     setQueueBusy(true);setQueueMessage('');
     try{await clerkStagingClient.retryAdminMail(id);
-      setQueueMessage('재처리 대기 상태로 변경했습니다.');setQueue(await clerkStagingClient.getAdminMailQueue());}
+      setQueueMessage('재처리 대기 상태로 변경했습니다.');await reloadQueue();}
     catch{setQueueMessage('이 메일은 안전하게 재처리할 수 없습니다.');}
-    finally{setQueueBusy(false);}
-  };
-  const reloadQueue=async()=>{
-    setQueueBusy(true);setQueueMessage('');
-    try{setQueue(await clerkStagingClient.getAdminMailQueue());}
-    catch{setQueueMessage('발송 내역을 불러오지 못했습니다.');}
     finally{setQueueBusy(false);}
   };
   const cancelQueued=async(id)=>{
     if(!window.confirm('선택한 대기 메일을 취소하시겠습니까?'))return;
     setQueueBusy(true);setQueueMessage('');
-    try {await clerkStagingClient.cancelAdminQueuedMail(id);
-      setQueueMessage('발송이 취소되었습니다.');setQueue(await clerkStagingClient.getAdminMailQueue());}
+    try{await clerkStagingClient.cancelAdminQueuedMail(id);
+      setQueueMessage('발송이 취소되었습니다.');await reloadQueue();}
     catch(e){setQueueMessage(e?.status===409?'이미 처리되어 취소할 수 없습니다.':'메일 취소에 실패했습니다.');}
     finally{setQueueBusy(false);}
   };
@@ -215,7 +231,14 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     } catch { setMessage('알림 설정을 불러오지 못했습니다.'); }
     finally { setBusy(false); }
   };
-  useEffect(() => { if (owner) void load(); }, [owner]);
+  useEffect(() => { if (owner && activeTab==='design' && !snapshot) void load(); }, [owner,activeTab]);
+  useEffect(() => { if (owner && activeTab==='preflight') void reloadMailPreflight(); }, [owner,activeTab]);
+  useEffect(()=>{const id=setTimeout(()=>setQueueSearchSettled(queueSearch.trim()),250);return ()=>clearTimeout(id);},[queueSearch]);
+  useEffect(()=>{
+    if(!owner||activeTab!=='history')return;
+    void reloadQueue({page:queuePage,pageSize:queuePageSize,status:queueStatus,search:queueSearchSettled});
+    return ()=>{queueRequestSeq.current++;};
+  },[owner,activeTab,queuePage,queuePageSize,queueStatus,queueSearchSettled]);
   const current = useMemo(() => snapshot?.events?.find((event) => event.key === selected), [snapshot,selected]);
   const draft = drafts[selected] || null;
   const pending = Boolean(current && draft && changed(current,draft));
@@ -227,7 +250,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     try{
       const data=await clerkStagingClient.saveAdminMailDesign({...designDraft,expectedRevision:snapshot.revision});
       setSnapshot(data);setDesignDraft(data.design);setDesignMessage('저장되었습니다.');
-    }catch(error){setDesignMessage(error?.status===409?'다른 관리자가 먼저 변경했습니다. 새로고침 후 다시 저장하세요.':`디자인 설정을 저장하지 못했습니다. 입력 내용을 확인하세요. 오류 코드: ${error?.code || 'mail_design_save_failed'}`);}
+    }catch(error){setDesignMessage(error?.status===409?'다른 관리자가 먼저 변경했습니다. 새로고침 후 다시 저장하세요.':'디자인 설정을 저장하지 못했습니다. 입력 내용을 확인해 주세요.');}
     finally{setBusy(false);}
   };
   const makeMailPreview = async () => {
@@ -246,15 +269,34 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       setSnapshot(data);
       setDrafts(Object.fromEntries(data.events.map((event) => [event.key,fromEvent(event)])));
       setMessage('저장되었습니다.');
-    } catch (e) { setMessage(e?.status === 409 ? '다른 관리자가 먼저 변경했습니다. 다시 불러온 후 저장하세요.' : `저장하지 못했습니다. 본문 형식과 변수를 확인해 주세요. 오류 코드: ${e?.code || 'mail_settings_save_failed'}`); }
+    } catch (e) { setMessage(e?.status === 409 ? '다른 관리자가 먼저 변경했습니다. 다시 불러온 후 저장하세요.' : '저장하지 못했습니다. 본문 형식과 변수를 확인해 주세요.'); }
     finally { setBusy(false); }
   };
   const copyVariable = async (name) => {
     try { await navigator.clipboard.writeText(`{{${name}}}`); setMessage('변수를 복사했습니다. 원하는 위치에 붙여넣으세요.'); }
     catch { setMessage('복사할 수 없습니다. 변수 코드를 선택하여 붙여넣으세요.'); }
   };
+  const switchTab=(next)=>{
+    if(next===activeTab)return;
+    if(busy||mailPreflightBusy||queueBusy||g5Busy||g6Busy||mailVerifyStep==='sent')return;
+    if((pending||designPending)&&!window.confirm('저장하지 않은 변경사항이 있습니다. 변경사항을 취소하고 이동하시겠습니까?'))return;
+    if(pending||designPending){
+      setDrafts(Object.fromEntries((snapshot?.events||[]).map(event=>[event.key,fromEvent(event)])));
+      setDesignDraft(snapshot?.design||null);
+      setMailPreview(null);
+    }
+    setActiveTab(next);
+  };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
-  return <section className="space-y-4">
+  return <section className="space-y-5">
+    <AdminPageHeader title="이메일 알림 관리" description="이메일 발송 상태와 내역을 확인하고, 알림 유형 및 이메일 디자인을 관리합니다."
+      badge={<span className="inline-flex shrink-0 items-center rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-white">최고관리자 기능</span>}/>
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="이메일 알림 관리 메뉴">
+      {[['preflight','발송 전 점검'],['history','발송 내역 관리'],['design','알림 설정 및 디자인']].map(([key,label])=><button
+        key={key} type="button" role="tab" aria-selected={activeTab===key} onClick={()=>switchTab(key)}
+        className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${activeTab===key?'border-orange-500 bg-orange-500 text-white shadow-sm':'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}>{label}</button>)}
+    </div>
+    {activeTab==='preflight'&&<div className="space-y-4" role="tabpanel">
     {g5Available&&<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">최고관리자 본인 확인</h3>
@@ -309,20 +351,12 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         <p>현재 발송: <strong>중지</strong> · 대기 {mailPreflight.counts?.queued||0}건 · 재시도 대기 {mailPreflight.counts?.retry||0}건 · 오래된 대기 {mailPreflight.agedCount||0}건</p>
         {(mailPreflight.samples||[]).length>0&&<p>확인할 메일: {mailPreflight.samples.map(r=>`#${r.id} (${mailStateLabels[r.state]||r.state})`).join(', ')}</p>}
         {mailPreflight.latestReview&&<p>마지막 점검 확인: {new Date(mailPreflight.latestReview.createdAt).toLocaleString('ko-KR')}</p>}
-        <p className="text-slate-500">대기 메일 취소는 아래 ‘발송 내역 및 대기 메일’에서 처리할 수 있습니다.</p>
+        <p className="text-slate-500">대기 메일 취소는 ‘발송 내역 관리’ 탭에서 처리할 수 있습니다.</p>
       </div>}
       {mailPreflightMessage&&<p role="status" className="text-xs text-slate-700">{mailPreflightMessage}</p>}
       {mailPreflight&&<div className="flex flex-wrap items-center justify-end gap-2">
-        {mailVerifyStep==='idle'?<button type="button" disabled={mailPreflightBusy} onClick={()=>void beginMailReview()}
-          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">본인 확인 후 점검 기록</button>
-        :<><input type="text" inputMode="numeric" autoComplete="one-time-code" value={mailVerifyCode} maxLength={6}
-            aria-label="이메일 확인 코드" placeholder="6자리 확인 코드" disabled={mailPreflightBusy}
-            onChange={e=>setMailVerifyCode(e.target.value.replace(/\D/g,'').slice(0,6))}
-            className="w-40 rounded-lg border px-3 py-2 text-xs"/>
-          <button type="button" disabled={mailPreflightBusy||mailVerifyCode.length!==6} onClick={()=>void completeMailReview()}
-            className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">확인</button>
-          <button type="button" disabled={mailPreflightBusy} onClick={()=>{setMailVerifyStep('idle');setMailVerifyCode('');}}
-            className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button></>}
+        <button type="button" disabled={mailPreflightBusy||mailVerifyStep==='sent'} onClick={()=>void beginMailReview()}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-50">본인 확인 후 점검 기록</button>
       </div>}
     </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
@@ -340,35 +374,59 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       </div>}
       <p className="text-xs text-slate-500">대상 확인만 수행하며 이메일을 발송하거나 등록하지 않습니다.</p>
     </div>
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 className="text-sm font-bold text-slate-900">발송 내역 및 대기 메일</h3>
-          <p className="mt-1 text-xs text-slate-500">대기 중인 알림을 확인하고 취소할 수 있습니다.</p></div>
-        <div className="flex gap-2">
-          {queueOpen&&<button type="button" disabled={queueBusy} onClick={()=>void reloadQueue()} className="rounded-lg border px-3 py-2 text-xs">새로고침</button>}
-          <button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>{
-            if(queueOpen){setQueueOpen(false);}else{setQueueOpen(true);void reloadQueue();}
-          }}>{queueOpen?'닫기':'내역 보기'}</button>
+    </div>}
+    {activeTab==='history'&&<div className="space-y-4" role="tabpanel">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="text-base font-black text-slate-900">발송 내역 및 대기 메일</h3>
+            <p className="mt-1 text-xs text-slate-500">발송 상태와 이력을 조회하고 허용된 대기 메일을 관리합니다.</p></div>
+          <button type="button" disabled={queueBusy} onClick={()=>void reloadQueue()} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold disabled:opacity-50">새로고침</button>
         </div>
-      </div>
-      {queueOpen&&<div className="mt-4 space-y-3">
-        {queueMessage&&<p role="status" className="text-xs text-slate-700">{queueMessage}</p>}
-        {queue&&<div className="flex flex-wrap gap-2 text-xs text-slate-600">
-          {Object.entries(queue.counts||{}).map(([state,count])=><span key={state} className="rounded-full bg-slate-100 px-2 py-1">{mailStateLabels[state]||state}: {count}</span>)}
+        {queue&&<div className="flex flex-wrap gap-2 text-xs text-slate-600" aria-label="상태별 전체 건수">
+          {Object.entries(mailStateLabels).map(([state,label])=><span key={state} className="rounded-full bg-slate-100 px-3 py-1">{label}: {queue.counts?.[state]||0}건</span>)}
         </div>}
-        <div className="max-h-[360px] overflow-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[660px] text-left text-xs">
-            <thead className="sticky top-0 bg-slate-50 text-slate-600"><tr><th className="p-2">유형</th><th className="p-2">수신자</th><th className="p-2">상태</th><th className="p-2">등록일시</th><th className="p-2">관리</th></tr></thead>
-            <tbody>{(queue?.rows||[]).map(r=><tr key={r.id} className="border-t border-slate-100">
-              <td className="p-2">{r.eventTitle}</td><td className="p-2">{r.recipientMasked}</td>
-              <td className="p-2">{mailStateLabels[r.state]||r.state}</td><td className="p-2">{r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'-'}</td>
-              <td className="p-2">{['queued','retry'].includes(r.state)?<button type="button" disabled={queueBusy} onClick={()=>void cancelQueued(r.id)} className="rounded-md border border-rose-200 px-2 py-1 font-medium text-rose-700 disabled:opacity-50">취소</button>:r.retryEligible?<button type="button" disabled={queueBusy} onClick={()=>void retryMail(r.id)} className="rounded-md border border-slate-300 px-2 py-1 font-medium disabled:opacity-50">재처리</button>:'-'}</td>
+        <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_160px_140px] md:items-end">
+          <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">메일 검색</span>
+            <div className="relative"><Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+              <input aria-label="메일 검색" value={queueSearch} maxLength={120} onChange={e=>{setQueueSearch(e.target.value);setQueuePage(1);}}
+                placeholder="관리번호, 이메일 유형, 마스킹 주소" className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none mk-form-border-focus"/></div>
+          </label>
+          <label className="block"><span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">상태</span>
+            <select aria-label="발송 상태" value={queueStatus} onChange={e=>{setQueueStatus(e.target.value);setQueuePage(1);}}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus">
+              <option value="all">전체</option>{Object.entries(mailStateLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className="block"><span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">페이지당 표시</span>
+            <select aria-label="페이지당 표시" value={queuePageSize} onChange={e=>{setQueuePageSize(Number(e.target.value));setQueuePage(1);}}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none mk-form-border-focus">
+              {[10,30,50].map(size=><option key={size} value={size}>{size}개</option>)}
+            </select>
+          </label>
+        </div>
+        {queueMessage&&<p role="status" className="text-xs text-rose-700">{queueMessage}</p>}
+        {queueBusy&&!queue&&<p className="py-6 text-center text-xs text-slate-500">발송 내역을 불러오는 중입니다.</p>}
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="w-full min-w-[790px] table-fixed text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600"><tr>{[['관리번호','w-[11%]'],['유형','w-[23%]'],['수신자','w-[25%]'],['상태','w-[13%]'],['등록일시','w-[18%]'],['관리','w-[10%]']].map(([label,width])=><th key={label} className={`px-3 py-3 font-semibold ${width}`}>{label}</th>)}</tr></thead>
+            <tbody>{(queue?.rows||[]).map(r=><tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+              <td className="break-all px-3 py-3">#{r.id}</td><td className="break-words px-3 py-3">{r.eventTitle}</td>
+              <td className="break-all px-3 py-3">{r.recipientMasked}</td><td className="px-3 py-3">{mailStateLabels[r.state]||r.state}</td>
+              <td className="px-3 py-3">{r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'-'}</td>
+              <td className="px-3 py-3">{['queued','retry'].includes(r.state)?<button type="button" disabled={queueBusy} onClick={()=>void cancelQueued(r.id)} className="rounded-lg border border-rose-200 px-2 py-1 font-semibold text-rose-700 disabled:opacity-50">취소</button>:r.retryEligible?<button type="button" disabled={queueBusy} onClick={()=>void retryMail(r.id)} className="rounded-lg border border-slate-300 px-2 py-1 font-semibold disabled:opacity-50">재처리</button>:'-'}</td>
             </tr>)}</tbody>
           </table>
-          {queue&&!queue.rows?.length&&<p className="p-4 text-center text-xs text-slate-500">등록된 발송 내역이 없습니다.</p>}
+          {queue&&!queue.rows?.length&&<p className="p-8 text-center text-xs text-slate-500">검색 조건에 맞는 발송 내역이 없습니다.</p>}
         </div>
-      </div>}
-    </div>
+        <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+          <p className="text-[11px] text-slate-500">검색 결과 {queue?.total??0}건 · {queuePage} / {queue?.totalPages||1}페이지</p>
+          <PaginationControls currentPage={queuePage} totalPages={queue?.totalPages||1} disabled={queueBusy||!queue}
+            onPageChange={setQueuePage} className="sm:justify-self-center"/>
+          <button type="button" className="justify-self-end rounded-lg border px-3 py-2 text-xs" onClick={()=>{setQueueSearch('');setQueueStatus('all');setQueuePage(1);}}>검색 초기화</button>
+        </div>
+      </div>
+    </div>}
+    {activeTab==='design'&&<div className="space-y-4" role="tabpanel">
     {snapshot && designDraft && <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
       <div><h3 className="text-sm font-bold text-slate-900">공통 이메일 디자인</h3>
         <p className="mt-1 text-xs text-slate-500">모든 이메일 유형에 공통으로 적용됩니다. 예시 메일은 아래 미리보기에서 확인할 수 있습니다.</p></div>
@@ -393,9 +451,9 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       </div>
       <p className="text-xs text-slate-500">실제 발신 주소와 인증은 별도 설정으로 관리됩니다. 실메일 발송은 비활성 상태입니다.</p>
     </div>}
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h2 className="text-xl font-black text-slate-900">이메일 알림 관리</h2><p className="mt-1 text-sm text-slate-500">발송 유형별 설정과 메일 내용을 관리합니다.</p></div>
-      <button type="button" disabled={busy} onClick={load} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold">새로고침</button>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h3 className="text-base font-bold text-slate-900">유형별 이메일 알림 설정 및 디자인</h3>
+      <button type="button" disabled={busy} onClick={()=>{if((pending||designPending)&&!window.confirm('저장하지 않은 변경사항을 취소하고 새로고침하시겠습니까?'))return;void load();}} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold">새로고침</button>
     </div>
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">실제 이메일 발송은 아직 시작되지 않았습니다.</div>
     {message && <p className="text-sm font-semibold text-slate-700" role="status">{message}</p>}
@@ -403,7 +461,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
       <div className="max-h-[650px] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
         {snapshot.events.map((event) => <button type="button" key={event.key}
-          onClick={() => { if (pending && !window.confirm('저장하지 않은 변경사항을 취소하고 이동하시겠습니까?')) return; setSelected(event.key);setMailPreview(null);setMessage(''); }}
+          onClick={() => { if (pending) {if(!window.confirm('저장하지 않은 변경사항을 취소하고 이동하시겠습니까?')) return;setDrafts(d=>({...d,[selected]:fromEvent(current)}));} setSelected(event.key);setMailPreview(null);setMessage(''); }}
           className={`w-full rounded-lg px-3 py-3 text-left text-sm ${selected === event.key ? 'bg-orange-50 font-bold text-orange-800' : 'hover:bg-slate-50'}`}>
           <span className="block text-xs text-slate-500">{event.category} · {event.recipient === 'admin' ? '관리자' : '사용자'}</span>
           {event.title}<span className={`ml-2 text-xs ${drafts[event.key]?.enabled ? 'text-green-700' : 'text-slate-400'}`}>{drafts[event.key]?.enabled ? 'ON' : 'OFF'}</span>
@@ -453,5 +511,23 @@ export default function AdminMailNotificationsPanel({ ctx }) {
           <button type="button" disabled={busy || !pending} onClick={() => setDrafts((d) => ({ ...d,[selected]:fromEvent(current) }))} className="rounded-lg border px-5 py-2.5 text-sm">변경 취소</button></div>
       </div>}
     </div>}
+    </div>}
+    {activeTab==='preflight'&&mailVerifyStep==='sent'&&<ModalPortal className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/50 p-4" role="presentation">
+      <div role="dialog" aria-modal="true" aria-labelledby="mail-review-modal-title" onKeyDown={e=>{if(e.key==='Escape'&&!mailPreflightBusy){setMailVerifyStep('idle');setMailVerifyCode('');}}} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 id="mail-review-modal-title" className="text-lg font-black text-slate-900">최고관리자 본인 확인</h3>
+        <p className="mb-5 mt-2 text-sm leading-6 text-slate-600">등록된 이메일로 발급된 6자리 확인 코드를 입력하세요.</p>
+        <SixDigitVerificationCodeInput key="mail-review-otp" id="mail-review-otp" value={mailVerifyCode} onChange={setMailVerifyCode}
+          onSubmit={()=>void completeMailReview()} disabled={mailPreflightBusy} label="이메일 인증번호"/>
+        {mailPreflightMessage&&<p role="status" className="mt-3 text-xs text-slate-700">{mailPreflightMessage}</p>}
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+          <button type="button" disabled={mailPreflightBusy} onClick={()=>{setMailVerifyStep('idle');setMailVerifyCode('');setMailPreflightMessage('');}}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-40">취소</button>
+          <button type="button" disabled={mailPreflightBusy} onClick={()=>void beginMailReview()}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold disabled:opacity-40">재발급</button>
+          <button type="button" disabled={mailPreflightBusy||mailVerifyCode.length!==6} onClick={()=>void completeMailReview()}
+            className="rounded-xl bg-[var(--mk-orange)] px-4 py-2 text-sm font-bold text-white disabled:opacity-40">확인 후 점검 기록</button>
+        </div>
+      </div>
+    </ModalPortal>}
   </section>;
 }

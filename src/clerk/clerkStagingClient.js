@@ -1512,8 +1512,10 @@ export const requestAdminMailPreflightReview = async ({clerk,apiBaseUrl,fetchImp
   }
   return payload.mailPreflightReview;
 };
-export const requestAdminMailQueue = async ({clerk,apiBaseUrl,fetchImpl}) => {
-  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-queue',method:'GET'});
+export const requestAdminMailQueue = async ({clerk,apiBaseUrl,fetchImpl,page,pageSize,status,search}) => {
+  const paged=Number.isSafeInteger(page);
+  const qs=paged ? '?'+new URLSearchParams({page:String(page),pageSize:String(pageSize),status:status||'all',search:search||''}).toString() : '';
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,path:'/api/admin/mail-queue'+qs,method:'GET'});
   if(!response.ok || payload?.mailQueue?.authority!=='postgresql') {
     const error=new Error('메일 발송 내역을 불러올 수 없습니다.');error.code=payload?.error||'mail_queue_read_failed';error.status=response.status;throw error;
   }
@@ -2751,9 +2753,9 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async acknowledgeAdminMailPreflight() {
       const clerk=await initialize();return requestAdminMailPreflightReview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
     },
-    async getAdminMailQueue() {
+    async getAdminMailQueue(filters={}) {
       const clerk=await initialize();
-      return requestAdminMailQueue({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+      return requestAdminMailQueue({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,...filters});
     },
     async cancelAdminQueuedMail(id) {
       const clerk=await initialize();

@@ -957,6 +957,7 @@ tools/backend/smoke-phase34-canonical-store-cleanup.mjs
 tools/backend/smoke-phase34-external-runtime-removal.mjs
 tools/backend/smoke-phase34-g6c-local-pg18-gate.mjs
 tools/backend/smoke-phase34-inquiry-read-performance.mjs
+tools/backend/smoke-phase34-mail-ux-paged-history.mjs
 tools/backend/smoke-phase34-member-lifecycle-finalization.mjs
 tools/backend/smoke-phase34-member-policy-directory-authority.mjs
 tools/backend/smoke-phase34-member-rental-status.mjs

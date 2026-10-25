@@ -2488,7 +2488,13 @@ export const createRequestHandler = ({
         writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
       }
       try {
-        const data=await mailQueueOperations.list();
+        const isPaged=url.searchParams.has('page');
+        const parsedPage=Number(url.searchParams.get('page'));
+        const parsedSize=Number(url.searchParams.get('pageSize'));
+        const data=isPaged ? await mailQueueOperations.listPaged({
+          page:parsedPage,pageSize:parsedSize,status:url.searchParams.get('status')||'all',
+          search:url.searchParams.get('search')||'',
+        }) : await mailQueueOperations.list();
         writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailQueue:data},headers);
       } catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_queue_read_failed'},headers);}
       return;
