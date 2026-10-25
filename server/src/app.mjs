@@ -233,6 +233,7 @@ export const createRequestHandler = ({
   g6c050OwnerReadOnlyStatus = null,
   g6c050HeldReservationApi = null,
   g6d051SandboxOneShot = null,
+  g6d051ReadOnlyDiagnostic = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2409,6 +2410,25 @@ export const createRequestHandler = ({
           status===400||status===413||status===415?'g6c_held_invalid_request':
           status===403?'g6c_held_forbidden':'g6c_held_unavailable';
         writeJson(response,status,{...basePayload,error:code},headers);
+      }
+      return;
+    }
+    // G6-D: independent opt-in for owner-only READ-ONLY preclaim diagnosis.
+    // No approval ticket, no mail, no vendor, no DB writes, no retry.
+    if (url.pathname === '/api/admin/mail-delivery/g6d-one-shot-readonly-diagnostic') {
+      if (config.appEnv !== 'staging' || !g6d051ReadOnlyDiagnostic) {
+        writeJson(response,404,{...basePayload,error:'not_found'},headers);return;
+      }
+      if (request.method !== 'GET') {
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      try {
+        const result=await g6d051ReadOnlyDiagnostic.check(request);
+        writeJson(response,200,{...basePayload,g6dReadOnlyDiagnostic:result},headers);
+      }catch(error){
+        const status=error?.status===503?503:403;
+        writeJson(response,status,{...basePayload,
+          error:status===503?'g6d_diagnostic_unavailable':'g6d_diagnostic_not_authorized'},headers);
       }
       return;
     }

@@ -55,14 +55,26 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [mailPreflight,setMailPreflight] = useState(null);
   const [mailPreflightBusy,setMailPreflightBusy] = useState(false);
   const [mailPreflightMessage,setMailPreflightMessage] = useState('');
+  const [g5Available,setG5Available] = useState(false);
+  useEffect(()=>{
+    if(ctx.authenticatedAdminAccount?.adminRole!=='owner')return undefined;
+    let active=true;
+    void clerkStagingClient.getAdminG5Availability().then(result=>{
+      if(active)setG5Available(result.available===true);
+    }).catch(()=>{if(active)setG5Available(false);});
+    return ()=>{active=false;};
+  },[ctx.authenticatedAdminAccount?.adminRole]);
   const [g5Code,setG5Code] = useState('');
   const [g5Step,setG5Step] = useState('idle');
   const [g5Busy,setG5Busy] = useState(false);
   const [g5Message,setG5Message] = useState('');
   const beginG5Verification=async()=>{
-    if(g5Busy)return;
+    if(g5Busy||!g5Available)return;
     setG5Busy(true);setG5Message('');setG5Code('');
     try{
+      // Recheck capability to prevent sending an unusable verification code.
+      const capability=await clerkStagingClient.getAdminG5Availability();
+      if(!capability.available){setG5Available(false);return;}
       await clerkStagingClient.beginBackupReverification();
       setG5Step('sent');
       setG5Message('본인 확인 코드를 이메일로 보냈습니다.');
@@ -80,21 +92,31 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       setG5Message('최고관리자 본인 확인이 완료되었습니다.');
     }catch(error){
       setG5Code('');setG5Step('idle');
-      setG5Message(error?.status===404
-        ? '현재 본인 확인 기능을 이용할 수 없습니다.'
-        : '본인 확인에 실패했습니다. 다시 인증해 주세요.');
+      if(error?.status===404){setG5Available(false);setG5Message('');}
+      else setG5Message('본인 확인 결과를 확인하지 못했습니다. 다시 시도해 주세요.');
     }finally{setG5Busy(false);}
   };
   // G6 sandbox inspection is read-only and requires a fresh Clerk code.
+  const [g6Available,setG6Available] = useState(false);
+  useEffect(()=>{
+    if(ctx.authenticatedAdminAccount?.adminRole!=='owner')return undefined;
+    let active=true;
+    void clerkStagingClient.getAdminG6Availability().then(result=>{
+      if(active)setG6Available(result.available===true);
+    }).catch(()=>{if(active)setG6Available(false);});
+    return ()=>{active=false;};
+  },[ctx.authenticatedAdminAccount?.adminRole]);
   const [g6Code,setG6Code] = useState('');
   const [g6Step,setG6Step] = useState('idle');
   const [g6Busy,setG6Busy] = useState(false);
   const [g6Message,setG6Message] = useState('');
   const [g6Readiness,setG6Readiness] = useState(null);
   const beginG6Verification=async()=>{
-    if(g6Busy)return;
+    if(g6Busy||!g6Available)return;
     setG6Busy(true);setG6Message('');setG6Readiness(null);setG6Code('');
     try{
+      const capability=await clerkStagingClient.getAdminG6Availability();
+      if(!capability.available){setG6Available(false);return;}
       await clerkStagingClient.beginBackupReverification();
       setG6Step('sent');setG6Message('본인 확인 코드를 이메일로 보냈습니다.');
     }catch{setG6Message('본인 확인 코드를 발송하지 못했습니다.');}
@@ -233,7 +255,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   };
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-4">
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    {g5Available&&<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">최고관리자 본인 확인</h3>
         <button type="button" disabled={g5Busy} onClick={()=>void beginG5Verification()}
@@ -250,8 +272,8 @@ export default function AdminMailNotificationsPanel({ ctx }) {
           className="rounded-lg border px-3 py-2 text-xs disabled:opacity-50">취소</button>
       </div>}
       {g5Message&&<p role="status" className="text-xs text-slate-700">{g5Message}</p>}
-    </div>
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    </div>}
+    {g6Available&&<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">Brevo Sandbox 사전점검</h3>
         <button type="button" disabled={g6Busy} onClick={()=>void beginG6Verification()}
@@ -275,7 +297,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         {g6Readiness.blockers?.length>0&&<div className="space-y-1"><p className="font-semibold">추가 확인 사항</p><ul className="list-disc pl-5 space-y-1">{g6Readiness.blockers.map((code,i)=><li key={`${code}-${i}`}>{g6BlockerLabel(code)}</li>)}</ul></div>}
         <p className="font-semibold text-slate-700">실제 공급자 호출 0건 · 실메일 발송 0건 · Sandbox 실행 승인 별도</p>
       </div>}
-    </div>
+    </div>}
     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">이메일 발송 전 점검</h3>

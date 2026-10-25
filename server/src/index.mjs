@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createG6D051ReadOnlyDiagnostic } from './mail/mail-p108-g6d051-readonly-diagnostic.mjs';
 import { createRequestHandler } from './app.mjs';
 import { createClerkSessionAuthenticator } from './auth/clerk-session.mjs';
 import { createClerkBackendClient } from './clerk/clerk-api.mjs';
@@ -171,6 +172,11 @@ const g6c050HeldReservationApi = config.appEnv === 'staging' &&
 // expiry. Default OFF. No route (404) until ALL operator gates are provided.
 // MAIL_ENABLED always remains false; Brevo is invoked only via the one-shot
 // DB claim committed before the sole sandbox request.
+// Independent owner-only GET diagnostics, OFF by default, even if G6-D network flag is ON.
+const g6d051ReadOnlyDiagnostic = config.appEnv === 'staging' &&
+  process.env.P108_G6D_051_READONLY_DIAGNOSTIC_ENABLED === 'true'
+    ? createG6D051ReadOnlyDiagnostic({config,adminClerkAuthService,pool,
+        getServerMailConfig:()=>loadP101MailConfig(process.env)}) : null;
 const g6d051SandboxOneShot = config.appEnv === 'staging' &&
   process.env.P108_G6D_051_NETWORK_ENABLED === 'true' &&
   /^[a-f0-9]{64}$/.test(process.env.P108_G6D_051_APPROVAL_DIGEST || '') &&
@@ -265,6 +271,7 @@ const server = createServer(
     g6c050OwnerReadOnlyStatus,
     g6c050HeldReservationApi,
     g6d051SandboxOneShot,
+    g6d051ReadOnlyDiagnostic,
     mailSchedulePreview,
     clerkDeviceTrustService,
     systemDataService,

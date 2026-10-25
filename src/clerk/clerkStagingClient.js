@@ -1442,6 +1442,14 @@ export const requestAdminMailTemplatePreview = async ({clerk,apiBaseUrl,fetchImp
 };
 // G5: use the existing Clerk session, including the freshly signed
 // reverification claims. No JWT is exposed to the UI or persisted.
+// Capability probe is GET-only. A default-OFF 404 hides the internal G5
+// acceptance control BEFORE any Clerk email code is requested. A 403 means
+// enabled but fresh owner verification is still required, not "disabled".
+export const requestAdminG5Availability = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const {response}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/g5-owner-check',method:'GET'});
+  return Object.freeze({available: response.status===200 || response.status===403});
+};
 export const requestAdminG5OwnerCheck = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const verifiedSessionToken = await waitForBackupReverificationClaims(
     () => clerk.session.getToken({skipCache:true})
@@ -1464,6 +1472,13 @@ export const requestAdminG5OwnerCheck = async ({clerk,apiBaseUrl,fetchImpl}) => 
   return {verified:true,readOnly:true};
 };
 // G6: inspect ONLY server-side Brevo sandbox readiness. No send action.
+// G6 is also default-OFF. Probe before requesting a code so the owner never
+// receives an unusable code for a deliberately disabled acceptance endpoint.
+export const requestAdminG6Availability = async ({clerk,apiBaseUrl,fetchImpl}) => {
+  const {response}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/g6-sandbox-readiness',method:'GET'});
+  return Object.freeze({available: response.status===200 || response.status===403});
+};
 export const requestAdminG6SandboxReadiness = async ({clerk,apiBaseUrl,fetchImpl}) => {
   const verifiedSessionToken=await waitForBackupReverificationClaims(
     ()=>clerk.session.getToken({skipCache:true})
@@ -2712,9 +2727,17 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
       const clerk=await initialize();
       return requestAdminMailTemplatePreview({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
     },
+    async getAdminG5Availability() {
+      const clerk=await initialize();
+      return requestAdminG5Availability({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
     async getAdminG5OwnerCheck() {
       const clerk = await initialize();
       return requestAdminG5OwnerCheck({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async getAdminG6Availability() {
+      const clerk=await initialize();
+      return requestAdminG6Availability({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
     },
     async getAdminG6SandboxReadiness() {
       const clerk=await initialize();

@@ -1,4 +1,3 @@
-# Phase34 P1-08 G6D051 one-shot Brevo SANDBOX safety source files
 .github/workflows/pages-production.yml
 .gitignore
 Procfile
@@ -652,6 +651,7 @@ server/src/mail/mail-p108-g6c-one-shot-review.mjs
 server/src/mail/mail-p108-g6c-postmigration-readonly.mjs
 server/src/mail/mail-p108-g6c050-held-reservation-api.mjs
 server/src/mail/mail-p108-g6d051-brevo-one-shot.mjs
+server/src/mail/mail-p108-g6d051-readonly-diagnostic.mjs
 server/src/mail/mail-p108-preflight-control.mjs
 server/src/mail/mail-p108-protected-bridge.mjs
 server/src/mail/mail-provider-config.mjs
@@ -993,6 +993,7 @@ tools/backend/smoke-phase34-p1-08-g6c-schema-guard.mjs
 tools/backend/smoke-phase34-p1-08-g6c050-held-http.mjs
 tools/backend/smoke-phase34-p1-08-g6c050-postmigration-readonly.mjs
 tools/backend/smoke-phase34-p1-08-g6d051-one-shot.mjs
+tools/backend/smoke-phase34-p1-08-g6d051-readonly-diagnostic.mjs
 tools/backend/smoke-phase34-p1-08-gate-c-provider-contract.mjs
 tools/backend/smoke-phase34-p1-08-integrated-gate-a.mjs
 tools/backend/smoke-phase34-p1-mail-control-plane.mjs
