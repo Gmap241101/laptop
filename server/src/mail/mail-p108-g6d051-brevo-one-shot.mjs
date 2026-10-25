@@ -60,12 +60,35 @@ export function createG6D051BrevoOneShot({config,adminClerkAuthService,pool,
          'app_mail_sandbox_review_terminal_trigger','app_mail_sandbox_review_no_delete_trigger',
          'app_mail_sandbox_review_reservation_no_truncate']]);
    if(integerValue(triggers)!==7)throw deny('g6d051_immutability_missing',503);
-   const outbox=await db.query(`SELECT id,state,attempt_count,lease_owner,
-     lease_expires_at,provider_message_id FROM public.app_mail_outbox WHERE id=5 FOR SHARE`);
+   const outbox=await db.query(`SELECT id,state,event_key,last_error_code,
+     recipient_email,updated_at,attempt_count,lease_owner,lease_expires_at,
+     provider_message_id FROM public.app_mail_outbox WHERE id=5 FOR SHARE`);
    const x=outbox.rows[0];
-   if(outbox.rows.length!==1||Number(x.id)!==5||x.state!=='queued'||
+   // The existing notification may have been legitimately cancelled when its
+   // administrator changed the mail preference from true to false. Never undo
+   // opt-out, send/queue the notice, or accept arbitrary cancelled states.
+   const queued=x?.state==='queued';
+   const auditedOptOut=x?.state==='cancelled' &&
+     x?.event_key==='admin_signup_pending' &&
+     x?.last_error_code==='mail_admin_opted_out' &&
+     typeof x?.recipient_email==='string' && !!x.recipient_email &&
+     x?.updated_at!=null;
+   if(outbox.rows.length!==1||Number(x.id)!==5||(!queued&&!auditedOptOut)||
       Number(x.attempt_count)!==0||x.lease_owner!=null||x.lease_expires_at!=null||
       x.provider_message_id!=null)throw deny('g6d051_outbox5_not_locked');
+   if(auditedOptOut){
+     const provenance=await db.query(`SELECT COUNT(*)::integer AS total
+       FROM public.app_admin_identity_registry a
+       JOIN public.app_admin_mail_preference_audit p
+         ON p.target_admin_key=a.firebase_uid
+       WHERE lower(a.auth_email)=lower($1)
+         AND a.status='active' AND a.mail_notifications_enabled=FALSE
+         AND p.previous_enabled=TRUE AND p.new_enabled=FALSE
+         AND p.created_at BETWEEN $2::timestamptz - INTERVAL '2 minutes'
+           AND $2::timestamptz + INTERVAL '2 minutes'`,
+       [x.recipient_email,x.updated_at]);
+     if(integerValue(provenance)!==1)throw deny('g6d051_outbox5_optout_not_verified');
+   }
    const attempts=await db.query(`SELECT COUNT(*)::integer AS total FROM public.app_mail_delivery_attempts
       WHERE mail_outbox_id=5`);
    if(integerValue(attempts)!==0)throw deny('g6d051_outbox5_attempts_present');

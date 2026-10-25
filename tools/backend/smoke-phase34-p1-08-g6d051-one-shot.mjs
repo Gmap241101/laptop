@@ -35,6 +35,8 @@ let role='owner';
 const admin={authorizeCurrent:async({clerkUserId})=>({authority:'clerk-postgresql-session',
  admin:{clerkUserId,adminRole:role,status:'active',clerkLinkState:'linked',lockUntil:null}})};
 const createState=()=>({claims:[],settlement:null,audits:[],outboxState:'queued',
+ outboxEventKey:'admin_signup_pending',outboxErrorCode:null,
+ optedOut:false,preferenceAuditMatched:false,
  preflight:'reviewed_locked',triggers:7,migrations:2,attempts:0,
  heldOwner:'user_HeldOwner1234',failedSql:'',statements:[],rollbacks:0,commits:0});
 function fakePool(state){let q=Promise.resolve();return {state,async connect(){
@@ -53,7 +55,13 @@ function fakePool(state){let q=Promise.resolve();return {state,async connect(){
     return {rows:[{total:state.migrations}]};}
   if(s.includes('FROM pg_trigger'))return {rows:[{total:state.triggers}]};
   if(s.includes('FROM public.app_mail_outbox'))return {rows:[{id:5,state:state.outboxState,
+    event_key:state.outboxEventKey,last_error_code:state.outboxErrorCode,
+    recipient_email:'local-owner@example.test',updated_at:'2026-10-25T09:57:37Z',
     attempt_count:0,lease_owner:null,lease_expires_at:null,provider_message_id:null}]};
+  if(s.includes('FROM public.app_admin_identity_registry')){
+    eq(params[0],'local-owner@example.test');eq(params[1],'2026-10-25T09:57:37Z');
+    return {rows:[{total:state.optedOut&&state.preferenceAuditMatched?1:0}]};
+  }
   if(s.includes('FROM public.app_mail_delivery_attempts'))return {rows:[{total:state.attempts}]};
   if(s.includes('FROM public.app_mail_preflight_reviews'))return {rows:[{review_result:state.preflight}]};
   if(s.includes('FROM public.app_mail_sandbox_one_shot_claim')&&s.startsWith('SELECT'))
@@ -170,6 +178,27 @@ for(const [patch,code] of [[{sts:'pending'},403],[{fva:[9,0]},403],[{azp:'https:
  const st=createState(),x=make(st,successMock);await fails(()=>run(x.api,jwt(patch)),code);
  eq(x.getCalls(),0);}
 role='admin';{const st=createState(),x=make(st,successMock);await fails(()=>run(x.api),403);eq(x.getCalls(),0);}role='owner';
+// An explicitly audited true -> false administrator opt-out must preserve the
+// cancelled outbox while allowing a strictly synthetic sandbox contract test.
+{
+ const st=Object.assign(createState(),{outboxState:'cancelled',
+   outboxErrorCode:'mail_admin_opted_out',optedOut:true,preferenceAuditMatched:true});
+ const gate=make(st,successMock);const outcome=await run(gate.api);
+ eq(outcome.state,'simulated_accepted');eq(gate.getCalls(),1);eq(st.claims.length,1);
+ eq(st.outboxState,'cancelled');eq(st.attempts,0);
+ await fails(()=>run(gate.api),409);eq(gate.getCalls(),1);
+}
+for(const patch of [
+ {outboxState:'cancelled'},
+ {outboxState:'cancelled',outboxErrorCode:'mail_event_disabled',optedOut:true,preferenceAuditMatched:true},
+ {outboxState:'cancelled',outboxErrorCode:'mail_admin_opted_out'},
+ {outboxState:'cancelled',outboxErrorCode:'mail_admin_opted_out',optedOut:true},
+ {outboxState:'cancelled',outboxErrorCode:'mail_admin_opted_out',optedOut:true,
+  preferenceAuditMatched:true,outboxEventKey:'admin_rental_pending'},
+]){
+ const st=Object.assign(createState(),patch),gate=make(st,successMock);
+ await fails(()=>run(gate.api),403);eq(gate.getCalls(),0);eq(st.claims.length,0);
+}
 for(const [patch,status] of [
  [{preflight:'not_reviewed'},403],[{outboxState:'sent'},403],
  [{attempts:1},403],[{migrations:1},503],[{triggers:6},503],

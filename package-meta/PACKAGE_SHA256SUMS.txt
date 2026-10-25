@@ -651,7 +651,7 @@ dff2b15ce3e9c71f984b28f0762a887f3705aed0125dd87be1523ac604c9a01f  server/src/mai
 d47eab916372264b3798ee38228e292fb7fe82b97232585ca20ded26e012495e  server/src/mail/mail-p108-g6c-one-shot-review.mjs
 4e2f9b6d4d385483cf8996d421031a92168aa7de9808e664a18f1d4f78b720a0  server/src/mail/mail-p108-g6c-postmigration-readonly.mjs
 b88befc936f418be8372e0cfa72e71aca76e06334370efff77e6257d3154eab5  server/src/mail/mail-p108-g6c050-held-reservation-api.mjs
-1b9d561dd2dc7a75b02802ff8a519852705fceccfb17f468626b312accb0bf6d  server/src/mail/mail-p108-g6d051-brevo-one-shot.mjs
+c25d83567ecccc4703c5a4ae8fbddd376f4a506052f3255fbd535d9f36d4d7d0  server/src/mail/mail-p108-g6d051-brevo-one-shot.mjs
 1ded83f4376982b5985d19edbb3a194c9dd6d2556510f504ac4babb89ef825f1  server/src/mail/mail-p108-preflight-control.mjs
 ca435582051b804fe9d593fca72e5015d9f9805b7a7a8ca969a067ab3fb4c6d0  server/src/mail/mail-p108-protected-bridge.mjs
 595278b740490fb74400d5a4c4543b1feec979b99db748113e9b35bf2be5a684  server/src/mail/mail-provider-config.mjs
@@ -992,7 +992,7 @@ c222af31261aee27c0c2a0aaa8b73c7275a6eda495bf97edb631e1bbeec92446  tools/backend/
 d4707e9e647983b3afc59f8228257be02f1143320ef0f4921ef6e8d15499ef21  tools/backend/smoke-phase34-p1-08-g6c-schema-guard.mjs
 4d771dab759d4ff349f3a2086de05eb1ef971b30c9ea0f077b659751902faf2a  tools/backend/smoke-phase34-p1-08-g6c050-held-http.mjs
 203d9c0dffa42549af5a6926068289e2c3ab2151d6066f78dc103abeedaca4b3  tools/backend/smoke-phase34-p1-08-g6c050-postmigration-readonly.mjs
-a42db85299dbcf338ab99671d35e6a43478f8b59eca2ddaa1ed9f244921b689b  tools/backend/smoke-phase34-p1-08-g6d051-one-shot.mjs
+bd3351ec7c34cc9b3966b1da24d7cda712de6f1bcff12db4298ba7099cea1e7d  tools/backend/smoke-phase34-p1-08-g6d051-one-shot.mjs
 89b287bb33ce49fc330762106876a0684ccd7a2d43aeddbe5a108162f485510a  tools/backend/smoke-phase34-p1-08-gate-c-provider-contract.mjs
 768984457a12d24cd9f55a9f77ab1b9f155454d75bc4da2fa5ccd2b081d8627c  tools/backend/smoke-phase34-p1-08-integrated-gate-a.mjs
 0b61c4e36cf9135a84a3726a4944ed080e97ba6736951485dec0fcc7545e1d20  tools/backend/smoke-phase34-p1-mail-control-plane.mjs
