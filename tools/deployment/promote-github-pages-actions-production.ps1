@@ -1,18 +1,22 @@
-param(
+﻿param(
     [string]$SourceBranch = "",
     [string]$ClerkPublishableKey = "",
     [switch]$Yes,
     [switch]$SkipWorkflowWatch,
-    [switch]$AllowCreateBackupFromCurrentProduction
+    [switch]$AllowCreateBackupFromCurrentProduction,
+    [ValidateSet("rolling", "rolling_and_dated")][string]$BackupMode = "rolling"
 )
 
 $ErrorActionPreference = "Stop"
-$ScriptVersion = "2026.10.06-v1-github-pages-actions-production"
+$ScriptVersion = "2026.10.26-v4-github-pages-actions-production-rolling-plus-optional-dated-backup"
 $ProductionBranch = "gh-pages"
-$BackupBranch = "gh-pages2"
 $ExpectedDomain = "notebook.recruit.kro.kr"
 $WorkflowFile = "pages-production.yml"
 $SecretName = "VITE_CLERK_PUBLISHABLE_KEY"
+$RollingBackupBranch = "gh-pages-4"
+$DatedBackupPrefix = "backup-gh-pages-"+(Get-Date -Format "yyyyMMdd")+"-"
+$DatedBackupBranch = ""
+
 
 function Write-Section([string]$Title) {
     Write-Host ""
@@ -44,6 +48,16 @@ function Invoke-Native([string]$Command, [string[]]$Arguments, [switch]$Capture)
     return $output
 }
 
+function Get-NextDatedBackupBranch([string]$Prefix) {
+    # A date-scoped, ascending sequence: backup-gh-pages-YYYYMMDD-1, -2, ...
+    # Ref collisions are prevented again by an empty --force-with-lease.
+    for ($sequence = 1; $sequence -le 9999; $sequence++) {
+        $candidate = "$Prefix$sequence"
+        if (-not (Get-RemoteSha $candidate -AllowMissing)) { return $candidate }
+    }
+    throw "날짜별 운영 백업 브랜치가 9999개를 초과하여 더 생성할 수 없습니다."
+}
+
 function Get-RemoteSha([string]$Branch, [switch]$AllowMissing) {
     $output = Invoke-Native "git" @("ls-remote", "--heads", "origin", "refs/heads/$Branch") -Capture
     $line = (($output | Out-String).Trim())
@@ -58,7 +72,7 @@ Write-Section "GitHub Pages Vite Production 승격"
 Write-Host "스크립트 버전 : $ScriptVersion"
 Write-Host "운영 도메인    : https://$ExpectedDomain/"
 Write-Host "운영 브랜치    : $ProductionBranch"
-Write-Host "백업 브랜치    : $BackupBranch"
+Write-Host "Backup mode    : $BackupMode (rolling=gh-pages-4 always; optional=backup-gh-pages-YYYYMMDD-#)"
 
 Write-Section "[1/8] Git/GitHub CLI 사전 점검"
 Invoke-Native "git" @("rev-parse", "--is-inside-work-tree") -Capture | Out-Null
@@ -81,17 +95,31 @@ if (-not $SourceBranch) { throw "gh-pages-3 또는 gh-pages3 Staging source 브�
 
 $sourceSha = Get-RemoteSha $SourceBranch
 $productionSha = Get-RemoteSha $ProductionBranch
-$backupSha = Get-RemoteSha $BackupBranch -AllowMissing
-
-Write-Host "승격 원본 : $SourceBranch  ($($sourceSha.Substring(0,12)))"
-Write-Host "현재 운영 : $ProductionBranch ($($productionSha.Substring(0,12)))"
-if ($backupSha) {
-    Write-Host "기존 백업 : $BackupBranch  ($($backupSha.Substring(0,12))) - 보존"
+if ($sourceSha -eq $productionSha) {
+    throw "origin/$ProductionBranch 가 이미 Staging 승격 커밋입니다. 재실행하면 배포 이전 백업이 사라질 수 있으므로 중단합니다. Pages 상태와 Production API 상태를 각각 확인하십시오."
+}
+# The rolling backup is mandatory regardless of the operator Y/N choice.
+$rollingBackupSha = Get-RemoteSha $RollingBackupBranch -AllowMissing
+$withDatedBackup = ($BackupMode -eq "rolling_and_dated")
+if ($withDatedBackup) {
+    $DatedBackupBranch = Get-NextDatedBackupBranch $DatedBackupPrefix
+    $datedBackupSha = Get-RemoteSha $DatedBackupBranch -AllowMissing
+    if ($datedBackupSha) { throw "Dated backup branch already exists. Refusing overwrite." }
+}
+Write-Host "Source SHA     : $SourceBranch ($($sourceSha.Substring(0,12)))"
+Write-Host "Production SHA : $ProductionBranch ($($productionSha.Substring(0,12)))"
+if ($rollingBackupSha) {
+    Write-Host "Rolling backup : $RollingBackupBranch ($($rollingBackupSha.Substring(0,12)) -> $($productionSha.Substring(0,12)))"
 } else {
-    Write-Host "기존 백업 : $BackupBranch  (-)"
-    if (-not $AllowCreateBackupFromCurrentProduction) {
-        throw "origin/$BackupBranch가 없습니다. 이전 승격 전 운영본을 보존하려면 먼저 백업 브랜치를 복구하십시오. 현재 gh-pages를 새 백업으로 사용해도 되는 경우에만 -AllowCreateBackupFromCurrentProduction을 명시하세요."
-    }
+    Write-Host "Rolling backup : $RollingBackupBranch (new ref)"
+}
+if ($withDatedBackup) {
+    Write-Host "Extra snapshot : $DatedBackupBranch (new, immutable)"
+} else {
+    Write-Host "Extra snapshot : none (operator N)"
+}
+if (-not $AllowCreateBackupFromCurrentProduction) {
+    throw "운영 백업 생성 또는 갱신에는 -AllowCreateBackupFromCurrentProduction 명시적 승인이 필요합니다."
 }
 
 $workflowCheck = Invoke-Native "git" @("show", "origin/$SourceBranch`:.github/workflows/$WorkflowFile") -Capture
@@ -120,14 +148,16 @@ if (-not $hasSecret) {
 
 Write-Section "[4/8] 실행 확인"
 Write-Host "다음 작업을 수행합니다."
-if ($backupSha) {
-    Write-Host "  1) 기존 origin/$BackupBranch ($($backupSha.Substring(0,12)))는 변경하지 않고 보존"
+Write-Host "  1) Always update origin/$RollingBackupBranch to current origin/$ProductionBranch ($($productionSha.Substring(0,12)))"
+if ($withDatedBackup) {
+    Write-Host "  2) Additionally create origin/$DatedBackupBranch at the same production SHA (never overwrite)"
 } else {
-    Write-Host "  1) 현재 origin/$ProductionBranch ($($productionSha.Substring(0,12)))를 origin/$BackupBranch에 최초 백업"
+    Write-Host "  2) No additional dated backup (rolling branch still updated)"
 }
-Write-Host "  2) GitHub Pages build_type을 workflow로 전환"
-Write-Host "  3) origin/$SourceBranch ($($sourceSha.Substring(0,12)))를 origin/$ProductionBranch로 승격"
-Write-Host "  4) push로 시작된 $WorkflowFile 의 Vite Production build/deploy 확인"
+Write-Host "     gh-pages-2 / gh-pages2 must not be changed"
+Write-Host "  3) Set GitHub Pages build_type=workflow"
+Write-Host "  4) Promote origin/$SourceBranch to origin/$ProductionBranch"
+Write-Host "  5) Validate $WorkflowFile for Production build/deploy"
 
 if (-not $Yes) {
     $answer = Read-Host "계속하려면 START를 정확히 입력하세요"
@@ -135,14 +165,52 @@ if (-not $Yes) {
 }
 
 Write-Section "[5/8] 운영 백업 보존/생성"
-if (-not $backupSha) {
-    Invoke-Native "git" @("push", "origin", "$productionSha`:refs/heads/$BackupBranch")
-    $backupSha = Get-RemoteSha $BackupBranch
-    if ($backupSha -ne $productionSha) { throw "운영 백업 SHA 검증에 실패했습니다." }
-    Write-Host "[+] origin/$BackupBranch = $($backupSha.Substring(0,12))"
-} else {
-    Write-Host "[+] 기존 origin/$BackupBranch는 덮어쓰지 않았습니다."
+# A rolling backup is mandatory for BOTH Y and N, with an additional dated
+# immutable snapshot for Y only. Recheck all refs before any write.
+$currentBeforeBackup = Get-RemoteSha $ProductionBranch
+$currentSourceBeforeBackup = Get-RemoteSha $SourceBranch
+if ($currentBeforeBackup -ne $productionSha -or $currentSourceBeforeBackup -ne $sourceSha) {
+    throw "Staging or Production SHA changed after preflight. No promotion."
 }
+foreach ($branch in @($RollingBackupBranch, $DatedBackupBranch)) {
+    if (-not $branch) { continue }
+    if ($branch -eq "gh-pages-2" -or $branch -eq "gh-pages2" -or
+        $branch -eq $ProductionBranch -or $branch -eq $SourceBranch) {
+        throw "Protected source, production or historic Firebase branch cannot be a backup target: $branch"
+    }
+}
+$currentRollingSha = Get-RemoteSha $RollingBackupBranch -AllowMissing
+if ($currentRollingSha -ne $rollingBackupSha) {
+    throw "Rolling backup changed since preflight. Refusing overwrite."
+}
+if ($withDatedBackup) {
+    $currentDatedSha = Get-RemoteSha $DatedBackupBranch -AllowMissing
+    if ($currentDatedSha) { throw "Dated backup branch already exists. Refusing overwrite." }
+    # Create the immutable snapshot first, so a dated-ref collision cannot
+    # overwrite the existing rolling backup. An empty lease requires no ref.
+    Invoke-Native "git" @(
+        "push", "origin",
+        "--force-with-lease=refs/heads/${DatedBackupBranch}:",
+        "${productionSha}:refs/heads/$DatedBackupBranch"
+    )
+    $createdDatedSha = Get-RemoteSha $DatedBackupBranch
+    if ($createdDatedSha -ne $productionSha) { throw "Dated backup SHA verification failed. No promotion." }
+    Write-Host "[+] Dated snapshot origin/$DatedBackupBranch = $($createdDatedSha.Substring(0,12))"
+}
+# Always update gh-pages-4. Compare-and-swap against its observed SHA,
+# including an explicit empty lease when creating it for the first time.
+$expectedRollingSha = if ($currentRollingSha) { $currentRollingSha } else { "" }
+Invoke-Native "git" @(
+    "push", "origin",
+    "--force-with-lease=refs/heads/${RollingBackupBranch}:$expectedRollingSha",
+    "${productionSha}:refs/heads/$RollingBackupBranch"
+)
+$verifiedRollingSha = Get-RemoteSha $RollingBackupBranch
+if ($verifiedRollingSha -ne $productionSha) { throw "Rolling backup SHA verification failed. No promotion." }
+if ($withDatedBackup -and (Get-RemoteSha $DatedBackupBranch) -ne $productionSha) {
+    throw "Dated backup changed before promotion. No promotion."
+}
+Write-Host "[+] Rolling backup origin/$RollingBackupBranch = $($verifiedRollingSha.Substring(0,12)); gh-pages-2 preserved"
 
 Write-Section "[6/8] GitHub Pages를 Actions workflow 방식으로 전환"
 Invoke-Native "gh" @(
@@ -202,17 +270,24 @@ if (-not $SkipWorkflowWatch) {
     Invoke-Native "gh" @("run", "watch", $runId, "--repo", $repo, "--exit-status")
 }
 
-$finalBackupSha = Get-RemoteSha $BackupBranch
+$finalRollingSha = Get-RemoteSha $RollingBackupBranch
 $finalProductionSha = Get-RemoteSha $ProductionBranch
 $finalSourceSha = Get-RemoteSha $SourceBranch
-if ($finalProductionSha -ne $finalSourceSha) { throw "최종 Production/Source SHA가 일치하지 않습니다." }
-if ($finalBackupSha -ne $backupSha) { throw "백업 브랜치 SHA가 작업 도중 변경되었습니다." }
+if ($finalProductionSha -ne $finalSourceSha) { throw "Final Production/Source SHA mismatch." }
+if ($finalRollingSha -ne $verifiedRollingSha) { throw "Rolling backup ref changed during deployment." }
+if ($withDatedBackup) {
+    $finalDatedSha = Get-RemoteSha $DatedBackupBranch
+    if ($finalDatedSha -ne $productionSha) { throw "Dated backup ref changed during deployment." }
+}
 
 Write-Host ""
-Write-Host "완료:"
-Write-Host "  backup     origin/$BackupBranch = $($finalBackupSha.Substring(0,12))"
-Write-Host "  production origin/$ProductionBranch = $($finalProductionSha.Substring(0,12))"
-Write-Host "  source     origin/$SourceBranch = $($finalSourceSha.Substring(0,12))"
-Write-Host "  site       https://$ExpectedDomain/"
+Write-Host "COMPLETE:"
+Write-Host "  rolling     origin/$RollingBackupBranch = $($finalRollingSha.Substring(0,12))"
+if ($withDatedBackup) {
+    Write-Host "  dated       origin/$DatedBackupBranch = $($finalDatedSha.Substring(0,12))"
+}
+Write-Host "  production  origin/$ProductionBranch = $($finalProductionSha.Substring(0,12))"
+Write-Host "  source      origin/$SourceBranch = $($finalSourceSha.Substring(0,12))"
+Write-Host "  site        https://$ExpectedDomain/"
 Write-Host ""
 Write-Host "운영 index.html은 /assets/*.js를 참조해야 하며 /src/user-main.jsx를 직접 참조하면 안 됩니다."
