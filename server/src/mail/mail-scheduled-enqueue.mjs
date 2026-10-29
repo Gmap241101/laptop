@@ -77,11 +77,17 @@ export function createP106ScheduledPreview(pool,{now=()=>new Date()}={}) {
   }});
 }
 
-export function startP106ScheduledLoop({runner,enabled=false,intervalMs=3600000,schedule=setInterval,cancel=clearInterval}={}) {
+export function startP106ScheduledLoop({runner,enabled=false,intervalMs=300000,schedule=setInterval,cancel=clearInterval,now=()=>new Date()}={}) {
   if(typeof runner?.tick!=='function')throw new TypeError('mail_schedule_runner_required');
   if(!Number.isInteger(intervalMs)||intervalMs<60000)throw new RangeError('mail_schedule_interval_invalid');
   let timer=null;
   return Object.freeze({start(){if(!enabled||timer!==null)return false;
-    timer=schedule(()=>{void runner.tick().catch((error)=>console.warn('[mail-schedule] scan failed',{code:error?.code||'scan_error'}));},intervalMs);
+    timer=schedule(()=>{
+      // The regular reminder window opens at 09:00 Korea time, with bounded
+      // catch-up after downtime. All duplicate prevention remains in PostgreSQL.
+      const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',hourCycle:'h23'}).format(now()));
+      if(hour<9)return;
+      void runner.tick().catch((error)=>console.warn('[mail-schedule] scan failed',{code:error?.code||'scan_error'}));
+    },intervalMs);
     return true;},stop(){if(timer===null)return false;cancel(timer);timer=null;return true;}});
 }

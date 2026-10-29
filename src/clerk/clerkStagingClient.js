@@ -1442,6 +1442,16 @@ export const requestAdminMailDesignUpdate = async ({clerk,apiBaseUrl,fetchImpl,i
   }
   return payload.mailNotificationSettings;
 };
+export const requestAdminMailDesignAction = async ({clerk,apiBaseUrl,fetchImpl,action,input}) => {
+  if(!['draft','publish','restore'].includes(action))throw new TypeError('mail_design_action_invalid');
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:`/api/admin/mail-design/${action}`,method:action==='draft'?'PATCH':'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+  if(!response.ok||payload?.mailNotificationSettings?.authority!=='postgresql'){
+    const e=new Error('디자인 설정을 처리하지 못했습니다.');e.code=payload?.error||'mail_design_action_failed';e.status=response.status;throw e;
+  }
+  return payload.mailNotificationSettings;
+};
 export const requestAdminMailTemplatePreview = async ({clerk,apiBaseUrl,fetchImpl,input}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
     path:'/api/admin/mail-preview',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
@@ -2740,6 +2750,10 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminMailDesign(input) {
       const clerk=await initialize();
       return requestAdminMailDesignUpdate({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
+    },
+    async manageAdminMailDesign(action,input) {
+      const clerk=await initialize();
+      return requestAdminMailDesignAction({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,action,input});
     },
     async previewAdminMailTemplate(input) {
       const clerk=await initialize();

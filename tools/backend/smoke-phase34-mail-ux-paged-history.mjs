@@ -43,5 +43,5 @@ const route=app.slice(app.indexOf("url.pathname === '/api/admin/mail-queue'"),ap
 ok(route.includes("adminRole !== 'owner'"),'route owner only');
 ok(route.includes('mailQueueOperations.listPaged'),'paged route on GET only');
 const ui=readFileSync('src/admin/AdminMailNotificationsPanel.jsx','utf8');
-for(const marker of ['AdminPageHeader','최고관리자 기능','activeTab===\'preflight\'','activeTab===\'history\'','activeTab===\'design\'','SixDigitVerificationCodeInput','ModalPortal','PaginationControls','[10,30,50]','queueRequestSeq'])ok(ui.includes(marker),'UI marker '+marker);
+for(const marker of ['AdminPageHeader','OwnerSettingsBadge','activeTab===\'preflight\'','activeTab===\'history\'','activeTab===\'design\'','SixDigitVerificationCodeInput','ModalPortal','PaginationControls','[10,30,50]','queueRequestSeq'])ok(ui.includes(marker),'UI marker '+marker);
 console.log(`[phase34-mail-ux-history] PASS ${assertions} assertions; mock PG, read-only, 0 emails, 0 external calls`);

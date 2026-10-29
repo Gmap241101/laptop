@@ -82,9 +82,9 @@ for(const route of ['mail-design','mail-preview'])check(app.includes(`/api/admin
 check((app.match(/mailNotificationSettingsService.preview/g)||[]).length===1,'server invokes no-send preview');
 check((app.match(/mailNotificationSettingsService.saveDesign/g)||[]).length===1,'server settings save');
 const scoped=app.slice(app.indexOf('    // P1-07: shared appearance'),app.indexOf('const adminSystemConfigMatch'));
-check((scoped.match(/adminRole!=='owner'/g)||[]).length===2,'preview & design owner only');
+check((scoped.match(/adminRole!=='owner'/g)||[]).length>=3,'preview & design owner only');
 const view=readFileSync('src/admin/AdminMailNotificationsPanel.jsx','utf8');
-for(const txt of ['saveAdminMailDesign','previewAdminMailTemplate','sandbox=""','srcDoc={mailPreview.html}','RichTextEditor','allowImages={false}'])check(view.includes(txt),`frontend ${txt}`);
+for(const txt of ['manageAdminMailDesign','previewAdminMailTemplate','sandbox=""','srcDoc={mailPreview.html}','RichTextEditor','allowImages={false}'])check(view.includes(txt),`frontend ${txt}`);
 const index=readFileSync('server/src/index.mjs','utf8');
 check(!index.includes('createP103Dispatcher('),'mail dispatcher not started');
 check(!index.includes('createBrevoProvider('),'no provider live sends');

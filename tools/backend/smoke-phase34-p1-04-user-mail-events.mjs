@@ -18,8 +18,8 @@ for(const event of covered){
     : rentalMailValues(event,rental,{extensionRequestedAt:'2026-10-20',extensionDecisionAt:'2026-10-22',previousRentalDueAt:'2026-10-27',newRentalDueAt:'2026-10-28',rentalCancelledAt:'2026-10-22',rentalReturnedAt:'2026-10-22'});
   verify(MAIL_EVENT_BY_KEY[event].variables.every(k=>typeof values[k]==='string'),'all placeholders populated '+event);
 }
-verify(getMailPublicSiteUrl({APP_ENV:'staging'})==='https://mkrental.vercel.app','staging link');
-verify(getMailPublicSiteUrl({MAIL_PUBLIC_SITE_URL:'javascript:bad'})==='', 'script URL not injected');
+verify(getMailPublicSiteUrl({APP_ENV:'staging'})==='https://mkrental.vercel.app/','staging link');
+verify(getMailPublicSiteUrl({MAIL_PUBLIC_SITE_URL:'javascript:bad'})==='https://notebook.recruit.kro.kr/', 'script URL not injected');
 let policy=true;const seen=new Set();let requests=[];
 const client={async query(sql,args=[]){requests.push({sql,args});
   if(sql.includes("config_key='mail-notification-settings'")) return {rows:[{payload:{events:{rental_submitted:{enabled:policy,subject:'{{name}} 신청',body:'{{rentalDueAt}}',bodyFormat:'text'}}}}]};

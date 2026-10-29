@@ -3,15 +3,13 @@
 import { MAIL_EVENT_BY_KEY } from './mail-event-catalog.mjs';
 import { parseMailAddress } from './mail-provider-config.mjs';
 import { createMailOutboxRepository } from './mail-outbox-repository.mjs';
+import { getMailPublicSiteUrl } from './mail-public-site-url.mjs';
 
 const outbox = createMailOutboxRepository();
 const trim = (value) => String(value ?? '').trim();
 const asDate = (value) => value instanceof Date ? value.toISOString().slice(0, 10) : trim(value).slice(0,10);
 const asTimestamp = (value) => value instanceof Date ? value.toISOString() : trim(value);
-const safeUrl = (value) => typeof value === 'string' && /^https:\/\/[a-z0-9.-]+(?::443)?(?:\/[a-z0-9_/?#=&%.-]*)?$/i.test(value) ? value : '';
-// Only publicly configured site links; never request-derived URLs or secrets.
-export const getMailPublicSiteUrl = (env=process.env) => safeUrl(env.MAIL_PUBLIC_SITE_URL) ||
-  ((env.APP_ENV || '').toLowerCase() === 'staging' ? 'https://mkrental.vercel.app' : '');
+export { getMailPublicSiteUrl } from './mail-public-site-url.mjs';
 
 const emptyValuesFor = (key) => Object.fromEntries(MAIL_EVENT_BY_KEY[key].variables.map((name)=>[name,'']));
 export const rentalMailValues = (eventKey, rental, overrides={}) => ({
@@ -49,13 +47,20 @@ export async function listScheduledUserMailCandidates({client, eventKey, referen
   if (!Number.isInteger(limit) || limit<1 || limit>100 || !Number.isSafeInteger(afterId) || afterId<0) throw new TypeError('mail_batch_limit_invalid');
   const condition = eventKey==='rental_due_reminder'
     ? "r.due_date = ($1::date + INTERVAL '1 day')::date"
-    : 'r.due_date < $1::date';
+    : `r.due_date < $1::date AND NOT EXISTS (
+         SELECT 1 FROM app_mail_outbox prior
+         WHERE prior.event_key='rental_overdue'
+           AND prior.source_request_id=r.request_id
+           AND prior.source_due_date=r.due_date
+       )`;
+  // Overdue: one notice per rental+due-date, even across daily scans/restarts.
+  // The legacy daily event IDs are also covered by the prior Outbox lookup.
   const rows=await client.query(`SELECT r.id AS rental_row_id,r.request_id,r.requester_email,r.requester_name,r.requester_team,
        r.requested_at_text,r.start_date::text,r.due_date::text,i.asset_category,i.asset_no
      FROM app_rental_requests r LEFT JOIN app_rental_request_items i ON i.rental_request_id=r.id
      WHERE r.status='대여중' AND ${condition} AND r.id > $3::bigint
      ORDER BY r.id LIMIT $2 FOR SHARE OF r`,[referenceDate,limit,afterId]);
-  return rows.rows.map((r)=>Object.freeze({rentalRowId:Number(r.rental_row_id||0),eventKey,eventId:`${r.request_id}:${asDate(r.due_date)}:${eventKey==='rental_overdue'?referenceDate:'pre'}`,
+  return rows.rows.map((r)=>Object.freeze({rentalRowId:Number(r.rental_row_id||0),eventKey,eventId:`${r.request_id}:${asDate(r.due_date)}:${eventKey==='rental_overdue'?'overdue':'pre'}`,
     recipientEmail:r.requester_email,sourceRequestId:r.request_id,sourceDueDate:asDate(r.due_date),values:rentalMailValues(eventKey,{
       id:r.request_id,requesterName:r.requester_name,requesterTeam:r.requester_team,
       requestedAt:r.requested_at_text,startDate:r.start_date,dueDate:r.due_date,

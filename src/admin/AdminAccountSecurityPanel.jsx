@@ -5,6 +5,7 @@ import {
   Save,
   ShieldCheck,
 } from 'lucide-react';
+import { OwnerSettingsBadge } from '../components/CommonUI.jsx';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
 import {
   normalizeSystemAdminSettings,
@@ -414,12 +415,7 @@ export default function AdminAccountSecurityPanel({ ctx }) {
       <AdminPageHeader
         title="계정 보안 설정"
         description="관리자와 일반 사용자의 로그인 지속성, 무활동 만료 및 최대 세션시간을 관리합니다."
-        badge={
-          <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700">
-            <ShieldCheck size={14} />
-            {isOwner ? '최고 관리자 설정 가능' : '읽기 전용'}
-          </span>
-        }
+        badge={<OwnerSettingsBadge isOwner={isOwner} />}
       />
 
       {!isOwner ? (

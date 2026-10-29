@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
-import { AdminPageHeader } from '../components/CommonUI.jsx';
+import { AdminPageHeader, OwnerSettingsBadge } from '../components/CommonUI.jsx';
 import PaginationControls from '../components/PaginationControls.jsx';
 import ModalPortal from '../components/ModalPortal.jsx';
 import SixDigitVerificationCodeInput from '../components/SixDigitVerificationCodeInput.jsx';
 import { clerkStagingClient } from '../clerk/clerkStagingClient.js';
+import { nextMailQueueChipFilter } from './mailQueueFilter.js';
 const RichTextEditor = lazy(() => import('../components/RichTextEditor.jsx').then((m) => ({ default: m.RichTextEditor })));
 const escapeText = (value) => String(value || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const toEditorBody = ({ body, bodyFormat }) => bodyFormat === 'html' ? body : String(body || '').split(/\r?\n/).map((line) => `<p>${escapeText(line) || '&nbsp;'}</p>`).join('');
@@ -53,6 +54,8 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [selected,setSelected] = useState('');
   const [designDraft,setDesignDraft] = useState(null);
   const [designMessage,setDesignMessage] = useState('');
+  const [designZone,setDesignZone] = useState('header');
+  const [colorChoices,setColorChoices] = useState({});
   const [mailPreview,setMailPreview] = useState(null);
   const [mailPreviewBusy,setMailPreviewBusy] = useState(false);
   const [mailPreviewMessage,setMailPreviewMessage] = useState('');
@@ -278,7 +281,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     try {
       const data = await clerkStagingClient.getAdminMailNotificationSettings();
       setSnapshot(data);
-      setDesignDraft(data.design);
+      setDesignDraft(data.designDraft || data.design);
       setMailPreview(null);
       setDrafts(Object.fromEntries(data.events.map((event) => [event.key,fromEvent(event)])));
       setSelected((key) => data.events.some((e) => e.key === key) ? key : data.events[0]?.key || '');
@@ -296,15 +299,30 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const current = useMemo(() => snapshot?.events?.find((event) => event.key === selected), [snapshot,selected]);
   const draft = drafts[selected] || null;
   const pending = Boolean(current && draft && changed(current,draft));
-  const designPending = Boolean(snapshot?.design && designDraft &&
-    ['senderName','brandTitle','footerText'].some((field) => snapshot.design[field] !== designDraft[field]));
+  const designPending = Boolean(snapshot?.designDraft && designDraft &&
+    JSON.stringify(snapshot.designDraft)!==JSON.stringify(designDraft));
+  const designReadyToPublish = Boolean(snapshot?.designDraft && snapshot?.design &&
+    JSON.stringify(snapshot.designDraft)!==JSON.stringify(snapshot.design));
+  const changeDesign=(field,value)=>{setDesignDraft(before=>({...before,[field]:value}));setMailPreview(null);};
   const saveDesign = async () => {
     if(!designPending || busy)return;
     setBusy(true);setDesignMessage('');setMailPreview(null);
     try{
-      const data=await clerkStagingClient.saveAdminMailDesign({...designDraft,expectedRevision:snapshot.revision});
-      setSnapshot(data);setDesignDraft(data.design);setDesignMessage('저장되었습니다.');
+      const data=await clerkStagingClient.manageAdminMailDesign('draft',{...designDraft,expectedRevision:snapshot.revision});
+      setSnapshot(data);setDesignDraft(data.designDraft);setDesignMessage('초안을 저장했습니다. 실제 발송에는 아직 적용되지 않았습니다.');
     }catch(error){setDesignMessage(error?.status===409?'다른 관리자가 먼저 변경했습니다. 새로고침 후 다시 저장하세요.':'디자인 설정을 저장하지 못했습니다. 입력 내용을 확인해 주세요.');}
+    finally{setBusy(false);}
+  };
+  const publishDesign=async(restoreRevision=null)=>{
+    if(busy||!snapshot||designPending)return;
+    if(!window.confirm(restoreRevision===null?'저장된 초안을 모든 이메일 유형의 새 발송에 적용하시겠습니까?':'선택한 이전 공통 디자인을 운영에 다시 적용하시겠습니까?'))return;
+    setBusy(true);setDesignMessage('');
+    try{
+      const data=await clerkStagingClient.manageAdminMailDesign(restoreRevision===null?'publish':'restore',{
+        expectedRevision:snapshot.revision,...(restoreRevision===null?{}:{restoreRevision})});
+      setSnapshot(data);setDesignDraft(data.designDraft);setMailPreview(null);
+      setDesignMessage('운영 이메일 공통 디자인을 적용했습니다. 과거 발송 이력은 변경되지 않습니다.');
+    }catch(e){setDesignMessage(e?.status===409?'설정이 변경되었습니다. 새로고침 후 다시 시도하십시오.':'운영 디자인 적용에 실패했습니다.');}
     finally{setBusy(false);}
   };
   const makeMailPreview = async () => {
@@ -336,7 +354,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     if((pending||designPending)&&!window.confirm('저장하지 않은 변경사항이 있습니다. 변경사항을 취소하고 이동하시겠습니까?'))return;
     if(pending||designPending){
       setDrafts(Object.fromEntries((snapshot?.events||[]).map(event=>[event.key,fromEvent(event)])));
-      setDesignDraft(snapshot?.design||null);
+      setDesignDraft(snapshot?.designDraft||snapshot?.design||null);
       setMailPreview(null);
     }
     setActiveTab(next);
@@ -344,7 +362,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   if (!owner) return <div className="p-6 text-sm text-slate-700">최고관리자만 이메일 알림을 관리할 수 있습니다.</div>;
   return <section className="space-y-5">
     <AdminPageHeader title="이메일 알림 관리" description="이메일 발송 상태와 내역을 확인하고, 알림 유형 및 이메일 디자인을 관리합니다."
-      badge={<span className="inline-flex shrink-0 items-center rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-bold whitespace-nowrap text-white">최고관리자 기능</span>}/>
+      badge={<OwnerSettingsBadge isOwner={owner} />}/>
     <div className="flex flex-wrap gap-2" role="tablist" aria-label="이메일 알림 관리 메뉴">
       {[['preflight','발송 전 점검'],['history','발송 내역 관리'],['design','알림 설정 및 디자인']].map(([key,label])=><button
         key={key} type="button" role="tab" aria-selected={activeTab===key} onClick={()=>switchTab(key)}
@@ -468,7 +486,12 @@ export default function AdminMailNotificationsPanel({ ctx }) {
           <button type="button" disabled={queueBusy} onClick={()=>void reloadQueue()} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold disabled:opacity-50">새로고침</button>
         </div>
         {queue&&<div className="flex flex-wrap gap-2 text-xs text-slate-600" aria-label="상태별 전체 건수">
-          {Object.entries(mailStateLabels).map(([state,label])=><span key={state} className="rounded-full bg-slate-100 px-3 py-1">{label}: {queue.counts?.[state]||0}건</span>)}
+          {Object.entries(mailStateLabels).map(([state,label])=><button key={state} type="button"
+            aria-pressed={queueStatus===state} title={`${label} 상태 필터`}
+            onClick={()=>{const next=nextMailQueueChipFilter(queueStatus,state,queueSearch);setQueueStatus(next.status);setQueuePage(next.page);}}
+            className={`inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 outline-offset-2 focus-visible:outline-2 focus-visible:outline-orange-500 ${queueStatus===state?'ring-2 ring-slate-500':''}`}>
+            <span>{label}</span><span className="inline-flex min-w-[19px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold tabular-nums text-slate-700">{queue.counts?.[state]||0}</span>
+          </button>)}
         </div>}
         <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_160px_140px] md:items-end">
           <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-600">메일 검색</span>
@@ -518,29 +541,112 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       <div className="grid gap-3 md:grid-cols-2">
         <label className="space-y-1 text-xs font-semibold text-slate-700">발신자 표시명
           <input className="w-full rounded-lg border border-slate-300 p-2.5 text-sm" maxLength={80} disabled={busy} value={designDraft.senderName}
-            onChange={(e)=>(setDesignDraft((old)=>({...old,senderName:e.target.value})),setMailPreview(null))}/>
+            onChange={(e)=>changeDesign('senderName',e.target.value)}/>
         </label>
         <label className="space-y-1 text-xs font-semibold text-slate-700">메일 상단 제목
           <input className="w-full rounded-lg border border-slate-300 p-2.5 text-sm" maxLength={80} disabled={busy} value={designDraft.brandTitle}
-            onChange={(e)=>(setDesignDraft((old)=>({...old,brandTitle:e.target.value})),setMailPreview(null))}/>
+            onChange={(e)=>changeDesign('brandTitle',e.target.value)}/>
         </label>
       </div>
       <label className="block space-y-1 text-xs font-semibold text-slate-700">메일 하단 안내 문구
         <textarea className="w-full resize-y rounded-lg border border-slate-300 p-2.5 text-sm" rows={2} maxLength={360} disabled={busy} value={designDraft.footerText}
-          onChange={(e)=>(setDesignDraft((old)=>({...old,footerText:e.target.value})),setMailPreview(null))}/>
+          onChange={(e)=>changeDesign('footerText',e.target.value)}/>
       </label>
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div><h4 className="text-sm font-bold text-slate-900">공통 템플릿 시각적 편집</h4>
+          <p className="mt-1 text-xs text-slate-500">구역을 선택하고 배경·글자색·여백을 편집합니다. 유형별 본문은 필수 블록으로 유지됩니다.</p></div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="편집할 공통 이메일 구역">
+          {[['header','상단 헤더'],['body','본문·필수 콘텐츠'],['footer','하단 안내'],['outer','전체 배경']].map(([zone,label])=><button key={zone} type="button"
+            aria-pressed={designZone===zone} onClick={()=>setDesignZone(zone)}
+            className={`rounded-lg border px-3 py-2 text-xs font-semibold ${designZone===zone?'border-orange-500 bg-orange-50 text-orange-800':'border-slate-200 bg-white text-slate-600'}`}>{label}</button>)}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(designZone==='header'?[['headerBackground','헤더 배경색'],['headerTextColor','헤더 글자색']]:
+            designZone==='body'?[['contentBackground','본문 배경색'],['bodyTextColor','본문 글자색']]:
+            designZone==='footer'?[['footerBackground','푸터 배경색'],['footerTextColor','푸터 글자색']]:
+            [['outerBackground','이메일 전체 배경색']]).map(([field,label])=><div key={field} className="rounded-lg border border-slate-200 bg-white p-3">
+              <label className="block text-xs font-semibold text-slate-700" htmlFor={`mail-design-${field}`}>{label}</label>
+              <div className="mt-2 flex items-center gap-2">
+                <input id={`mail-design-${field}`} type="color" value={colorChoices[field]||designDraft[field]} disabled={busy}
+                  onChange={e=>setColorChoices(old=>({...old,[field]:e.target.value}))} className="h-9 w-12 cursor-pointer rounded border" />
+                <span className="text-xs tabular-nums text-slate-600">{colorChoices[field]||designDraft[field]}</span>
+                <button type="button" disabled={busy||!colorChoices[field]||colorChoices[field]===designDraft[field]}
+                  onClick={()=>{changeDesign(field,colorChoices[field]);setColorChoices(old=>({...old,[field]:undefined}));}}
+                  className="ml-auto rounded-lg border border-orange-300 bg-white px-2 py-1.5 text-xs font-semibold text-orange-800 disabled:opacity-40">색상 확정</button>
+              </div>
+            </div>)}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {(designZone==='header'?[['headerPadding','헤더 여백',8,64],['headerFontSize','제목 크기',12,32]]:
+            designZone==='body'?[['bodyPadding','본문 여백',8,72],['bodyFontSize','본문 글자 크기',11,22]]:
+            designZone==='footer'?[['footerPadding','푸터 여백',8,64],['footerFontSize','푸터 글자 크기',10,18]]:
+            [['outerPadding','외부 여백',0,64],['contentWidth','콘텐츠 최대 너비',320,760]]).map(([field,label,min,max])=><label key={field} className="text-xs font-semibold text-slate-700">{label} (px)
+              <input type="number" min={min} max={max} value={designDraft[field]} disabled={busy}
+                onChange={e=>changeDesign(field,Number(e.target.value))} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm" />
+            </label>)}
+          {designZone!=='outer'&&<label className="text-xs font-semibold text-slate-700">정렬
+            <select value={designDraft[`${designZone}Align`]} disabled={busy}
+              onChange={e=>changeDesign(`${designZone}Align`,e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm">
+              <option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option>
+            </select></label>}
+        </div>
+        {designZone==='body'&&<div className="rounded-lg border border-dashed border-orange-300 bg-orange-50 p-3 text-xs font-medium text-orange-900">
+          <span aria-label="필수 콘텐츠 영역">필수 본문 블록 · 유형별 메일 내용이 이 위치에 자동 삽입됩니다. 이동·삭제할 수 없습니다.</span>
+        </div>}
+        {designZone==='body'&&<label className="block text-xs font-semibold text-slate-700">공통 강조 안내 상자 (선택 사항)
+          <textarea value={designDraft.highlightText} disabled={busy} maxLength={300} rows={2} onChange={e=>changeDesign('highlightText',e.target.value)}
+            className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm" placeholder="모든 이메일 본문 아래에 추가할 공통 안내" />
+        </label>}
+        {designZone==='body'&&<div className="rounded-lg border border-slate-200 bg-white p-3 space-y-3">
+          <h5 className="text-xs font-bold text-slate-800">공통 링크 버튼 블록 (선택 사항)</h5>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs font-semibold text-slate-700">버튼 문구
+              <input maxLength={80} value={designDraft.buttonText} disabled={busy}
+                onChange={e=>changeDesign('buttonText',e.target.value)} className="mt-1 block w-full rounded-lg border p-2 text-sm" placeholder="예: 홈페이지 열기" />
+            </label>
+            <label className="text-xs font-semibold text-slate-700">버튼 링크 (HTTPS)
+              <input maxLength={500} value={designDraft.buttonUrl} disabled={busy}
+                onChange={e=>changeDesign('buttonUrl',e.target.value)} className="mt-1 block w-full rounded-lg border p-2 text-sm" placeholder="https://notebook.recruit.kro.kr/" />
+            </label>
+            {[['buttonBackground','버튼 배경색'],['buttonTextColor','버튼 글자색']].map(([field,label])=><div key={field}>
+              <label htmlFor={`mail-design-${field}`} className="text-xs font-semibold text-slate-700">{label}</label>
+              <div className="mt-1 flex items-center gap-2"><input id={`mail-design-${field}`} type="color" disabled={busy} value={colorChoices[field]||designDraft[field]}
+                onChange={e=>setColorChoices(old=>({...old,[field]:e.target.value}))} className="h-9 w-12 rounded border" />
+                <button type="button" disabled={busy||!colorChoices[field]||colorChoices[field]===designDraft[field]}
+                  onClick={()=>{changeDesign(field,colorChoices[field]);setColorChoices(old=>({...old,[field]:undefined}));}}
+                  className="rounded-lg border px-2 py-1.5 text-xs disabled:opacity-40">색상 확정</button></div>
+            </div>)}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={designDraft.buttonFirst} disabled={busy}
+            onChange={e=>changeDesign('buttonFirst',e.target.checked)}/>버튼을 공통 안내 상자보다 먼저 표시</label>
+        </div>}
+        {designZone==='footer'&&<label className="flex items-center gap-2 text-xs text-slate-700">
+          <input type="checkbox" checked={designDraft.showDivider} disabled={busy} onChange={e=>changeDesign('showDivider',e.target.checked)}/>푸터 위 구분선 표시
+        </label>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={busy||mailPreviewBusy} onClick={()=>void makeMailPreview()} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-800">편집 중인 디자인 미리보기</button>
+          {mailPreview?.eventKey===selected&&<span className="text-xs text-slate-500">아래 유형별 미리보기에 최신 편집안이 표시됩니다.</span>}
+        </div>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="rounded-lg bg-[var(--mk-orange)] px-4 py-2 text-sm font-bold text-white disabled:opacity-40" disabled={busy || !designPending} onClick={()=>void saveDesign()}>공통 디자인 저장</button>
-        <button type="button" className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40" disabled={busy || !designPending} onClick={()=>setDesignDraft(snapshot.design)}>변경 취소</button>
+        <button type="button" className="rounded-lg bg-[var(--mk-orange)] px-4 py-2 text-sm font-bold text-white disabled:opacity-40" disabled={busy || !designPending} onClick={()=>void saveDesign()}>초안 저장</button>
+        <button type="button" className="rounded-lg border px-4 py-2 text-sm disabled:opacity-40" disabled={busy || !designPending} onClick={()=>setDesignDraft(snapshot.designDraft)}>변경 취소</button>
+        <button type="button" disabled={busy||designPending||!designReadyToPublish} onClick={()=>void publishDesign()}
+          className="rounded-lg border border-orange-400 px-4 py-2 text-sm font-bold text-orange-800 disabled:opacity-40">운영 적용</button>
         {designMessage&&<span role="status" className="text-xs text-slate-700">{designMessage}</span>}
       </div>
-      <p className="text-xs text-slate-500">실제 발신 주소와 인증은 별도 설정으로 관리됩니다. 실메일 발송은 비활성 상태입니다.</p>
+      <p className="text-xs text-slate-500">초안 저장만으로는 발송 디자인이 바뀌지 않습니다. 운영 적용 시 이후 새로 등록되는 메일에 반영됩니다. 이미 발송 대기 중인 메일 스냅샷은 변경되지 않습니다.</p>
+      {snapshot?.designVersions?.length>0&&<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+        <h4 className="text-xs font-bold text-slate-800">이전 운영 디자인</h4>
+        <div className="flex flex-wrap gap-2">{snapshot.designVersions.map((version,index)=><button key={`${version.revision}-${index}`} type="button" disabled={busy||designPending}
+          onClick={()=>void publishDesign(version.revision)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs disabled:opacity-40">
+          버전 {version.revision} 복원</button>)}</div>
+      </div>}
     </div>}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="text-base font-bold text-slate-900">유형별 이메일 알림 설정 및 디자인</h3>
       <button type="button" disabled={busy} onClick={()=>{if((pending||designPending)&&!window.confirm('저장하지 않은 변경사항을 취소하고 새로고침하시겠습니까?'))return;void load();}} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold">새로고침</button>
     </div>
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">실제 이메일 발송은 아직 시작되지 않았습니다.</div>
     {message && <p className="text-sm font-semibold text-slate-700" role="status">{message}</p>}
     {!snapshot ? <p className="py-6 text-sm">{busy ? '불러오는 중...' : '설정을 불러올 수 없습니다.'}</p> :
     <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">

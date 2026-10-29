@@ -2598,6 +2598,30 @@ export const createRequestHandler = ({
       }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_design_save_failed'},headers);}
       return;
     }
+    // P1-10: owner-only draft, explicit publication, immutable bounded revision history.
+    if (['PATCH','POST'].includes(request.method) &&
+        ['/api/admin/mail-design/draft','/api/admin/mail-design/publish','/api/admin/mail-design/restore'].includes(url.pathname)) {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner'){
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      const isDraft=url.pathname.endsWith('/draft');
+      if(request.method!==(isDraft?'PATCH':'POST')){
+        writeJson(response,405,{...basePayload,error:'method_not_allowed'},headers);return;
+      }
+      let input;
+      try{input=await readJsonBody(request,{maxBytes:4096});}
+      catch(e){writeJson(response,e.status||400,{...basePayload,authenticated:true,error:e.code||'invalid_json_body'},headers);return;}
+      try{
+        const data=isDraft?await mailNotificationSettingsService.saveDraft({input,actorClerkUserId:authority.auth.userId}):
+          await mailNotificationSettingsService.publishDesign({expectedRevision:input?.expectedRevision,
+            restoreRevision:url.pathname.endsWith('/restore')?input?.restoreRevision:null,
+            actorClerkUserId:authority.auth.userId});
+        writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailNotificationSettings:data},headers);
+      }catch(e){writeJson(response,e?.status||503,{...basePayload,authenticated:true,error:e?.code||'mail_design_operation_failed'},headers);}
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/api/admin/mail-preview') {
       const authority=await authenticateAdminAuthority(request,response,headers,requestId);
       if(!authority)return;

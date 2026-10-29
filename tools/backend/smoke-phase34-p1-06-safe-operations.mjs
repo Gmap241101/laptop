@@ -12,7 +12,7 @@ ok(migration.includes("action IN ('cancel','retry')"),'retry audit constraint');
 ok(!/CREATE DATABASE|CREATE EXTENSION|CREATE TABLE|CREATE INDEX/i.test(migration),'no new resources');
 eq(P103_REAL_DELIVERY_LOCKED,true,'real sending locked');
 const startup=source('server/src/index.mjs');
-ok(startup.includes("P106_SCHEDULED_ENQUEUE_ENABLED === 'true'"),'schedule OFF unless explicitly enabled');
+ok(startup.includes("P109_OPERATOR_CONTROL_ENABLED==='true'") && startup.includes("MAIL_ENABLED==='true'"),'schedule only after production operator and environment gates');
 ok(!startup.includes('createP103Dispatcher'),'no live mail dispatcher');
 const app=source('server/src/app.mjs');
 for(const x of ["'/api/admin/mail-schedule/preview'","'/api/admin/mail-queue'",'mailQueueRetryMatch','admin_owner_required'])ok(app.includes(x),'owner route '+x);
