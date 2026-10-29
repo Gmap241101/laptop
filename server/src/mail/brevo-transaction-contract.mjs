@@ -78,6 +78,7 @@ export const executeBrevoTransaction = async ({ config, message, fetchImpl }) =>
   try {
     response = await fetchImpl(request.url, {
       method:request.method,
+      redirect:'error',
       headers:{'api-key':config.apiKey,Accept:'application/json','Content-Type':'application/json'},
       body:JSON.stringify(request.payload),
       signal:AbortSignal.timeout(HTTP_TIMEOUT_MS),

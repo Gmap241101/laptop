@@ -31,7 +31,7 @@ ok(deliverySql.includes('FOR SHARE'),'serialization before claim');
 const routes=sf('server/src/app.mjs');
 for(const text of ["'/api/admin/mail-queue'",'/cancel','mailQueueOperations.cancel','admin_owner_required'])ok(routes.includes(text),'owner queue API '+text);
 const startup=sf('server/src/index.mjs');
-ok(startup.includes("P106_SCHEDULED_ENQUEUE_ENABLED === 'true'"),'off default schedule');
+ok(startup.includes("check.rows[0]?.payload?.delivery?.enabled!==true") && startup.includes("config.appEnv==='production'&&process.env.P109_OPERATOR_CONTROL_ENABLED==='true'&&process.env.MAIL_ENABLED==='true'"),'scheduled enqueue requires production gate and PostgreSQL approval');
 ok(!startup.includes('createP103Dispatcher'),'sender not started');
 const mockedAdmins={query:async(sql)=>({rows:[{auth_email:'OWNER@example.com'},{auth_email:'admin@example.com'}]})};
 eq(await listEligibleAdminMailRecipients(mockedAdmins),Object.freeze(['owner@example.com','admin@example.com']),'admin distinct email');

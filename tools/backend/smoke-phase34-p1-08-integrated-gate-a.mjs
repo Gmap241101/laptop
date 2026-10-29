@@ -17,7 +17,7 @@ ok(MAIL_EVENTS.some(e=>e.key==='rental_due_reminder'),'due reminder preserved');
 ok(MAIL_EVENTS.some(e=>e.key==='rental_overdue'),'overdue preserved');
 eq(P103_REAL_DELIVERY_LOCKED,true,'real provider sender hard-locked');
 const startup=source('server/src/index.mjs');
-ok(startup.includes("P106_SCHEDULED_ENQUEUE_ENABLED === 'true'"),'default-OFF scheduled gate');
+ok(startup.includes("check.rows[0]?.payload?.delivery?.enabled!==true") && startup.includes("process.env.P109_OPERATOR_CONTROL_ENABLED==='true'"),'scheduled scan requires operator-approved master control');
 ok(!startup.includes('createP103Dispatcher'),'live sender never started');
 const changes=[
  ['server/src/rentals/admin-rental-request-repository.mjs',3],

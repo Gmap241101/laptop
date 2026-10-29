@@ -47,6 +47,8 @@ import { createSystemConfigRepository } from './settings/system-config-repositor
 import { createSystemConfigService } from './settings/system-config-service.mjs';
 import { createMailNotificationSettingsService } from './mail/mail-notification-settings-service.mjs';
 import { createMailQueueOperations } from './mail/mail-queue-operations.mjs';
+import { createP109RuntimeControl } from './mail/mail-p109-runtime-control.mjs';
+import { startP109WebDyno } from './mail/mail-p109-dispatcher.mjs';
 import { createMailPreflightControl } from './mail/mail-p108-preflight-control.mjs';
 import { createG5OwnerReadOnlyAcceptance } from './mail/mail-p108-g5-owner-readonly-acceptance.mjs';
 import { createG6SandboxReadiness } from './mail/mail-p108-g6-brevo-readiness.mjs';
@@ -97,11 +99,19 @@ const systemConfigService = createSystemConfigService({ repository: systemConfig
 const mailNotificationSettingsService = createMailNotificationSettingsService(pool);
 const mailQueueOperations = createMailQueueOperations(pool);
 const mailPreflightControl = createMailPreflightControl(pool,{environment:config.appEnv});
+const mailRuntimeControl = createP109RuntimeControl(pool);
+const liveMailLoop = startP109WebDyno({pool});
+liveMailLoop.start();
 const mailSchedulePreview = createP106ScheduledPreview(pool);
 // Explicitly OFF until later Staging acceptance. Real provider sending remains locked.
+const scheduledRunner=createP106ScheduledEnqueue(pool);
 const scheduledMailLoop = startP106ScheduledLoop({
-  runner:createP106ScheduledEnqueue(pool),
-  enabled:process.env.P106_SCHEDULED_ENQUEUE_ENABLED === 'true',
+  runner:{async tick(args){
+    const check=await pool.query("SELECT payload FROM app_system_configuration WHERE config_key='mail-notification-settings'");
+    if(check.rows[0]?.payload?.delivery?.enabled!==true) return {state:'master_disabled',queued:0};
+    return scheduledRunner.tick(args);
+  }},
+  enabled:config.appEnv==='production'&&process.env.P109_OPERATOR_CONTROL_ENABLED==='true'&&process.env.MAIL_ENABLED==='true',
 });
 scheduledMailLoop.start();
 const clerkDeviceTrustService = createClerkDeviceTrustService({
@@ -264,6 +274,7 @@ const server = createServer(
     memberAuthorityRepository,
     systemConfigService,
     mailNotificationSettingsService,
+    mailRuntimeControl,
     mailQueueOperations,
     mailPreflightControl,
     g5OwnerReadOnlyAcceptance,

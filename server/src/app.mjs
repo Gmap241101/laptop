@@ -235,6 +235,8 @@ export const createRequestHandler = ({
   g6d051SandboxOneShot = null,
   g6d051ReadOnlyDiagnostic = null,
   mailQueueOperations = { async list() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async cancel() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); }, async retry() { throw Object.assign(new Error('mail_queue_unavailable'),{status:503,code:'mail_queue_unavailable'}); } },
+  mailRuntimeControl = {async status(){throw Object.assign(new Error('mail_control_unavailable'),{status:503,code:'mail_control_unavailable'});},
+    async change(){throw Object.assign(new Error('mail_control_unavailable'),{status:503,code:'mail_control_unavailable'});}},
   mailNotificationSettingsService = {
     async list() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
     async saveEvent() { throw Object.assign(new Error('Mail settings not configured.'), { code: 'mail_settings_unavailable', status: 503 }); },
@@ -2522,6 +2524,28 @@ export const createRequestHandler = ({
       try {const result=await mailQueueOperations.retry({id:mailQueueRetryMatch[1],actorClerkUserId:authority.auth.userId});
         writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailQueueRetry:result},headers);
       }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_queue_retry_failed'},headers);}
+      return;
+    }
+    // P1-09: owner-only master delivery control. Activation requires signed fresh
+    // Clerk OTP, a matching DB revision, a one-use verification digest and a clear queue.
+    if ((request.method==='GET'||request.method==='PATCH') && url.pathname==='/api/admin/mail-delivery/control') {
+      const authority=await authenticateAdminAuthority(request,response,headers,requestId);
+      if(!authority)return;
+      if(authority.adminAuth?.admin?.adminRole!=='owner') {
+        writeJson(response,403,{...basePayload,authenticated:true,error:'admin_owner_required'},headers);return;
+      }
+      try{
+        if(request.method==='GET'){
+          const data=await mailRuntimeControl.status({authority});
+          writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailDeliveryControl:data},headers);
+        }else{
+          const input=await readJsonBody(request,{maxBytes:1024});
+          const changed=await mailRuntimeControl.change({authority,enabled:input?.enabled,
+            allowQueued:input?.allowQueued===true,expectedRevision:input?.expectedRevision});
+          const data=await mailRuntimeControl.status({authority});
+          writeJson(response,200,{...basePayload,authenticated:true,authorized:true,mailDeliveryControl:data,changed},headers);
+        }
+      }catch(e){writeJson(response,e.status||503,{...basePayload,authenticated:true,error:e.code||'mail_control_failed'},headers);}
       return;
     }
     // P1 mail configuration is an admin-only control plane. It NEVER dispatches mail.

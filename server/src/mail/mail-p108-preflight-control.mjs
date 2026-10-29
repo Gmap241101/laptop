@@ -78,7 +78,7 @@ export function createMailPreflightControl(pool,{environment='staging',getMailCo
     async acknowledge({authority,acknowledge=false}={}){
       const proof=requireMailPreflightReverification(authority);
       if(acknowledge!==true)throw problem('mail_preflight_confirmation_required',400);
-      if(environment!=='staging')throw problem('mail_preflight_staging_only');
+      if(!['staging','production'].includes(environment))throw problem('mail_preflight_environment_unsupported');
       const db=await pool.connect();let started=false;
       try {
         await db.query('BEGIN');started=true;

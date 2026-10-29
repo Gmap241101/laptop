@@ -59,6 +59,51 @@ export default function AdminMailNotificationsPanel({ ctx }) {
   const [busy,setBusy] = useState(false);
   const [message,setMessage] = useState('');
   const [mailPreflight,setMailPreflight] = useState(null);
+  const [deliveryControl,setDeliveryControl] = useState(null);
+  const [deliveryBusy,setDeliveryBusy] = useState(false);
+  const [deliveryMessage,setDeliveryMessage] = useState('');
+  const [deliveryVerifyStep,setDeliveryVerifyStep] = useState('idle');
+  const [deliveryCode,setDeliveryCode] = useState('');
+  const [deliveryAllowQueued,setDeliveryAllowQueued] = useState(false);
+  const reloadDelivery=async()=>{
+    try{setDeliveryControl(await clerkStagingClient.getAdminMailDeliveryControl());}
+    catch{setDeliveryMessage('전체 발송 제어 상태를 불러오지 못했습니다.');}
+  };
+  useEffect(()=>{if(ctx.authenticatedAdminAccount?.adminRole==='owner')void reloadDelivery();},[ctx.authenticatedAdminAccount?.adminRole]);
+  const changeDelivery=async(enabled)=>{
+    if(deliveryBusy)return;
+    if(enabled&&!deliveryControl?.active&&!deliveryControl?.enabled&&deliveryControl?.blockers?.length){
+      setDeliveryMessage('서버 발송 설정이 아직 준비되지 않았습니다. 승인 전에 운영 환경 점검이 필요합니다.');return;
+    }
+    if(enabled){
+      setDeliveryBusy(true);setDeliveryMessage('');
+      try{await clerkStagingClient.beginAdminMailReverification();setDeliveryVerifyStep('sent');
+        setDeliveryMessage('최고관리자 본인 확인 코드를 보냈습니다.');}
+      catch{setDeliveryMessage('본인 확인 코드를 발송하지 못했습니다.');}
+      finally{setDeliveryBusy(false);}
+      return;
+    }
+    setDeliveryBusy(true);setDeliveryMessage('');
+    try{const next=await clerkStagingClient.changeAdminMailDeliveryControl({enabled:false,expectedRevision:deliveryControl?.revision});
+      setDeliveryControl(next);setDeliveryVerifyStep('idle');await reloadDelivery();setDeliveryMessage('전체 이메일 발송을 중지했습니다.');}
+    catch{setDeliveryMessage('발송 중지 요청이 실패했습니다. 상태를 다시 조회하고 재시도하십시오.');}
+    finally{setDeliveryBusy(false);}
+  };
+  const completeDeliveryApproval=async()=>{
+    if(deliveryBusy||deliveryCode.length!==6)return;
+    setDeliveryBusy(true);setDeliveryMessage('');
+    try{await clerkStagingClient.completeAdminMailReverification(deliveryCode);
+      const next=await clerkStagingClient.changeAdminMailDeliveryControl({enabled:true,
+        allowQueued:deliveryAllowQueued,expectedRevision:deliveryControl?.revision});
+      setDeliveryControl(next);setDeliveryVerifyStep('idle');setDeliveryCode('');await reloadDelivery();
+      setDeliveryMessage('최고관리자가 전체 이메일 발송을 승인했습니다.');
+    }catch(e){setDeliveryMessage(e?.code==='mail_delivery_queue_review_required'?
+      '대기·오래된 메일 또는 처리 중인 메일이 있습니다. 대기 목록을 확인하고 취소하거나 검토하십시오.':
+      e?.code==='mail_delivery_environment_blocked'?'서버 설정이 발송을 허용하지 않습니다.':
+      '승인을 저장하지 못했습니다. 인증과 설정 상태를 확인한 뒤 다시 시도하십시오.');
+      setDeliveryVerifyStep('idle');setDeliveryCode('');await reloadDelivery();}
+    finally{setDeliveryBusy(false);}
+  };
   const [mailPreflightBusy,setMailPreflightBusy] = useState(false);
   const [mailPreflightMessage,setMailPreflightMessage] = useState('');
   const [g5Available,setG5Available] = useState(false);
@@ -164,12 +209,21 @@ export default function AdminMailNotificationsPanel({ ctx }) {
       await clerkStagingClient.completeAdminMailReverification(mailVerifyCode);
       const saved=await clerkStagingClient.acknowledgeAdminMailPreflight();
       setMailVerifyStep('idle');setMailVerifyCode('');
-      setMailPreflightMessage(`점검 확인이 기록되었습니다. (${saved.reviewId}번) 이메일 발송은 계속 중지되어 있습니다.`);
+      setMailPreflightMessage(`점검 확인이 기록되었습니다. (${saved.reviewId}번) 이 점검은 발송을 직접 수행하지 않습니다.`);
       setMailPreflight(await clerkStagingClient.getAdminMailPreflight());
     }catch(error){
-      setMailPreflightMessage(error?.code==='mail_preflight_reverification_already_used'
+      const code=String(error?.code||'');
+      setMailPreflightMessage(code==='mail_preflight_reverification_already_used'
         ? '이미 사용된 본인 확인입니다. 새 코드를 요청해 주세요.'
-        : '본인 확인 또는 점검 기록에 실패했습니다. 새 코드를 요청해 주세요.');
+        : code==='mail_preflight_recent_reauthentication_required'||code==='mail_preflight_signed_reverification_required'
+          ? '본인 확인이 만료되었거나 유효하지 않습니다. 새 코드를 요청해 주세요.'
+          : code==='mail_preflight_owner_required'
+            ? '최고관리자 권한이 필요합니다.'
+            : code==='mail_preflight_environment_unsupported'
+              ? '현재 서버 환경에서는 점검 확인을 기록할 수 없습니다.'
+              : code==='mail_preflight_confirmation_required'
+                ? '점검 확인에 동의한 후 다시 시도해 주세요.'
+                : '점검 기록 저장에 실패했습니다. 새 코드 요청 전 관리자에게 서버 기록 확인을 요청해 주세요.');
       setMailVerifyStep('idle');setMailVerifyCode('');
     }finally{setMailPreflightBusy(false);}
   };
@@ -231,7 +285,7 @@ export default function AdminMailNotificationsPanel({ ctx }) {
     } catch { setMessage('알림 설정을 불러오지 못했습니다.'); }
     finally { setBusy(false); }
   };
-  useEffect(() => { if (owner && activeTab==='design' && !snapshot) void load(); }, [owner,activeTab]);
+  useEffect(() => { if (owner && (activeTab==='design'||activeTab==='preflight') && !snapshot) void load(); }, [owner,activeTab]);
   useEffect(() => { if (owner && activeTab==='preflight') void reloadMailPreflight(); }, [owner,activeTab]);
   useEffect(()=>{const id=setTimeout(()=>setQueueSearchSettled(queueSearch.trim()),250);return ()=>clearTimeout(id);},[queueSearch]);
   useEffect(()=>{
@@ -297,6 +351,37 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         className={`rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${activeTab===key?'border-orange-500 bg-orange-500 text-white shadow-sm':'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'}`}>{label}</button>)}
     </div>
     {activeTab==='preflight'&&<div className="space-y-4" role="tabpanel">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">전체 이메일 발송 승인</h3>
+        <button type="button" disabled={deliveryBusy} onClick={()=>void reloadDelivery()}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">상태 새로고침</button>
+      </div>
+      <p className="text-xs text-slate-600">최고관리자 승인 후에만 발송합니다. 발송 시작은 이메일 본인 확인이 필요하며 중지는 즉시 요청할 수 있습니다.</p>
+      <p className="text-xs text-slate-700">현재 전체 발송: <strong>{deliveryControl?.active?'진행 가능':deliveryControl?.enabled?'서버 설정으로 차단':'중지'}</strong>
+        {' · '}대기 {deliveryControl?.queued||0}건 · 처리 중 {deliveryControl?.processing||0}건 · 오래된 대기 {deliveryControl?.aged||0}건</p>
+      {deliveryControl?.blockers?.length>0&&<p className="text-xs text-amber-700">운영 환경 안전 잠금이 활성화되어 있습니다. 최초 활성화 설정 및 검증 후 승인이 가능합니다.</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={deliveryBusy||!deliveryControl||deliveryControl.enabled}
+          onClick={()=>void changeDelivery(true)} className="rounded-lg border border-orange-400 px-3 py-2 text-xs font-semibold disabled:opacity-50">본인 확인 후 전체 발송 승인</button>
+        <button type="button" disabled={deliveryBusy||!deliveryControl?.enabled}
+          onClick={()=>void changeDelivery(false)} className="rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold disabled:opacity-50">전체 발송 중지</button>
+      </div>
+      {deliveryVerifyStep==='sent'&&<div className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <SixDigitVerificationCodeInput value={deliveryCode} onChange={setDeliveryCode} onSubmit={()=>void completeDeliveryApproval()}
+          disabled={deliveryBusy} label="전체 발송 승인용 이메일 인증번호" id="mail-global-approval-code" />
+        <label className="flex items-start gap-2 text-xs text-slate-600">
+          <input type="checkbox" checked={deliveryAllowQueued} onChange={e=>setDeliveryAllowQueued(e.target.checked)} />
+          최근 24시간 이내 대기 메일을 확인했고 함께 처리하는 데 동의합니다. 오래된 대기·처리 중인 메일은 별도로 정리해야 합니다.
+        </label>
+        <button type="button" onClick={()=>void completeDeliveryApproval()} disabled={deliveryBusy||deliveryCode.length!==6}
+          className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">승인 확정</button>
+        <button type="button" onClick={()=>{setDeliveryVerifyStep('idle');setDeliveryCode('');}}
+          className="ml-2 rounded-lg border px-3 py-2 text-xs">취소</button>
+      </div>}
+      {deliveryMessage&&<p role="status" className="text-xs text-slate-700">{deliveryMessage}</p>}
+      <p className="text-xs text-slate-500">중지 요청 직전에 이미 Brevo로 전송 중이던 요청은 취소되지 않을 수 있습니다.</p>
+    </div>
     {g5Available&&<div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">최고관리자 본인 확인</h3>
@@ -346,9 +431,9 @@ export default function AdminMailNotificationsPanel({ ctx }) {
         <button type="button" disabled={mailPreflightBusy} onClick={()=>void reloadMailPreflight()}
           className="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50">상태 확인</button>
       </div>
-      <p className="text-xs text-slate-600">발송 준비 상태와 대기 메일을 확인합니다. 점검 확인을 기록해도 실제 이메일은 발송되지 않습니다.</p>
+      <p className="text-xs text-slate-600">발송 준비 상태와 대기 메일을 확인합니다. 점검 확인 자체는 이메일을 발송하지 않습니다. 전체 발송 여부는 위의 관리자 승인 상태에 따릅니다.</p>
       {mailPreflight&&<div className="space-y-2 text-xs text-slate-700">
-        <p>현재 발송: <strong>중지</strong> · 대기 {mailPreflight.counts?.queued||0}건 · 재시도 대기 {mailPreflight.counts?.retry||0}건 · 오래된 대기 {mailPreflight.agedCount||0}건</p>
+        <p>현재 발송: <strong>{deliveryControl?.active?'승인됨': '중지'}</strong> · 대기 {mailPreflight.counts?.queued||0}건 · 재시도 대기 {mailPreflight.counts?.retry||0}건 · 오래된 대기 {mailPreflight.agedCount||0}건</p>
         {(mailPreflight.samples||[]).length>0&&<p>확인할 메일: {mailPreflight.samples.map(r=>`#${r.id} (${mailStateLabels[r.state]||r.state})`).join(', ')}</p>}
         {mailPreflight.latestReview&&<p>마지막 점검 확인: {new Date(mailPreflight.latestReview.createdAt).toLocaleString('ko-KR')}</p>}
         <p className="text-slate-500">대기 메일 취소는 ‘발송 내역 관리’ 탭에서 처리할 수 있습니다.</p>

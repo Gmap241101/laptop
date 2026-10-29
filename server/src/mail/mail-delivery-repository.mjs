@@ -5,7 +5,7 @@ const validProvider = (value) => value === 'brevo' || value === 'resend';
 const number = (v) => Number(v || 0);
 const safeInt = (v, max) => Number.isSafeInteger(v) && v > 0 && v <= max;
 
-export const createMailDeliveryRepository = (pool) => {
+export const createMailDeliveryRepository = (pool,{requireRuntimeGate=false}={}) => {
   if (typeof pool?.connect !== 'function') throw new TypeError('PostgreSQL pool required');
   const transaction = async (callback) => {
     const client = await pool.connect();
@@ -57,6 +57,13 @@ export const createMailDeliveryRepository = (pool) => {
           ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 1`);
         const mail = ready.rows[0];
         if (!mail) return Object.freeze({ state:'empty' });
+        // Production: DB permission must be ON in the same transaction as the claim.
+        // Disabling the master switch serializes through the advisory lock above.
+        if(requireRuntimeGate){
+          const master=await client.query(`SELECT payload FROM app_system_configuration
+            WHERE config_key='mail-notification-settings' FOR SHARE`);
+          if(master.rows[0]?.payload?.delivery?.enabled!==true)return Object.freeze({state:'master_disabled'});
+        }
         // Administrator OFF must also cancel messages queued BEFORE the policy change.
         // FOR SHARE serializes the check against a concurrent settings edit transaction.
         const policy = await client.query(`SELECT payload FROM app_system_configuration
@@ -116,7 +123,7 @@ export const createMailDeliveryRepository = (pool) => {
           lease_owner=$2,claim_token=$3,lease_expires_at=NOW()+($4::integer * INTERVAL '1 second'),updated_at=NOW()
           WHERE id=$1`,[mail.id,owner,token,leaseSeconds]);
         return Object.freeze({ state:'claimed', token, provider, mail:Object.freeze({
-          id: mail.id, eventKey:mail.event_key, to:mail.recipient_email, subject:mail.subject,
+          id: mail.id, token, eventKey:mail.event_key, to:mail.recipient_email, subject:mail.subject,
           text:mail.body_text, html:mail.body_html, senderName:mail.sender_name, attempt:number(mail.attempt_count)+1,
           maxAttempts:number(mail.max_attempts),
         }) });

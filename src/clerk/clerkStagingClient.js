@@ -1424,6 +1424,16 @@ export const requestAdminMailNotificationUpdate = async ({ clerk, apiBaseUrl, fe
   return payload.mailNotificationSettings;
 };
 
+export const requestAdminMailDeliveryControl = async ({clerk,apiBaseUrl,fetchImpl,input=null}) => {
+  const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
+    path:'/api/admin/mail-delivery/control',method:input===null?'GET':'PATCH',
+    ...(input===null?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(input)})});
+  if(!response.ok||payload?.mailDeliveryControl?.authority!=='postgresql'){
+    const e=new Error('전체 이메일 발송 설정을 처리하지 못했습니다.');e.code=payload?.error||'mail_control_unavailable';e.status=response.status;throw e;
+  }
+  return payload.mailDeliveryControl;
+};
+
 export const requestAdminMailDesignUpdate = async ({clerk,apiBaseUrl,fetchImpl,input}) => {
   const {response,payload}=await requestWithSession({clerk,apiBaseUrl,fetchImpl,
     path:'/api/admin/mail-design',method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
@@ -2712,6 +2722,12 @@ export const createClerkStagingClient = ({ env, windowRef, documentRef, fetchImp
     async saveAdminClerkDeviceTrust(enabled) {
       const clerk = await initialize();
       return requestAdminClerkDeviceTrustWrite({ clerk, apiBaseUrl: config.apiBaseUrl, fetchImpl, enabled });
+    },
+    async getAdminMailDeliveryControl() {
+      const clerk=await initialize();return requestAdminMailDeliveryControl({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl});
+    },
+    async changeAdminMailDeliveryControl(input) {
+      const clerk=await initialize();return requestAdminMailDeliveryControl({clerk,apiBaseUrl:config.apiBaseUrl,fetchImpl,input});
     },
     async getAdminMailNotificationSettings() {
       const clerk = await initialize();
